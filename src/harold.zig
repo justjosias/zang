@@ -6,6 +6,7 @@ pub const compileSong = compile_song.compileSong;
 
 const note_span = @import("harold/note_span.zig");
 pub const Impulse = note_span.Impulse;
+pub const getNextNoteSpan = note_span.getNextNoteSpan;
 
 const impulse_queue = @import("harold/impulse_queue.zig");
 pub const ImpulseQueue = impulse_queue.ImpulseQueue;
@@ -24,6 +25,9 @@ pub const add = basics.add;
 pub const addInto = basics.addInto;
 pub const multiply = basics.multiply;
 pub const multiplyScalar = basics.multiplyScalar;
+
+const mod_dc = @import("harold/mod_dc.zig");
+pub const DC = mod_dc.DC;
 
 const mod_envelope = @import("harold/mod_envelope.zig");
 pub const EnvParams = mod_envelope.EnvParams;

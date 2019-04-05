@@ -28,7 +28,7 @@ pub const ImpulseQueue = struct {
   pub fn push(
     self: *ImpulseQueue,
     impulse_frame: usize,
-    freq: f32,
+    freq: ?f32,
     current_frame_index: usize,
     frame_length: usize,
   ) void {
