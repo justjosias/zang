@@ -6,34 +6,35 @@ pub fn build(b: *Builder) void {
   const mode = b.standardReleaseOptions();
   const windows = b.option(bool, "windows", "create windows build") orelse false;
 
-  {
-    var t = b.addTest("test.zig");
-    t.linkSystemLibrary("c");
-    const test_step = b.step("test", "Run all tests");
-    test_step.dependOn(&t.step);
+  var t = b.addTest("test.zig");
+  t.linkSystemLibrary("c");
+  const test_step = b.step("test", "Run all tests");
+  test_step.dependOn(&t.step);
+
+  example(b, mode, windows, "play", "examples/play.zig");
+  example(b, mode, windows, "song", "examples/song.zig");
+}
+
+fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {
+  var exe = b.addExecutable(name, source_file);
+  exe.setBuildMode(mode);
+
+  if (windows) {
+    exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
   }
 
-  {
-    var exe = b.addExecutable("play", "examples/play.zig");
-    exe.setBuildMode(mode);
+  exe.addPackagePath("harold", "src/harold.zig");
 
-    if (windows) {
-      exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
-    }
+  exe.linkSystemLibrary("SDL2");
+  exe.linkSystemLibrary("c");
 
-    exe.addPackagePath("harold", "src/harold.zig");
+  exe.setOutputDir("zig-cache");
 
-    exe.linkSystemLibrary("SDL2");
-    exe.linkSystemLibrary("c");
+  b.default_step.dependOn(&exe.step);
 
-    exe.setOutputDir("zig-cache");
+  b.installArtifact(exe);
 
-    b.default_step.dependOn(&exe.step);
-
-    b.installArtifact(exe);
-
-    const play = b.step("play", "Run example 'play'");
-    const run = exe.run();
-    play.dependOn(&run.step);
-  }
+  const play = b.step(name, "Run example '" ++ name ++ "'");
+  const run = exe.run();
+  play.dependOn(&run.step);
 }

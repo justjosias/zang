@@ -10,7 +10,7 @@ pub const Waveform = enum {
   Sawtooth,
 };
 
-pub inline fn tri(t: f32) f32 {
+pub fn tri(t: f32) f32 {
   const frac = t - std.math.floor(t);
   if (frac < 0.25) {
     return frac * 4.0;
@@ -21,21 +21,21 @@ pub inline fn tri(t: f32) f32 {
   }
 }
 
-pub inline fn saw(t: f32) f32 {
+pub fn saw(t: f32) f32 {
   const frac = t - std.math.floor(t);
   return frac;
 }
 
-pub inline fn square(t: f32) f32 {
+pub fn square(t: f32) f32 {
   const frac = t - std.math.floor(t);
   return if (frac < 0.5) f32(1.0) else f32(-1.0);
 }
 
-pub inline fn sin(t: f32) f32 {
+pub fn sin(t: f32) f32 {
   return std.math.sin(t * std.math.pi * 2.0);
 }
 
-inline fn oscFunc(waveform: Waveform) fn (t: f32) f32 {
+fn oscFunc(waveform: Waveform) fn (t: f32) f32 {
   return switch (waveform) {
     Waveform.Sine => sin,
     Waveform.Triangle => tri,
@@ -44,7 +44,7 @@ inline fn oscFunc(waveform: Waveform) fn (t: f32) f32 {
   };
 }
 
-inline fn osc(waveform: Waveform, t: f32) f32 {
+fn osc(waveform: Waveform, t: f32) f32 {
   return oscFunc(waveform)(t);
 }
 
