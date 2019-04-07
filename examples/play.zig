@@ -59,24 +59,33 @@ fn AudioBuffers(comptime buffer_size: usize) type {
 }
 
 pub const AudioState = struct {
-  impulse_queue: harold.ImpulseQueue,
-
-  next_impulse_id: usize, // does this not belong in the impulse_queue?
   frame_index: usize,
 
-  osc: PulseModOscillator,
-  env: harold.Envelope,
+  iq0: harold.ImpulseQueue,
+  osc0: PulseModOscillator,
+  env0: harold.Envelope,
+
+  iq1: harold.ImpulseQueue,
+  osc1: PulseModOscillator,
+  env1: harold.Envelope,
 };
 
 var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
 
 fn initAudioState() AudioState {
   return AudioState{
-    .impulse_queue = harold.ImpulseQueue.init(),
-    .next_impulse_id = 1,
     .frame_index = 0,
-    .osc = PulseModOscillator.init(1.0, 1.5),
-    .env = harold.Envelope.init(harold.EnvParams {
+    .iq0 = harold.ImpulseQueue.init(),
+    .osc0 = PulseModOscillator.init(1.0, 1.5),
+    .env0 = harold.Envelope.init(harold.EnvParams {
+      .attack_duration = 0.025,
+      .decay_duration = 0.1,
+      .sustain_volume = 0.5,
+      .release_duration = 1.0,
+    }),
+    .iq1 = harold.ImpulseQueue.init(),
+    .osc1 = PulseModOscillator.init(1.0, 1.0),
+    .env1 = harold.Envelope.init(harold.EnvParams {
       .attack_duration = 0.025,
       .decay_duration = 0.1,
       .sustain_volume = 0.5,
@@ -94,16 +103,26 @@ fn paint(comptime buf_size: usize, as: *AudioState, bufs: *AudioBuffers(buf_size
 
   harold.zero(out);
 
-  if (!as.impulse_queue.isEmpty()) {
+  if (!as.iq0.isEmpty()) {
     // use ADSR envelope with pulse mod oscillator
     harold.zero(tmp0);
-    as.osc.paintFromImpulses(as.frame_index, sample_rate, tmp0, as.impulse_queue.getImpulses(), tmp1, tmp2, tmp3);
+    as.osc0.paintFromImpulses(as.frame_index, sample_rate, tmp0, as.iq0.getImpulses(), tmp1, tmp2, tmp3);
     harold.zero(tmp1);
-    as.env.paintFromImpulses(sample_rate, tmp1, as.impulse_queue.getImpulses(), as.frame_index);
+    as.env0.paintFromImpulses(sample_rate, tmp1, as.iq0.getImpulses(), as.frame_index);
     harold.multiply(out, tmp0, tmp1);
   }
 
-  as.impulse_queue.flush(as.frame_index, out.len);
+  if (!as.iq1.isEmpty()) {
+    // use ADSR envelope with pulse mod oscillator
+    harold.zero(tmp0);
+    as.osc1.paintFromImpulses(as.frame_index, sample_rate, tmp0, as.iq1.getImpulses(), tmp1, tmp2, tmp3);
+    harold.zero(tmp1);
+    as.env1.paintFromImpulses(sample_rate, tmp1, as.iq1.getImpulses(), as.frame_index);
+    harold.multiply(out, tmp0, tmp1);
+  }
+
+  as.iq0.flush(as.frame_index, out.len);
+  as.iq1.flush(as.frame_index, out.len);
 
   as.frame_index += out.len;
 
@@ -200,38 +219,46 @@ pub fn main() !void {
   c.SDL_Quit();
 }
 
-var g_note_held: ?i32 = null;
+var g_note_held0: ?i32 = null;
+var g_note_held1: ?i32 = null;
+
+const NoteParams = struct {
+  iq: *harold.ImpulseQueue,
+  nh: *?i32,
+  freq: f32,
+};
 
 fn keyEvent(audio_state: *AudioState, device: c.SDL_AudioDeviceID, start_time: f32, key: i32, down: bool) void {
   const f = harold.note_frequencies;
 
   if (switch (key) {
-    c.SDLK_a => f.C4,
-    c.SDLK_w => f.Cs4,
-    c.SDLK_s => f.D4,
-    c.SDLK_e => f.Ds4,
-    c.SDLK_d => f.E4,
-    c.SDLK_f => f.F4,
-    c.SDLK_t => f.Fs4,
-    c.SDLK_g => f.G4,
-    c.SDLK_y => f.Gs4,
-    c.SDLK_h => f.A4,
-    c.SDLK_u => f.As4,
-    c.SDLK_j => f.B4,
-    c.SDLK_k => f.C5,
+    c.SDLK_SPACE => NoteParams{ .iq = &audio_state.iq1, .nh = &g_note_held1, .freq = f.C4 / 4.0 },
+    c.SDLK_a => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.C4 },
+    c.SDLK_w => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.Cs4 },
+    c.SDLK_s => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.D4 },
+    c.SDLK_e => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.Ds4 },
+    c.SDLK_d => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.E4 },
+    c.SDLK_f => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.F4 },
+    c.SDLK_t => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.Fs4 },
+    c.SDLK_g => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.G4 },
+    c.SDLK_y => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.Gs4 },
+    c.SDLK_h => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.A4 },
+    c.SDLK_u => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.As4 },
+    c.SDLK_j => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.B4 },
+    c.SDLK_k => NoteParams{ .iq = &audio_state.iq0, .nh = &g_note_held0, .freq = f.C5 },
     else => null,
-  }) |freq| {
+  }) |params| {
     c.SDL_LockAudioDevice(device);
 
     const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, audio_state.frame_index);
 
     if (down) {
-      audio_state.impulse_queue.push(impulse_frame, freq, audio_state.frame_index, AUDIO_BUFFER_SIZE);
-      g_note_held = key;
+      params.iq.push(impulse_frame, params.freq, audio_state.frame_index, AUDIO_BUFFER_SIZE);
+      params.nh.* = key;
     } else {
-      if (if (g_note_held) |nh| nh == key else false) {
-        audio_state.impulse_queue.push(impulse_frame, null, audio_state.frame_index, AUDIO_BUFFER_SIZE);
-        g_note_held = null;
+      if (if (params.nh.*) |nh| nh == key else false) {
+        params.iq.push(impulse_frame, null, audio_state.frame_index, AUDIO_BUFFER_SIZE);
+        params.nh.* = null;
       }
     }
 
