@@ -1,18 +1,5 @@
 const std = @import("std");
 
-// // FIXME - compiler bug? need to get latest zig before i file an issue though
-// pub fn readWav2(buf: []const u8) !void {
-//   var sis = std.io.SliceInStream.init(buf);
-//   const stream = &sis.stream;
-
-//   var quad: [4]u8 = undefined;
-
-//   // says function must return at least one possible error. but it is!!
-//   _ = try stream.read(quad[0..]);
-
-//   std.debug.warn("heh {}\n", buf.len);
-// }
-
 pub fn readWav(buf: []const u8, out_sample_rate: *u32) ![]const u8 {
   var sis = std.io.SliceInStream.init(buf);
   const stream = &sis.stream;
@@ -55,8 +42,6 @@ pub fn readWav(buf: []const u8, out_sample_rate: *u32) ![]const u8 {
   }
 
   const frequency = try stream.readIntLittle(u32);
-  // ignore frequency for now
-
   const thing = try stream.readIntLittle(u32);
   const bytes_per_sample = thing / frequency / num_channels;
   if (thing != frequency * num_channels * bytes_per_sample) {
