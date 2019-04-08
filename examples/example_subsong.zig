@@ -122,7 +122,7 @@ pub const AudioState = struct {
   frame_index: usize,
 
   iq: harold.ImpulseQueue,
-  subtrackPlayer: SubtrackPlayer,
+  subtrack_player: SubtrackPlayer,
 };
 
 var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
@@ -131,7 +131,7 @@ pub fn initAudioState() AudioState {
   return AudioState{
     .frame_index = 0,
     .iq = harold.ImpulseQueue.init(),
-    .subtrackPlayer = SubtrackPlayer.init(),
+    .subtrack_player = SubtrackPlayer.init(),
   };
 }
 
@@ -142,7 +142,7 @@ pub fn paint(as: *AudioState) []f32 {
 
   harold.zero(out);
 
-  as.subtrackPlayer.paintFromImpulses(AUDIO_SAMPLE_RATE, out, as.iq.getImpulses(), tmp0, tmp1, as.frame_index);
+  as.subtrack_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, as.iq.getImpulses(), tmp0, tmp1, as.frame_index);
 
   as.iq.flush(as.frame_index, out.len);
 
