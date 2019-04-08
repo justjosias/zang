@@ -5,7 +5,7 @@ const SEMITONE = std.math.pow(f32, 2.0, 1.0 / 12.0);
 const A4_FREQUENCY = 440.0;
 
 fn calcNoteFreq(note: i32) f32 {
-  return A4_FREQUENCY * std.math.pow(f32, SEMITONE, @intToFloat(f32, note));
+    return A4_FREQUENCY * std.math.pow(f32, SEMITONE, @intToFloat(f32, note));
 }
 
 pub const C1 = calcNoteFreq(-45);
