@@ -27,13 +27,13 @@ const PulseModOscillator = struct {
 
   fn paintFromImpulses(
     self: *PulseModOscillator,
-    frame_index: usize,
     sample_rate: u32,
     out: []f32,
     track: []const harold.Impulse,
     tmp0: []f32,
     tmp1: []f32,
     tmp2: []f32,
+    frame_index: usize,
   ) void {
     std.debug.assert(out.len == tmp0.len);
     std.debug.assert(out.len == tmp1.len);
@@ -110,7 +110,7 @@ pub fn paint(as: *AudioState) []f32 {
   if (!as.iq0.isEmpty()) {
     // use ADSR envelope with pulse mod oscillator
     harold.zero(tmp0);
-    as.osc0.paintFromImpulses(as.frame_index, AUDIO_SAMPLE_RATE, tmp0, as.iq0.getImpulses(), tmp1, tmp2, tmp3);
+    as.osc0.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, as.iq0.getImpulses(), tmp1, tmp2, tmp3, as.frame_index);
     harold.zero(tmp1);
     as.env0.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, as.iq0.getImpulses(), as.frame_index);
     harold.multiply(out, tmp0, tmp1);

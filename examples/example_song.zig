@@ -145,13 +145,13 @@ const PulseModOscillator = struct {
 
   fn paintFromImpulses(
     self: *PulseModOscillator,
-    frame_index: usize,
     sample_rate: u32,
     out: []f32,
     track: []const harold.Impulse,
     tmp0: []f32,
     tmp1: []f32,
     tmp2: []f32,
+    frame_index: usize,
   ) void {
     std.debug.assert(out.len == tmp0.len);
     std.debug.assert(out.len == tmp1.len);
@@ -215,7 +215,7 @@ pub fn paint(as: *AudioState) []f32 {
   var i: usize = 0;
   while (i < NUM_TRACKS) : (i += 1) {
     harold.zero(tmp0);
-    as.osc[i].paintFromImpulses(as.frame_index, AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3);
+    as.osc[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3, as.frame_index);
     harold.zero(tmp1);
     as.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], as.frame_index);
     harold.multiply(out, tmp0, tmp1);
