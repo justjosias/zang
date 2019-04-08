@@ -177,12 +177,6 @@ pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent
             .freq = freq,
         };
     }
-    // if (key == c.SDLK_SPACE and down) {
-    //   return common.KeyEvent{
-    //     .iq = &audio_state.iq,
-    //     .freq = 440.0,
-    //   };
-    // }
 
     return null;
 }
