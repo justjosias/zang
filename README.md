@@ -8,6 +8,6 @@ All the examples use SDL2.
 
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 
-`zig build song`: Plays a canned melody (first few bars of Bach's Toccata in D Minor).
+`zig build song`: Plays the first few bars of Bach's Toccata in D Minor.
 
-`zig build subsong`: A small melody is played every time you hit the spacebar. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).
+`zig build subsong`: Like `play`, but a small melody is played for each note, pitched by the frequency of the key you press. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).

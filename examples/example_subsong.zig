@@ -1,4 +1,4 @@
-// in this example a little melody plays every time you hit the spacebar
+// in this example a little melody plays every time you hit a key
 
 const std = @import("std");
 const harold = @import("harold");
@@ -12,10 +12,11 @@ pub const AUDIO_BUFFER_SIZE = 4096;
 const Note = harold.Note;
 const f = harold.note_frequencies;
 const subtrackInit = []Note{
-  Note{ .freq = f.C4, .dur = 2 },
-  Note{ .freq = f.Bb3, .dur = 1 },
+  Note{ .freq = f.C4, .dur = 1 },
   Note{ .freq = f.Ab3, .dur = 1 },
-  Note{ .freq = f.G3, .dur = 2 },
+  Note{ .freq = f.G3, .dur = 1 },
+  Note{ .freq = f.Eb3, .dur = 1 },
+  Note{ .freq = f.C3, .dur = 1 },
 };
 
 const NOTE_DURATION = 0.1;
@@ -23,14 +24,15 @@ const NOTE_DURATION = 0.1;
 const subtrack = harold.compileSong(subtrackInit.len, subtrackInit, AUDIO_SAMPLE_RATE, NOTE_DURATION);
 
 // an example of a custom "module"
-const PulseModOscillator = struct {
+const SubtrackPlayer = struct {
   osc: harold.Oscillator,
   env: harold.Envelope,
   sub_frame_index: usize,
   note_id: usize,
+  freq: f32,
 
-  fn init() PulseModOscillator {
-    return PulseModOscillator{
+  fn init() SubtrackPlayer {
+    return SubtrackPlayer{
       .osc = harold.Oscillator.init(harold.Waveform.Sawtooth, 440.0, 1.0),
       .env = harold.Envelope.init(harold.EnvParams {
         .attack_duration = 0.025,
@@ -40,12 +42,15 @@ const PulseModOscillator = struct {
       }),
       .sub_frame_index = 0,
       .note_id = 0,
+      .freq = 0.0,
     };
   }
 
-  fn paint(self: *PulseModOscillator, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32) void {
+  fn paint(self: *SubtrackPlayer, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32) void {
+    const freq_mul = self.freq / 440.0;
+
     harold.zero(tmp0);
-    self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index);
+    self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index, freq_mul);
     harold.zero(tmp1);
     self.env.paintFromImpulses(sample_rate, tmp1, subtrack, self.sub_frame_index);
     harold.multiply(out, tmp0, tmp1);
@@ -54,7 +59,7 @@ const PulseModOscillator = struct {
   }
 
   fn paintFromImpulses(
-    self: *PulseModOscillator,
+    self: *SubtrackPlayer,
     sample_rate: u32,
     out: []f32,
     track: []const harold.Impulse,
@@ -83,6 +88,7 @@ const PulseModOscillator = struct {
           std.debug.assert(note.id > self.note_id);
 
           self.note_id = note.id;
+          self.freq = note.freq;
           self.env.note_id = 0; // TODO - make an API method for this
           self.sub_frame_index = 0;
         }
@@ -116,7 +122,7 @@ pub const AudioState = struct {
   frame_index: usize,
 
   iq: harold.ImpulseQueue,
-  thing: PulseModOscillator,
+  subtrackPlayer: SubtrackPlayer,
 };
 
 var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
@@ -125,7 +131,7 @@ pub fn initAudioState() AudioState {
   return AudioState{
     .frame_index = 0,
     .iq = harold.ImpulseQueue.init(),
-    .thing = PulseModOscillator.init(),
+    .subtrackPlayer = SubtrackPlayer.init(),
   };
 }
 
@@ -136,7 +142,7 @@ pub fn paint(as: *AudioState) []f32 {
 
   harold.zero(out);
 
-  as.thing.paintFromImpulses(AUDIO_SAMPLE_RATE, out, as.iq.getImpulses(), tmp0, tmp1, as.frame_index);
+  as.subtrackPlayer.paintFromImpulses(AUDIO_SAMPLE_RATE, out, as.iq.getImpulses(), tmp0, tmp1, as.frame_index);
 
   as.iq.flush(as.frame_index, out.len);
 
@@ -146,12 +152,37 @@ pub fn paint(as: *AudioState) []f32 {
 }
 
 pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent {
-  if (key == c.SDLK_SPACE and down) {
+  if (!down) {
+    return null;
+  }
+
+  if (switch (key) {
+    c.SDLK_a => f.C4,
+    c.SDLK_w => f.Cs4,
+    c.SDLK_s => f.D4,
+    c.SDLK_e => f.Ds4,
+    c.SDLK_d => f.E4,
+    c.SDLK_f => f.F4,
+    c.SDLK_t => f.Fs4,
+    c.SDLK_g => f.G4,
+    c.SDLK_y => f.Gs4,
+    c.SDLK_h => f.A4,
+    c.SDLK_u => f.As4,
+    c.SDLK_j => f.B4,
+    c.SDLK_k => f.C5,
+    else => null,
+  }) |freq| {
     return common.KeyEvent{
       .iq = &audio_state.iq,
-      .freq = 440.0,
+      .freq = freq,
     };
   }
+  // if (key == c.SDLK_SPACE and down) {
+  //   return common.KeyEvent{
+  //     .iq = &audio_state.iq,
+  //     .freq = 440.0,
+  //   };
+  // }
 
   return null;
 }

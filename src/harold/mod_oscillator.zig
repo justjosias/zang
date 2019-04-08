@@ -110,6 +110,12 @@ pub const Oscillator = struct {
     buf: []f32,
     impulses: []const Impulse,
     frame_index: usize,
+    // freq_mul: if present, multiply frequency by this. this gives you a way
+    // to alter note frequencies without having out to a buffer and perform
+    // operations on the entire buffer.
+    // TODO - come up with a more general and systematic to apply functions to
+    // notes
+    freq_mul: ?f32,
   ) void {
     var start: usize = 0;
 
@@ -117,7 +123,11 @@ pub const Oscillator = struct {
       const note_span = getNextNoteSpan(impulses, frame_index, start, buf.len);
 
       if (note_span.note) |note| {
-        self.freq = note.freq;
+        self.freq =
+          if (freq_mul) |mul|
+            note.freq * mul
+          else
+            note.freq;
       }
 
       self.paint(sample_rate, buf[note_span.start .. note_span.end]);
