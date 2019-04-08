@@ -14,7 +14,14 @@ const PulseModOscillator = struct {
     carrier: harold.Oscillator,
     modulator: harold.Oscillator,
     dc: harold.DC,
+    // ratio: the carrier oscillator will use whatever frequency you give the
+    // PulseModOscillator. the modulator oscillator will multiply the frequency
+    // by this ratio. for example, a ratio of 0.5 means that the modulator
+    // oscillator will always play at half the frequency of the carrier
+    // oscillator
     ratio: f32,
+    // multiplier: the modulator oscillator's output is multiplied by this
+    // before it is fed in to the phase input of the carrier oscillator.
     multiplier: f32,
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
