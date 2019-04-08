@@ -7,9 +7,9 @@ const c = @import("common/sdl.zig");
 
 pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 4096;
+pub const AUDIO_BUFFER_SIZE = 1024;
 
-const Note = harold.Note;
+const Note = common.Note;
 const f = harold.note_frequencies;
 const subtrackInit = []Note{
   Note{ .freq = f.C4, .dur = 1 },
@@ -21,7 +21,7 @@ const subtrackInit = []Note{
 
 const NOTE_DURATION = 0.1;
 
-const subtrack = harold.compileSong(subtrackInit.len, subtrackInit, AUDIO_SAMPLE_RATE, NOTE_DURATION);
+const subtrack = common.compileSong(subtrackInit.len, subtrackInit, AUDIO_SAMPLE_RATE, NOTE_DURATION);
 
 // an example of a custom "module"
 const SubtrackPlayer = struct {
@@ -33,7 +33,7 @@ const SubtrackPlayer = struct {
 
   fn init() SubtrackPlayer {
     return SubtrackPlayer{
-      .osc = harold.Oscillator.init(harold.Waveform.Sawtooth, 440.0, 1.0),
+      .osc = harold.Oscillator.init(harold.Waveform.Sawtooth, 1.0),
       .env = harold.Envelope.init(harold.EnvParams {
         .attack_duration = 0.025,
         .decay_duration = 0.1,

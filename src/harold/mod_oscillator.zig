@@ -56,10 +56,10 @@ pub const Oscillator = struct {
 
   t: f32,
 
-  pub fn init(waveform: Waveform, freq: f32, vol: f32) Oscillator {
+  pub fn init(waveform: Waveform, vol: f32) Oscillator {
     return Oscillator{
       .waveform = waveform,
-      .freq = freq,
+      .freq = 0.0,
       .volume = vol,
       .t = 0.0,
     };

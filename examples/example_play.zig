@@ -18,8 +18,8 @@ const PulseModOscillator = struct {
 
   fn init(ratio: f32, multiplier: f32) PulseModOscillator {
     return PulseModOscillator{
-      .carrier = harold.Oscillator.init(harold.Waveform.Sine, 320.0, 1.0),
-      .modulator = harold.Oscillator.init(harold.Waveform.Sine, 160.0, multiplier),
+      .carrier = harold.Oscillator.init(harold.Waveform.Sine, 1.0),
+      .modulator = harold.Oscillator.init(harold.Waveform.Sine, multiplier),
       .dc = harold.DC.init(),
       .ratio = ratio,
     };
@@ -87,7 +87,7 @@ pub fn initAudioState() AudioState {
       .release_duration = 1.0,
     }),
     .iq1 = harold.ImpulseQueue.init(),
-    .osc1 = harold.Oscillator.init(harold.Waveform.Sawtooth, 440.0, 2.5),
+    .osc1 = harold.Oscillator.init(harold.Waveform.Sawtooth, 2.5),
     .env1 = harold.Envelope.init(harold.EnvParams {
       .attack_duration = 0.025,
       .decay_duration = 0.1,

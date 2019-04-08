@@ -1,9 +1,5 @@
 pub const note_frequencies = @import("harold/note_frequencies.zig");
 
-const compile_song = @import("harold/compile_song.zig");
-pub const Note = compile_song.Note;
-pub const compileSong = compile_song.compileSong;
-
 const note_span = @import("harold/note_span.zig");
 pub const Impulse = note_span.Impulse;
 pub const getNextNoteSpan = note_span.getNextNoteSpan;

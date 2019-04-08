@@ -4,9 +4,6 @@ const SEMITONE = std.math.pow(f32, 2.0, 1.0 / 12.0);
 
 const A4_FREQUENCY = 440.0;
 
-// note=0 is A4 (440hz)
-// note=12 is A5
-// etc.
 fn calcNoteFreq(note: i32) f32 {
   return A4_FREQUENCY * std.math.pow(f32, SEMITONE, @intToFloat(f32, note));
 }

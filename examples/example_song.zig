@@ -9,7 +9,7 @@ pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 
-const Note = harold.Note;
+const Note = common.Note;
 const f = harold.note_frequencies;
 const track1Init = []Note{
   Note{ .freq = f.A4, .dur = 1 },
@@ -117,14 +117,14 @@ const NUM_TRACKS = 8;
 const NOTE_DURATION = 0.08;
 
 const tracks = [NUM_TRACKS][]const harold.Impulse {
-  harold.compileSong(track1Init.len, track1Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track2Init.len, track2Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track3Init.len, track3Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track4Init.len, track4Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track5Init.len, track5Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track6Init.len, track6Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track7Init.len, track7Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-  harold.compileSong(track8Init.len, track8Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track1Init.len, track1Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track2Init.len, track2Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track3Init.len, track3Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track4Init.len, track4Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track5Init.len, track5Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track6Init.len, track6Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track7Init.len, track7Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+  common.compileSong(track8Init.len, track8Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
 };
 
 // an example of a custom "module"
@@ -136,8 +136,8 @@ const PulseModOscillator = struct {
 
   fn init(ratio: f32, multiplier: f32) PulseModOscillator {
     return PulseModOscillator{
-      .carrier = harold.Oscillator.init(harold.Waveform.Sine, 320.0, 1.0),
-      .modulator = harold.Oscillator.init(harold.Waveform.Sine, 160.0, multiplier),
+      .carrier = harold.Oscillator.init(harold.Waveform.Sine, 1.0),
+      .modulator = harold.Oscillator.init(harold.Waveform.Sine, multiplier),
       .dc = harold.DC.init(),
       .ratio = ratio,
     };
