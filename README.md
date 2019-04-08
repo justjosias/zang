@@ -3,6 +3,22 @@
 
 The core library (all there is right now) is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, such as a declarative graph of audio modules, or a parsed text format representing arrangements or songs, they will be in separate libraries.
 
+## Goal
+My goals for the core library:
+* Small set of standard generators and filters
+* Total modularity (single-purpose modules with controllable inputs)
+* Clean API (somehow get rid of stuff like `paintControlledFrequencyAndPhase`)
+* Ability to play music
+* Ability to provide sound effects for a game
+* Idiomatic Zig API
+* Lean inner loops
+* Overall small codebase
+* Documentation
+
+The library is currently 1400 lines of code. A lot of the above is already in there, although it needs to be cleaned up. And it already contains some fat that could be trimmed. I don't see the library getting much bigger than say 2500 lines of code, assuming not many more modules are added.
+
+What needs the most work is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. And then you should also be able to make tracks containing curves instead of notes, e.g. something to alter a filter cutoff over a long period of time.
+
 ## Examples
 All the examples use SDL2.
 
