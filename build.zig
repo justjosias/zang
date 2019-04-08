@@ -7,7 +7,6 @@ pub fn build(b: *Builder) void {
     const windows = b.option(bool, "windows", "create windows build") orelse false;
 
     var t = b.addTest("test.zig");
-    t.linkSystemLibrary("c");
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&t.step);
 
