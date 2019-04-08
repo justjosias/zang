@@ -50,24 +50,19 @@ fn osc(waveform: Waveform, t: f32) f32 {
 
 pub const Oscillator = struct {
     waveform: Waveform,
-
     freq: f32,
-    volume: f32,
-
     t: f32,
 
-    pub fn init(waveform: Waveform, vol: f32) Oscillator {
+    pub fn init(waveform: Waveform) Oscillator {
         return Oscillator{
             .waveform = waveform,
             .freq = 0.0,
-            .volume = vol,
             .t = 0.0,
         };
     }
 
     // paint with a constant frequency
     pub fn paint(self: *Oscillator, sample_rate: u32, buf: []f32) void {
-        const volume = self.volume;
         const step = self.freq / @intToFloat(f32, sample_rate);
         var t = self.t;
         var i: usize = 0;
@@ -75,25 +70,25 @@ pub const Oscillator = struct {
         switch (self.waveform) {
             Waveform.Sine => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += sin(t) * volume;
+                    buf[i] += sin(t);
                     t += step;
                 }
             },
             Waveform.Triangle => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += tri(t) * volume;
+                    buf[i] += tri(t);
                     t += step;
                 }
             },
             Waveform.Square => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += square(t) * volume;
+                    buf[i] += square(t);
                     t += step;
                 }
             },
             Waveform.Sawtooth => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += saw(t) * volume;
+                    buf[i] += saw(t);
                     t += step;
                 }
             },
@@ -137,7 +132,6 @@ pub const Oscillator = struct {
     }
 
     pub fn paintControlledFrequency(self: *Oscillator, sample_rate: u32, buf: []f32, input_frequency: []const f32) void {
-        const volume = self.volume;
         const inv = 1.0 / @intToFloat(f32, sample_rate);
         var t = self.t;
         var i: usize = 0;
@@ -146,28 +140,28 @@ pub const Oscillator = struct {
             Waveform.Sine => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
-                    buf[i] += sin(t) * volume;
+                    buf[i] += sin(t);
                     t += freq * inv;
                 }
             },
             Waveform.Triangle => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
-                    buf[i] += tri(t) * volume;
+                    buf[i] += tri(t);
                     t += freq * inv;
                 }
             },
             Waveform.Square => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
-                    buf[i] += square(t) * volume;
+                    buf[i] += square(t);
                     t += freq * inv;
                 }
             },
             Waveform.Sawtooth => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
-                    buf[i] += saw(t) * volume;
+                    buf[i] += saw(t);
                     t += freq * inv;
                 }
             },
@@ -180,7 +174,6 @@ pub const Oscillator = struct {
     }
 
     pub fn paintControlledPhaseAndFrequency(self: *Oscillator, sample_rate: u32, buf: []f32, input_phase: []const f32, input_frequency: []const f32) void {
-        const volume = self.volume;
         const inv = 1.0 / @intToFloat(f32, sample_rate);
         var t = self.t;
         var i: usize = 0;
@@ -190,7 +183,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += sin(t + phase) * volume;
+                    buf[i] += sin(t + phase);
                     t += freq * inv;
                 }
             },
@@ -198,7 +191,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += tri(t + phase) * volume;
+                    buf[i] += tri(t + phase);
                     t += freq * inv;
                 }
             },
@@ -206,7 +199,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += square(t + phase) * volume;
+                    buf[i] += square(t + phase);
                     t += freq * inv;
                 }
             },
@@ -214,7 +207,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += saw(t + phase) * volume;
+                    buf[i] += saw(t + phase);
                     t += freq * inv;
                 }
             },
@@ -240,7 +233,6 @@ pub const Oscillator = struct {
         comptime controlled_frequency: bool,
         input_frequency: []const f32,
     ) void {
-        const volume = self.volume;
         const inv = 1.0 / @intToFloat(f32, sample_rate);
         var step = self.freq * inv;
         var t = self.t;
@@ -254,9 +246,9 @@ pub const Oscillator = struct {
             }
 
             if (controlled_phase) {
-                buf[i] += volume * function(t + input_phase[i]);
+                buf[i] += function(t + input_phase[i]);
             } else {
-                buf[i] += volume * function(t);
+                buf[i] += function(t);
             }
 
             t += step;

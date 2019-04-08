@@ -33,7 +33,7 @@ const SubtrackPlayer = struct {
 
     fn init() SubtrackPlayer {
         return SubtrackPlayer{
-            .osc = harold.Oscillator.init(harold.Waveform.Sawtooth, 1.0),
+            .osc = harold.Oscillator.init(harold.Waveform.Sawtooth),
             .env = harold.Envelope.init(harold.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,

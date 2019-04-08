@@ -133,13 +133,15 @@ const PulseModOscillator = struct {
     modulator: harold.Oscillator,
     dc: harold.DC,
     ratio: f32,
+    multiplier: f32,
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = harold.Oscillator.init(harold.Waveform.Sine, 1.0),
-            .modulator = harold.Oscillator.init(harold.Waveform.Sine, multiplier),
+            .carrier = harold.Oscillator.init(harold.Waveform.Sine),
+            .modulator = harold.Oscillator.init(harold.Waveform.Sine),
             .dc = harold.DC.init(),
             .ratio = ratio,
+            .multiplier = multiplier,
         };
     }
 
@@ -163,7 +165,9 @@ const PulseModOscillator = struct {
         harold.multiplyScalar(tmp1, tmp0, self.ratio);
         harold.zero(tmp2);
         self.modulator.paintControlledFrequency(sample_rate, tmp2, tmp1);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp2, tmp0);
+        harold.zero(tmp1);
+        harold.multiplyScalar(tmp1, tmp2, self.multiplier);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
     }
 };
 

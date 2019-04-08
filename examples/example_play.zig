@@ -15,13 +15,15 @@ const PulseModOscillator = struct {
     modulator: harold.Oscillator,
     dc: harold.DC,
     ratio: f32,
+    multiplier: f32,
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = harold.Oscillator.init(harold.Waveform.Sine, 1.0),
-            .modulator = harold.Oscillator.init(harold.Waveform.Sine, multiplier),
+            .carrier = harold.Oscillator.init(harold.Waveform.Sine),
+            .modulator = harold.Oscillator.init(harold.Waveform.Sine),
             .dc = harold.DC.init(),
             .ratio = ratio,
+            .multiplier = multiplier,
         };
     }
 
@@ -45,7 +47,9 @@ const PulseModOscillator = struct {
         harold.multiplyScalar(tmp1, tmp0, self.ratio);
         harold.zero(tmp2);
         self.modulator.paintControlledFrequency(sample_rate, tmp2, tmp1);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp2, tmp0);
+        harold.zero(tmp1);
+        harold.multiplyScalar(tmp1, tmp2, self.multiplier);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
     }
 };
 
@@ -87,7 +91,7 @@ pub fn initAudioState() AudioState {
             .release_duration = 1.0,
         }),
         .iq1 = harold.ImpulseQueue.init(),
-        .osc1 = harold.Oscillator.init(harold.Waveform.Sawtooth, 2.5),
+        .osc1 = harold.Oscillator.init(harold.Waveform.Sawtooth),
         .env1 = harold.Envelope.init(harold.EnvParams {
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -117,9 +121,11 @@ pub fn paint(as: *AudioState) []f32 {
     }
 
     if (!as.iq1.isEmpty()) {
-        // square wave with resonant low pass filter
+        // sawtooth wave with resonant low pass filter
+        harold.zero(tmp3);
+        as.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp3, as.iq1.getImpulses(), as.frame_index, null);
         harold.zero(tmp0);
-        as.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, as.iq1.getImpulses(), as.frame_index, null);
+        harold.multiplyScalar(tmp0, tmp3, 2.5); // sawtooth volume
         harold.zero(tmp1);
         as.env1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, as.iq1.getImpulses(), as.frame_index);
         harold.zero(tmp2);
