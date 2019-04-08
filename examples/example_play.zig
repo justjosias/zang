@@ -67,8 +67,10 @@ pub const AudioState = struct {
   env0: harold.Envelope,
 
   iq1: harold.ImpulseQueue,
-  osc1: PulseModOscillator,
+  osc1: harold.Oscillator,
   env1: harold.Envelope,
+
+  flt: harold.Filter,
 };
 
 var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
@@ -85,13 +87,14 @@ pub fn initAudioState() AudioState {
       .release_duration = 1.0,
     }),
     .iq1 = harold.ImpulseQueue.init(),
-    .osc1 = PulseModOscillator.init(1.0, 1.0),
+    .osc1 = harold.Oscillator.init(harold.Waveform.Sawtooth, 440.0, 2.5),
     .env1 = harold.Envelope.init(harold.EnvParams {
       .attack_duration = 0.025,
       .decay_duration = 0.1,
       .sustain_volume = 0.5,
       .release_duration = 1.0,
     }),
+    .flt = harold.Filter.init(harold.FilterType.LowPass, harold.note_frequencies.C5, 0.7),
   };
 }
 
@@ -114,12 +117,14 @@ pub fn paint(as: *AudioState) []f32 {
   }
 
   if (!as.iq1.isEmpty()) {
-    // use ADSR envelope with pulse mod oscillator
+    // square wave with resonant low pass filter
     harold.zero(tmp0);
-    as.osc1.paintFromImpulses(as.frame_index, AUDIO_SAMPLE_RATE, tmp0, as.iq1.getImpulses(), tmp1, tmp2, tmp3);
+    as.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, as.iq1.getImpulses(), as.frame_index);
     harold.zero(tmp1);
     as.env1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, as.iq1.getImpulses(), as.frame_index);
-    harold.multiply(out, tmp0, tmp1);
+    harold.zero(tmp2);
+    harold.multiply(tmp2, tmp0, tmp1);
+    as.flt.paint(AUDIO_SAMPLE_RATE, out, tmp2);
   }
 
   as.iq0.flush(as.frame_index, out.len);

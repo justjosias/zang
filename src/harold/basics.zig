@@ -5,7 +5,7 @@ pub fn zero(dest: []f32) void {
 }
 
 pub fn copy(dest: []f32, src: []const f32) void {
-  std.debug.assert(dest.len == a.len and dest.len == b.len);
+  std.debug.assert(dest.len == src.len);
 
   std.mem.copy(f32, dest, src);
 }
