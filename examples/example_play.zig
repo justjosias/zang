@@ -119,7 +119,7 @@ pub fn paint(as: *AudioState) []f32 {
   if (!as.iq1.isEmpty()) {
     // square wave with resonant low pass filter
     harold.zero(tmp0);
-    as.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, as.iq1.getImpulses(), as.frame_index);
+    as.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, as.iq1.getImpulses(), as.frame_index, null);
     harold.zero(tmp1);
     as.env1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, as.iq1.getImpulses(), as.frame_index);
     harold.zero(tmp2);
