@@ -1,9 +1,9 @@
 // in this example a canned melody is played
 
 const std = @import("std");
-const harold = @import("src/harold.zig");
-const common = @import("examples/common.zig");
-const c = @import("examples/common/sdl.zig");
+const harold = @import("harold");
+const common = @import("common.zig");
+const c = @import("common/sdl.zig");
 
 pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;

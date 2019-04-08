@@ -11,8 +11,8 @@ pub fn build(b: *Builder) void {
   const test_step = b.step("test", "Run all tests");
   test_step.dependOn(&t.step);
 
-  example(b, mode, windows, "play", "example_play.zig");
-  example(b, mode, windows, "song", "example_song.zig");
+  example(b, mode, windows, "play", "examples/example_play.zig");
+  example(b, mode, windows, "song", "examples/example_song.zig");
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {
@@ -23,8 +23,8 @@ fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []cons
     exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
   }
 
-  // exe.addPackagePath("harold", "src/harold.zig"); // this doesn't work
-  exe.addPackagePath("example", source_file);
+  exe.addPackagePath("harold", "src/harold.zig"); // this doesn't work
+  exe.addBuildOption([]const u8, "example", "\"" ++ source_file ++ "\"");
 
   exe.linkSystemLibrary("SDL2");
   exe.linkSystemLibrary("c");

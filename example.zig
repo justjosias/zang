@@ -1,12 +1,10 @@
 // this is the main file which is used by all examples.
 
 const std = @import("std");
-const harold = @import("src/harold.zig");
+const harold = @import("harold");
 const common = @import("examples/common.zig");
 const c = @import("examples/common/sdl.zig");
-
-// which example is imported here is controlled by build.zig
-const example = @import("example");
+const example = @import(@import("build_options").example);
 
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;

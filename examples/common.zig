@@ -1,4 +1,4 @@
-const harold = @import("../src/harold.zig");
+const harold = @import("harold");
 
 pub const KeyEvent = struct {
   iq: *harold.ImpulseQueue,
