@@ -1,12 +1,13 @@
 // in this example a canned melody is played
 
 const std = @import("std");
-const harold = @import("harold");
-const c = @import("common/sdl.zig");
+const harold = @import("src/harold.zig");
+const common = @import("examples/common.zig");
+const c = @import("examples/common/sdl.zig");
 
-const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
-const AUDIO_SAMPLE_RATE = 48000;
-const AUDIO_BUFFER_SIZE = 2048;
+pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
+pub const AUDIO_SAMPLE_RATE = 48000;
+pub const AUDIO_BUFFER_SIZE = 4096;
 
 const Note = harold.Note;
 const f = harold.note_frequencies;
@@ -185,7 +186,7 @@ pub const AudioState = struct {
 
 var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
 
-fn initAudioState() AudioState {
+pub fn initAudioState() AudioState {
   return AudioState{
     .frame_index = 0,
     .osc = [1]PulseModOscillator{
@@ -202,21 +203,21 @@ fn initAudioState() AudioState {
   };
 }
 
-fn paint(comptime buf_size: usize, as: *AudioState, bufs: *AudioBuffers(buf_size), sample_rate: u32) []f32 {
-  const out = bufs.buf0[0..];
-  const tmp0 = bufs.buf1[0..];
-  const tmp1 = bufs.buf2[0..];
-  const tmp2 = bufs.buf3[0..];
-  const tmp3 = bufs.buf4[0..];
+pub fn paint(as: *AudioState) []f32 {
+  const out = buffers.buf0[0..];
+  const tmp0 = buffers.buf1[0..];
+  const tmp1 = buffers.buf2[0..];
+  const tmp2 = buffers.buf3[0..];
+  const tmp3 = buffers.buf4[0..];
 
   harold.zero(out);
 
   var i: usize = 0;
   while (i < NUM_TRACKS) : (i += 1) {
     harold.zero(tmp0);
-    as.osc[i].paintFromImpulses(as.frame_index, sample_rate, tmp0, tracks[i], tmp1, tmp2, tmp3);
+    as.osc[i].paintFromImpulses(as.frame_index, AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3);
     harold.zero(tmp1);
-    as.env[i].paintFromImpulses(sample_rate, tmp1, tracks[i], as.frame_index);
+    as.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], as.frame_index);
     harold.multiply(out, tmp0, tmp1);
   }
 
@@ -225,86 +226,6 @@ fn paint(comptime buf_size: usize, as: *AudioState, bufs: *AudioBuffers(buf_size
   return out;
 }
 
-extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
-  const audio_state = @ptrCast(*AudioState, @alignCast(@alignOf(*AudioState), userdata_.?));
-  const stream = stream_.?[0..@intCast(usize, len_)];
-
-  const buf = paint(AUDIO_BUFFER_SIZE, audio_state, &buffers, AUDIO_SAMPLE_RATE);
-
-  harold.mixDown(stream, buf, AUDIO_FORMAT);
-}
-
-pub fn main() !void {
-  var audio_state = initAudioState();
-
-  if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
-    c.SDL_Log(c"Unable to initialize SDL: %s", c.SDL_GetError());
-    return error.SDLInitializationFailed;
-  }
-  errdefer c.SDL_Quit();
-
-  const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
-  const window = c.SDL_CreateWindow(
-    c"harold",
-    SDL_WINDOWPOS_UNDEFINED,
-    SDL_WINDOWPOS_UNDEFINED,
-    640, 480,
-    0,
-  ) orelse {
-    c.SDL_Log(c"Unable to create window: %s", c.SDL_GetError());
-    return error.SDLInitializationFailed;
-  };
-  errdefer c.SDL_DestroyWindow(window);
-
-  var want: c.SDL_AudioSpec = undefined;
-  want.freq = AUDIO_SAMPLE_RATE;
-  want.format = switch (AUDIO_FORMAT) {
-    harold.AudioFormat.S8 => u16(c.AUDIO_S8),
-    harold.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
-  };
-  want.channels = 1;
-  want.samples = AUDIO_BUFFER_SIZE;
-  want.callback = audioCallback;
-  want.userdata = &audio_state;
-
-  const device: c.SDL_AudioDeviceID = c.SDL_OpenAudioDevice(
-    0, // device name (NULL)
-    0, // non-zero to open for recording instead of playback
-    &want, // desired output format
-    0, // obtained output format (NULL)
-    0, // allowed changes: 0 means `obtained` will not differ from `want`, and SDL will do any necessary resampling behind the scenes
-  );
-  if (device == 0) {
-    c.SDL_Log(c"Failed to open audio: %s", c.SDL_GetError());
-    return error.SDLInitializationFailed;
-  }
-  errdefer c.SDL_CloseAudio();
-
-  // this seems to match the value of SDL_GetTicks the first time the audio
-  // callback is called
-  const start_time = @intToFloat(f32, c.SDL_GetTicks()) / 1000.0;
-
-  c.SDL_PauseAudioDevice(device, 0); // unpause
-
-  var event: c.SDL_Event = undefined;
-
-  while (c.SDL_WaitEvent(&event) != 0) {
-    switch (event.type) {
-      c.SDL_QUIT => {
-        break;
-      },
-      c.SDL_KEYDOWN => {
-        if (event.key.keysym.sym == c.SDLK_ESCAPE) {
-          break;
-        }
-      },
-      else => {},
-    }
-  }
-
-  c.SDL_LockAudioDevice(device);
-  c.SDL_UnlockAudioDevice(device);
-  c.SDL_CloseAudioDevice(device);
-  c.SDL_DestroyWindow(window);
-  c.SDL_Quit();
+pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent {
+  return null;
 }
