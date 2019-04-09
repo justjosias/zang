@@ -8,6 +8,7 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+pub const AUDIO_CHANNELS = 1;
 
 // an example of a custom "module"
 const PulseModOscillator = struct {
@@ -33,6 +34,12 @@ const PulseModOscillator = struct {
             .multiplier = multiplier,
         };
     }
+
+    // TODO - can i add a plain 'paint' function?
+    // will need to add 'frequency' as a field to the PulseModOscillator.
+    // can i do this without too much duplication with paintFromImpulses?
+    // (in other words can i have paintFromImpulses be some simple calls into
+    // paint?)
 
     fn paintFromImpulses(
         self: *PulseModOscillator,
@@ -109,7 +116,7 @@ pub fn initAudioState() AudioState {
     };
 }
 
-pub fn paint(as: *AudioState) []f32 {
+pub fn paint(as: *AudioState) [AUDIO_CHANNELS][]const f32 {
     const out = buffers.buf0[0..];
     const tmp0 = buffers.buf1[0..];
     const tmp1 = buffers.buf2[0..];
@@ -145,7 +152,9 @@ pub fn paint(as: *AudioState) []f32 {
 
     as.frame_index += out.len;
 
-    return out;
+    return [AUDIO_CHANNELS][]const f32 {
+        out,
+    };
 }
 
 var g_note_held0: ?i32 = null;

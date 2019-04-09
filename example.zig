@@ -9,14 +9,17 @@ const example = @import(@import("build_options").example);
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;
 const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
+const AUDIO_CHANNELS = example.AUDIO_CHANNELS;
 
 extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
     const audio_state = @ptrCast(*example.AudioState, @alignCast(@alignOf(*example.AudioState), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
-    const buf = example.paint(audio_state);
+    const buffers = example.paint(audio_state);
 
-    harold.mixDown(stream, buf, AUDIO_FORMAT);
+    for (buffers) |buf, i| {
+        harold.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i);
+    }
 }
 
 pub fn main() !void {
@@ -47,7 +50,7 @@ pub fn main() !void {
         harold.AudioFormat.S8 => u16(c.AUDIO_S8),
         harold.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
     };
-    want.channels = 1;
+    want.channels = AUDIO_CHANNELS;
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
     want.userdata = &audio_state;

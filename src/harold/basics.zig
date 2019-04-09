@@ -30,6 +30,16 @@ pub fn addInto(dest: []f32, src: []const f32) void {
     }
 }
 
+pub fn addScalar(dest: []f32, a: []const f32, b: f32) void {
+    std.debug.assert(dest.len == a.len);
+
+    var i: usize = 0;
+
+    while (i < dest.len) : (i += 1) {
+        dest[i] += a[i] + b;
+    }
+}
+
 pub fn multiply(dest: []f32, a: []const f32, b: []const f32) void {
     std.debug.assert(dest.len == a.len and dest.len == b.len);
 

@@ -18,6 +18,7 @@ const basics = @import("harold/basics.zig");
 pub const zero = basics.zero;
 pub const copy = basics.copy;
 pub const add = basics.add;
+pub const addScalar = basics.addScalar;
 pub const addInto = basics.addInto;
 pub const multiply = basics.multiply;
 pub const multiplyScalar = basics.multiplyScalar;

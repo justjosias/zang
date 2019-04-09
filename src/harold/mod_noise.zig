@@ -3,9 +3,9 @@ const std = @import("std");
 pub const Noise = struct {
     r: std.rand.Xoroshiro128,
 
-    pub fn init() Noise {
+    pub fn init(seed: u64) Noise {
         return Noise{
-            .r = std.rand.DefaultPrng.init(0),
+            .r = std.rand.DefaultPrng.init(seed),
         };
     }
 
@@ -16,5 +16,7 @@ pub const Noise = struct {
         while (i < buf.len) : (i += 1) {
             buf[i] = r.random.float(f32) * 2.0 - 1.0;
         }
+
+        self.r = r;
     }
 };

@@ -30,3 +30,5 @@ All the examples use SDL2.
 `zig build song`: Plays the first few bars of Bach's Toccata in D Minor.
 
 `zig build subsong`: Like `play`, but a small melody is played for each note, pitched by the frequency of the key you press. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).
+
+`zig build stereo`: A wind-like filtered noise effect slowly oscillates from side to side. (Probably too subtle to be a good stereo demonstration, you might need headphones to even notice it.)

@@ -13,6 +13,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "play", "examples/example_play.zig");
     example(b, mode, windows, "song", "examples/example_song.zig");
     example(b, mode, windows, "subsong", "examples/example_subsong.zig");
+    example(b, mode, windows, "stereo", "examples/example_stereo.zig");
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {

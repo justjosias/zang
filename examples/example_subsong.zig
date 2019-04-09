@@ -8,6 +8,7 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+pub const AUDIO_CHANNELS = 1;
 
 const Note = common.Note;
 const f = harold.note_frequencies;
@@ -135,7 +136,7 @@ pub fn initAudioState() AudioState {
     };
 }
 
-pub fn paint(as: *AudioState) []f32 {
+pub fn paint(as: *AudioState) [AUDIO_CHANNELS][]const f32 {
     const out = buffers.buf0[0..];
     const tmp0 = buffers.buf1[0..];
     const tmp1 = buffers.buf2[0..];
@@ -148,7 +149,9 @@ pub fn paint(as: *AudioState) []f32 {
 
     as.frame_index += out.len;
 
-    return out;
+    return [AUDIO_CHANNELS][]const f32 {
+        out,
+    };
 }
 
 pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent {
