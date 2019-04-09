@@ -12,10 +12,10 @@ const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
 const AUDIO_CHANNELS = example.AUDIO_CHANNELS;
 
 extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
-    const audio_state = @ptrCast(*example.AudioState, @alignCast(@alignOf(*example.AudioState), userdata_.?));
+    const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
-    const buffers = example.paint(audio_state);
+    const buffers = main_module.paint();
 
     for (buffers) |buf, i| {
         harold.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i);
@@ -23,7 +23,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
 }
 
 pub fn main() !void {
-    var audio_state = example.initAudioState();
+    var main_module = example.MainModule.init();
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
         c.SDL_Log(c"Unable to initialize SDL: %s", c.SDL_GetError());
@@ -53,7 +53,7 @@ pub fn main() !void {
     want.channels = AUDIO_CHANNELS;
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
-    want.userdata = &audio_state;
+    want.userdata = &main_module;
 
     const device: c.SDL_AudioDeviceID = c.SDL_OpenAudioDevice(
         0, // device name (NULL)
@@ -86,19 +86,19 @@ pub fn main() !void {
                     break;
                 }
                 if (event.key.repeat == 0) {
-                    if (example.keyEvent(&audio_state, event.key.keysym.sym, true)) |evt| {
+                    if (main_module.keyEvent(event.key.keysym.sym, true)) |evt| {
                         c.SDL_LockAudioDevice(device);
-                        const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, audio_state.frame_index);
-                        evt.iq.push(impulse_frame, evt.freq, audio_state.frame_index, AUDIO_BUFFER_SIZE);
+                        const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, main_module.frame_index);
+                        evt.iq.push(impulse_frame, evt.freq, main_module.frame_index, AUDIO_BUFFER_SIZE);
                         c.SDL_UnlockAudioDevice(device);
                     }
                 }
             },
             c.SDL_KEYUP => {
-                if (example.keyEvent(&audio_state, event.key.keysym.sym, false)) |evt| {
+                if (main_module.keyEvent(event.key.keysym.sym, false)) |evt| {
                     c.SDL_LockAudioDevice(device);
-                    const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, audio_state.frame_index);
-                    evt.iq.push(impulse_frame, evt.freq, audio_state.frame_index, AUDIO_BUFFER_SIZE);
+                    const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, main_module.frame_index);
+                    evt.iq.push(impulse_frame, evt.freq, main_module.frame_index, AUDIO_BUFFER_SIZE);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },

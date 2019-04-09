@@ -111,75 +111,71 @@ const SubtrackPlayer = struct {
     }
 };
 
-fn AudioBuffers(comptime buffer_size: usize) type {
-    return struct {
-        buf0: [AUDIO_BUFFER_SIZE]f32,
-        buf1: [AUDIO_BUFFER_SIZE]f32,
-        buf2: [AUDIO_BUFFER_SIZE]f32,
-    };
-}
+var g_buffers: struct {
+    buf0: [AUDIO_BUFFER_SIZE]f32,
+    buf1: [AUDIO_BUFFER_SIZE]f32,
+    buf2: [AUDIO_BUFFER_SIZE]f32,
+} = undefined;
 
-pub const AudioState = struct {
+pub const MainModule = struct {
     frame_index: usize,
 
     iq: harold.ImpulseQueue,
     subtrack_player: SubtrackPlayer,
-};
 
-var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
-
-pub fn initAudioState() AudioState {
-    return AudioState{
-        .frame_index = 0,
-        .iq = harold.ImpulseQueue.init(),
-        .subtrack_player = SubtrackPlayer.init(),
-    };
-}
-
-pub fn paint(as: *AudioState) [AUDIO_CHANNELS][]const f32 {
-    const out = buffers.buf0[0..];
-    const tmp0 = buffers.buf1[0..];
-    const tmp1 = buffers.buf2[0..];
-
-    harold.zero(out);
-
-    as.subtrack_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, as.iq.getImpulses(), tmp0, tmp1, as.frame_index);
-
-    as.iq.flush(as.frame_index, out.len);
-
-    as.frame_index += out.len;
-
-    return [AUDIO_CHANNELS][]const f32 {
-        out,
-    };
-}
-
-pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent {
-    if (!down) {
-        return null;
-    }
-
-    if (switch (key) {
-        c.SDLK_a => f.C4,
-        c.SDLK_w => f.Cs4,
-        c.SDLK_s => f.D4,
-        c.SDLK_e => f.Ds4,
-        c.SDLK_d => f.E4,
-        c.SDLK_f => f.F4,
-        c.SDLK_t => f.Fs4,
-        c.SDLK_g => f.G4,
-        c.SDLK_y => f.Gs4,
-        c.SDLK_h => f.A4,
-        c.SDLK_u => f.As4,
-        c.SDLK_j => f.B4,
-        c.SDLK_k => f.C5,
-        else => null,
-    }) |freq| {
-        return common.KeyEvent{
-            .iq = &audio_state.iq,
-            .freq = freq,
+    pub fn init() MainModule {
+        return MainModule{
+            .frame_index = 0,
+            .iq = harold.ImpulseQueue.init(),
+            .subtrack_player = SubtrackPlayer.init(),
         };
     }
 
-    return null;
-}
+    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+        const out = g_buffers.buf0[0..];
+        const tmp0 = g_buffers.buf1[0..];
+        const tmp1 = g_buffers.buf2[0..];
+
+        harold.zero(out);
+
+        self.subtrack_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, self.iq.getImpulses(), tmp0, tmp1, self.frame_index);
+
+        self.iq.flush(self.frame_index, out.len);
+
+        self.frame_index += out.len;
+
+        return [AUDIO_CHANNELS][]const f32 {
+            out,
+        };
+    }
+
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
+        if (!down) {
+            return null;
+        }
+
+        if (switch (key) {
+            c.SDLK_a => f.C4,
+            c.SDLK_w => f.Cs4,
+            c.SDLK_s => f.D4,
+            c.SDLK_e => f.Ds4,
+            c.SDLK_d => f.E4,
+            c.SDLK_f => f.F4,
+            c.SDLK_t => f.Fs4,
+            c.SDLK_g => f.G4,
+            c.SDLK_y => f.Gs4,
+            c.SDLK_h => f.A4,
+            c.SDLK_u => f.As4,
+            c.SDLK_j => f.B4,
+            c.SDLK_k => f.C5,
+            else => null,
+        }) |freq| {
+            return common.KeyEvent{
+                .iq = &self.iq,
+                .freq = freq,
+            };
+        }
+
+        return null;
+    }
+};

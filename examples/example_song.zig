@@ -179,67 +179,63 @@ const PulseModOscillator = struct {
     }
 };
 
-fn AudioBuffers(comptime buffer_size: usize) type {
-    return struct {
-        buf0: [AUDIO_BUFFER_SIZE]f32,
-        buf1: [AUDIO_BUFFER_SIZE]f32,
-        buf2: [AUDIO_BUFFER_SIZE]f32,
-        buf3: [AUDIO_BUFFER_SIZE]f32,
-        buf4: [AUDIO_BUFFER_SIZE]f32,
-    };
-}
+var g_buffers: struct {
+    buf0: [AUDIO_BUFFER_SIZE]f32,
+    buf1: [AUDIO_BUFFER_SIZE]f32,
+    buf2: [AUDIO_BUFFER_SIZE]f32,
+    buf3: [AUDIO_BUFFER_SIZE]f32,
+    buf4: [AUDIO_BUFFER_SIZE]f32,
+} = undefined;
 
-pub const AudioState = struct {
+pub const MainModule = struct {
     frame_index: usize,
 
     osc: [NUM_TRACKS]PulseModOscillator,
     env: [NUM_TRACKS]harold.Envelope,
-};
 
-var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
-
-pub fn initAudioState() AudioState {
-    return AudioState{
-        .frame_index = 0,
-        .osc = [1]PulseModOscillator{
-            PulseModOscillator.init(1.0, 1.5)
-        } ** NUM_TRACKS,
-        .env = [1]harold.Envelope{
-            harold.Envelope.init(harold.EnvParams {
-                .attack_duration = 0.025,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.5,
-                .release_duration = 0.15,
-            })
-        } ** NUM_TRACKS,
-    };
-}
-
-pub fn paint(as: *AudioState) [AUDIO_CHANNELS][]const f32 {
-    const out = buffers.buf0[0..];
-    const tmp0 = buffers.buf1[0..];
-    const tmp1 = buffers.buf2[0..];
-    const tmp2 = buffers.buf3[0..];
-    const tmp3 = buffers.buf4[0..];
-
-    harold.zero(out);
-
-    var i: usize = 0;
-    while (i < NUM_TRACKS) : (i += 1) {
-        harold.zero(tmp0);
-        as.osc[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3, as.frame_index);
-        harold.zero(tmp1);
-        as.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], as.frame_index);
-        harold.multiply(out, tmp0, tmp1);
+    pub fn init() MainModule {
+        return MainModule{
+            .frame_index = 0,
+            .osc = [1]PulseModOscillator{
+                PulseModOscillator.init(1.0, 1.5)
+            } ** NUM_TRACKS,
+            .env = [1]harold.Envelope{
+                harold.Envelope.init(harold.EnvParams {
+                    .attack_duration = 0.025,
+                    .decay_duration = 0.1,
+                    .sustain_volume = 0.5,
+                    .release_duration = 0.15,
+                })
+            } ** NUM_TRACKS,
+        };
     }
 
-    as.frame_index += out.len;
+    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+        const out = g_buffers.buf0[0..];
+        const tmp0 = g_buffers.buf1[0..];
+        const tmp1 = g_buffers.buf2[0..];
+        const tmp2 = g_buffers.buf3[0..];
+        const tmp3 = g_buffers.buf4[0..];
 
-    return [AUDIO_CHANNELS][]const f32 {
-        out,
-    };
-}
+        harold.zero(out);
 
-pub fn keyEvent(audio_state: *AudioState, key: i32, down: bool) ?common.KeyEvent {
-    return null;
-}
+        var i: usize = 0;
+        while (i < NUM_TRACKS) : (i += 1) {
+            harold.zero(tmp0);
+            self.osc[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3, self.frame_index);
+            harold.zero(tmp1);
+            self.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], self.frame_index);
+            harold.multiply(out, tmp0, tmp1);
+        }
+
+        self.frame_index += out.len;
+
+        return [AUDIO_CHANNELS][]const f32 {
+            out,
+        };
+    }
+
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
+        return null;
+    }
+};
