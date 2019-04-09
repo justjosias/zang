@@ -10,6 +10,39 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 2;
 
+const NoiseModule = struct {
+    noise: harold.Noise,
+    flt: harold.Filter,
+
+    fn init(seed: u64, freq: f32) NoiseModule {
+        return NoiseModule{
+            .noise = harold.Noise.init(seed),
+            .flt = harold.Filter.init(.LowPass, freq, 0.4),
+        };
+    }
+
+    fn paint(self: *NoiseModule, out: []f32, tmp0: []f32) void {
+        harold.zero(tmp0);
+        self.noise.paint(tmp0);
+        self.flt.paint(AUDIO_SAMPLE_RATE, out, tmp0);
+    }
+};
+
+// take input (-1 to +1) and scale it to (min to max)
+fn scaleWave(out: []f32, in: []f32, tmp0: []f32, min: f32, max: f32) void {
+    harold.zero(tmp0);
+    harold.multiplyScalar(tmp0, in, (max - min) * 0.5);
+    harold.addScalar(out, tmp0, (max - min) * 0.5 + min);
+}
+
+// overwrite out with (1 - out)
+fn invertWaveInPlace(out: []f32, tmp0: []f32) void {
+    harold.zero(tmp0);
+    harold.multiplyScalar(tmp0, out, -1.0);
+    harold.zero(out);
+    harold.addScalar(out, tmp0, 1.0);
+}
+
 var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
     buf1: [AUDIO_BUFFER_SIZE]f32,
@@ -23,22 +56,35 @@ pub const MainModule = struct {
     frame_index: usize,
 
     osc: harold.Oscillator,
-
-    noise0: harold.Noise,
-    flt0: harold.Filter,
-
-    noise1: harold.Noise,
-    flt1: harold.Filter,
+    noisem0: NoiseModule,
+    noisem1: NoiseModule,
 
     pub fn init() MainModule {
         return MainModule{
             .frame_index = 0,
             .osc = harold.Oscillator.init(.Sine),
-            .noise0 = harold.Noise.init(0),
-            .flt0 = harold.Filter.init(.LowPass, 320.0, 0.4),
-            .noise1 = harold.Noise.init(1),
-            .flt1 = harold.Filter.init(.LowPass, 380.0, 0.4),
+            .noisem0 = NoiseModule.init(0, 320.0),
+            .noisem1 = NoiseModule.init(1, 380.0),
         };
+    }
+
+    fn paintOne(out0: []f32, out1: []f32, noisem: *NoiseModule, pan: []f32, tmp0: []f32, tmp1: []f32, tmp2: []f32, min: f32, max: f32) void {
+        // tmp0 = filtered noise
+        harold.zero(tmp0);
+        noisem.paint(tmp0, tmp1);
+
+        // tmp1 = pan scaled to (min to max)
+        harold.zero(tmp1);
+        scaleWave(tmp1, pan, tmp2, min, max);
+
+        // left channel += tmp0 * tmp1
+        harold.multiply(out0, tmp0, tmp1);
+
+        // tmp1 = 1 - tmp1
+        invertWaveInPlace(tmp1, tmp2);
+
+        // right channel += tmp0 * tmp1
+        harold.multiply(out1, tmp0, tmp1);
     }
 
     pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
@@ -52,62 +98,14 @@ pub const MainModule = struct {
         harold.zero(out0);
         harold.zero(out1);
 
-        // tmp0 = low frequency oscillator (-1 to 1)
+        // tmp0 = slow oscillator representing left/right pan (-1 to +1)
         harold.zero(tmp0);
         self.osc.freq = 0.1;
         self.osc.paint(AUDIO_SAMPLE_RATE, tmp0);
 
-        // NOISE VOICE 1
-
-        // tmp1 = filtered noise
-        harold.zero(tmp2);
-        self.noise0.paint(tmp2);
-        harold.zero(tmp1);
-        self.flt0.paint(AUDIO_SAMPLE_RATE, tmp1, tmp2);
-
-        // tmp2 = tmp0 scaled to (0 to 0.5)
-        harold.zero(tmp3);
-        harold.multiplyScalar(tmp3, tmp0, 0.25);
-        harold.zero(tmp2);
-        harold.addScalar(tmp2, tmp3, 0.25);
-
-        // left channel += tmp1 * tmp2
-        harold.multiply(out0, tmp1, tmp2);
-
-        // tmp2 = 1 - tmp2
-        harold.zero(tmp3);
-        harold.multiplyScalar(tmp3, tmp2, -1.0);
-        harold.zero(tmp2);
-        harold.addScalar(tmp2, tmp3, 1.0);
-
-        // right channel += tmp1 * tmp2
-        harold.multiply(out1, tmp1, tmp2);
-
-        // NOISE VOICE 2
-
-        // tmp1 = filtered noise
-        harold.zero(tmp2);
-        self.noise1.paint(tmp2);
-        harold.zero(tmp1);
-        self.flt1.paint(AUDIO_SAMPLE_RATE, tmp1, tmp2);
-
-        // tmp2 = tmp0 scaled to (0.5 to 1)
-        harold.zero(tmp3);
-        harold.multiplyScalar(tmp3, tmp0, 0.25);
-        harold.zero(tmp2);
-        harold.addScalar(tmp2, tmp3, 0.75);
-
-        // left channel += tmp1 * tmp2
-        harold.multiply(out0, tmp1, tmp2);
-
-        // tmp2 = 1 - tmp2
-        harold.zero(tmp3);
-        harold.multiplyScalar(tmp3, tmp2, -1.0);
-        harold.zero(tmp2);
-        harold.addScalar(tmp2, tmp3, 1.0);
-
-        // right channel += tmp1 * tmp2
-        harold.multiply(out1, tmp1, tmp2);
+        // paint two noise voices
+        paintOne(out0, out1, &self.noisem0, tmp0, tmp1, tmp2, tmp3, 0.0, 0.5);
+        paintOne(out0, out1, &self.noisem1, tmp0, tmp1, tmp2, tmp3, 0.5, 1.0);
 
         self.frame_index += out0.len;
 
