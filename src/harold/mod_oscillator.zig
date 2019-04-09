@@ -37,10 +37,10 @@ pub fn sin(t: f32) f32 {
 
 fn oscFunc(waveform: Waveform) fn (t: f32) f32 {
     return switch (waveform) {
-        Waveform.Sine => sin,
-        Waveform.Triangle => tri,
-        Waveform.Square => square,
-        Waveform.Sawtooth => saw,
+        .Sine => sin,
+        .Triangle => tri,
+        .Square => square,
+        .Sawtooth => saw,
     };
 }
 
@@ -68,25 +68,25 @@ pub const Oscillator = struct {
         var i: usize = 0;
 
         switch (self.waveform) {
-            Waveform.Sine => {
+            .Sine => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += sin(t);
                     t += step;
                 }
             },
-            Waveform.Triangle => {
+            .Triangle => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += tri(t);
                     t += step;
                 }
             },
-            Waveform.Square => {
+            .Square => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += square(t);
                     t += step;
                 }
             },
-            Waveform.Sawtooth => {
+            .Sawtooth => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += saw(t);
                     t += step;
@@ -137,28 +137,28 @@ pub const Oscillator = struct {
         var i: usize = 0;
 
         switch (self.waveform) {
-            Waveform.Sine => {
+            .Sine => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
                     buf[i] += sin(t);
                     t += freq * inv;
                 }
             },
-            Waveform.Triangle => {
+            .Triangle => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
                     buf[i] += tri(t);
                     t += freq * inv;
                 }
             },
-            Waveform.Square => {
+            .Square => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
                     buf[i] += square(t);
                     t += freq * inv;
                 }
             },
-            Waveform.Sawtooth => {
+            .Sawtooth => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
                     buf[i] += saw(t);
@@ -179,7 +179,7 @@ pub const Oscillator = struct {
         var i: usize = 0;
 
         switch (self.waveform) {
-            Waveform.Sine => {
+            .Sine => {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
@@ -187,7 +187,7 @@ pub const Oscillator = struct {
                     t += freq * inv;
                 }
             },
-            Waveform.Triangle => {
+            .Triangle => {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
@@ -195,7 +195,7 @@ pub const Oscillator = struct {
                     t += freq * inv;
                 }
             },
-            Waveform.Square => {
+            .Square => {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
@@ -203,7 +203,7 @@ pub const Oscillator = struct {
                     t += freq * inv;
                 }
             },
-            Waveform.Sawtooth => {
+            .Sawtooth => {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];

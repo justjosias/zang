@@ -30,7 +30,7 @@ pub const Envelope = struct {
         return Envelope{
             .params = params,
             .envelope = 0.0,
-            .state = EnvState.Idle,
+            .state = .Idle,
             .note_id = 0,
         };
     }
@@ -47,18 +47,18 @@ pub const Envelope = struct {
         // the relevant slice of dest_buffer. in other words, note always starts at
         // beginning of dest_buffer!
 
-        if (self.state == EnvState.Idle) {
-            self.state = EnvState.Attack;
+        if (self.state == .Idle) {
+            self.state = .Attack;
         }
 
-        if (self.state == EnvState.Attack) {
+        if (self.state == .Attack) {
             const goal = 1.0;
 
             if (self.envelope >= goal) {
-                self.state = EnvState.Decay;
+                self.state = .Decay;
             } else {
                 if (paintLineTowards(&self.envelope, sample_rate, buf, &i, self.params.attack_duration, goal)) {
-                    self.state = EnvState.Decay;
+                    self.state = .Decay;
                 }
             }
 
@@ -67,11 +67,11 @@ pub const Envelope = struct {
             }
         }
 
-        if (self.state == EnvState.Decay) {
+        if (self.state == .Decay) {
             const goal = self.params.sustain_volume;
 
             if (paintLineTowards(&self.envelope, sample_rate, buf, &i, self.params.decay_duration, goal)) {
-                self.state = EnvState.Sustain;
+                self.state = .Sustain;
             }
 
             if (i == buf_len) {
@@ -79,7 +79,7 @@ pub const Envelope = struct {
             }
         }
 
-        if (self.state == EnvState.Sustain) {
+        if (self.state == .Sustain) {
             while (i < buf_len) : (i += 1) {
                 buf[i] += self.envelope;
             }
@@ -117,13 +117,13 @@ pub const Envelope = struct {
                     std.debug.assert(note.id > self.note_id);
 
                     self.note_id = note.id;
-                    self.state = EnvState.Idle;
+                    self.state = .Idle;
                 }
 
                 self.paintOn(sample_rate, buf_span);
             } else {
                 self.note_id = 0;
-                self.state = EnvState.Idle;
+                self.state = .Idle;
 
                 self.paintOff(sample_rate, buf_span);
             }

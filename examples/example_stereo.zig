@@ -38,11 +38,11 @@ var buffers: AudioBuffers(AUDIO_BUFFER_SIZE) = undefined;
 pub fn initAudioState() AudioState {
     return AudioState{
         .frame_index = 0,
-        .osc = harold.Oscillator.init(harold.Waveform.Sine),
+        .osc = harold.Oscillator.init(.Sine),
         .noise0 = harold.Noise.init(0),
-        .flt0 = harold.Filter.init(harold.FilterType.LowPass, 320.0, 0.4),
+        .flt0 = harold.Filter.init(.LowPass, 320.0, 0.4),
         .noise1 = harold.Noise.init(1),
-        .flt1 = harold.Filter.init(harold.FilterType.LowPass, 380.0, 0.4),
+        .flt1 = harold.Filter.init(.LowPass, 380.0, 0.4),
     };
 }
 

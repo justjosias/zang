@@ -145,8 +145,8 @@ const PulseModOscillator = struct {
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = harold.Oscillator.init(harold.Waveform.Sine),
-            .modulator = harold.Oscillator.init(harold.Waveform.Sine),
+            .carrier = harold.Oscillator.init(.Sine),
+            .modulator = harold.Oscillator.init(.Sine),
             .dc = harold.DC.init(),
             .ratio = ratio,
             .multiplier = multiplier,

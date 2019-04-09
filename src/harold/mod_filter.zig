@@ -43,24 +43,24 @@ pub const Filter = struct{
         var h_mul: f32 = 0.0;
 
         switch (self.filterType) {
-            FilterType.Bypass => {
+            .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
             },
-            FilterType.LowPass => {
+            .LowPass => {
                 l_mul = 1.0;
             },
-            FilterType.BandPass => {
+            .BandPass => {
                 b_mul = 1.0;
             },
-            FilterType.HighPass => {
+            .HighPass => {
                 h_mul = 1.0;
             },
-            FilterType.Notch => {
+            .Notch => {
                 l_mul = 1.0;
                 h_mul = 1.0;
             },
-            FilterType.AllPass => {
+            .AllPass => {
                 l_mul = 1.0;
                 b_mul = 1.0;
                 h_mul = 1.0;
