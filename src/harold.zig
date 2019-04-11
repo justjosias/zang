@@ -4,6 +4,10 @@ const note_span = @import("harold/note_span.zig");
 pub const Impulse = note_span.Impulse;
 pub const getNextNoteSpan = note_span.getNextNoteSpan;
 
+const curves = @import("harold/curves.zig");
+pub const CurveNode = curves.CurveNode;
+pub const getNextCurveNode = curves.getNextCurveNode;
+
 const impulse_queue = @import("harold/impulse_queue.zig");
 pub const ImpulseQueue = impulse_queue.ImpulseQueue;
 
@@ -22,6 +26,10 @@ pub const addScalar = basics.addScalar;
 pub const addInto = basics.addInto;
 pub const multiply = basics.multiply;
 pub const multiplyScalar = basics.multiplyScalar;
+
+const mod_curve = @import("harold/mod_curve.zig");
+pub const Curve = mod_curve.Curve;
+pub const InterpolationFunction = mod_curve.InterpolationFunction;
 
 const mod_dc = @import("harold/mod_dc.zig");
 pub const DC = mod_dc.DC;

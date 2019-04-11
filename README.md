@@ -16,8 +16,11 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build stereo`: A wind-like filtered noise effect slowly oscillates from side to side. (Probably too subtle to be a good stereo demonstration, you might need headphones to even notice it.)
 
+`zig build curve`: Like `subsong`, but plays a sound defined by smooth curves instead of discrete notes.
+
 ## Features
 Modules:
+* Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
 * DC: just a way to paint incoming note frequencies into a buffer
 * Envelope: ADSR (attack, decay, sustain, release) envelope generator
 * Filter: lowpass, highpass, notch, bandpass, including resonance
@@ -44,9 +47,7 @@ My goals for the core library:
 
 The library is currently 1400 lines of code. A lot of the above is already in there, although it needs to be cleaned up. And it already contains some fat that could be trimmed. I don't see the library getting much bigger than say 2500 lines of code, assuming not many more modules are added.
 
-What needs the most work (other than the API surface in general) is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. And then you should also be able to make tracks containing curves instead of notes, e.g. something to alter a filter cutoff over a long period of time.
-
-(The above paragraph applies equally to "notes" and curves created on the fly in interactive applications.)
+What needs the most work (other than the API surface in general) is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. This applies also to curves, and to notes created on the fly in interactive applications.
 
 ## Roadmap
 I want to polish up this library fairly soon. There are more modules I could add (e.g. delay) but I would rather move on to a second library providing more high-level features (stack or graph based system with dynamic allocations, and/or a text config language with a player app that autorefreshes when the text file is changed).
