@@ -10,13 +10,15 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 
-`zig build song`: Plays the first few bars of Bach's Toccata in D Minor.
+`zig build song`: Plays the first few bars of Bach's Toccata in D Minor. Features (hard-coded) polyphony.
 
 `zig build subsong`: Like `play`, but a small melody is played for each note, pitched by the frequency of the key you press. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).
 
 `zig build stereo`: A wind-like filtered noise effect slowly oscillates from side to side. (Probably too subtle to be a good stereo demonstration, you might need headphones to even notice it.)
 
 `zig build curve`: Like `subsong`, but plays a sound defined by smooth curves instead of discrete notes.
+
+`zig build detuned`: Like `play`, but the instrument warbles randomly.
 
 ## Features
 Modules:

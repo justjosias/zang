@@ -134,4 +134,6 @@ pub const Filter = struct{
             start = note_span.end;
         }
     }
+
+    // TODO - allow cutoff and resonance to be controlled
 };

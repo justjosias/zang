@@ -59,3 +59,11 @@ pub fn multiplyScalar(dest: []f32, a: []const f32, b: f32) void {
         dest[i] += a[i] * b;
     }
 }
+
+pub fn multiplyWithScalar(dest: []f32, a: f32) void {
+    var i: usize = 0;
+
+    while (i < dest.len) : (i += 1) {
+        dest[i] *= a;
+    }
+}

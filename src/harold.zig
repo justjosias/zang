@@ -26,6 +26,7 @@ pub const addScalar = basics.addScalar;
 pub const addInto = basics.addInto;
 pub const multiply = basics.multiply;
 pub const multiplyScalar = basics.multiplyScalar;
+pub const multiplyWithScalar = basics.multiplyWithScalar;
 
 const mod_curve = @import("harold/mod_curve.zig");
 pub const Curve = mod_curve.Curve;
