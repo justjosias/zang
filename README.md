@@ -51,5 +51,7 @@ The library is currently 1400 lines of code. A lot of the above is already in th
 
 What needs the most work (other than the API surface in general) is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. This applies also to curves, and to notes created on the fly in interactive applications.
 
+Also I should add a delay module. This would be the first module to require storing a buffer in its state. It will probably require an allocator because its buffer size would depend on the delay period. Also, if I want modular feedback (e.g. feed the output of the delay back into itself for an echo effect), the whole API will probably need to change to be aware of delay. This is preferable because otherwise, if you wanted echoes (possibly with effects such as a low pass filter), it would have to be baked into the delay module itself. Finally, as for the delay period being controllable (swept), I have no idea how that would work. I probably won't do it.
+
 ## Roadmap
 I want to polish up this library fairly soon. There are more modules I could add (e.g. delay) but I would rather move on to a second library providing more high-level features (stack or graph based system with dynamic allocations, and/or a text config language with a player app that autorefreshes when the text file is changed).
