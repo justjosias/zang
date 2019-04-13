@@ -47,8 +47,8 @@ pub const Curve = struct {
                 // 'x' values are 0-1
                 const start_x = @intToFloat(f32, paint_start - fstart) / @intToFloat(f32, fend - fstart);
 
-                var start_value = values.start_node.freq;
-                var value_delta = values.end_node.freq - values.start_node.freq;
+                var start_value = values.start_node.value;
+                var value_delta = values.end_node.value - values.start_node.value;
 
                 if (freq_mul) |mul| {
                     start_value *= mul;

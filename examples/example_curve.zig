@@ -13,18 +13,18 @@ pub const AUDIO_CHANNELS = 1;
 const second = @floatToInt(usize, @intToFloat(f32, AUDIO_SAMPLE_RATE));
 
 const carrierCurve = []harold.CurveNode {
-    harold.CurveNode{ .frame = 0 * second / 2, .freq = 440.0 },
-    harold.CurveNode{ .frame = 1 * second / 2, .freq = 880.0 },
-    harold.CurveNode{ .frame = 2 * second / 2, .freq = 110.0 },
-    harold.CurveNode{ .frame = 3 * second / 2, .freq = 660.0 },
-    harold.CurveNode{ .frame = 4 * second / 2, .freq = 330.0 },
-    harold.CurveNode{ .frame = 6 * second / 2, .freq = 20.0 },
+    harold.CurveNode{ .frame = 0 * second / 2, .value = 440.0 },
+    harold.CurveNode{ .frame = 1 * second / 2, .value = 880.0 },
+    harold.CurveNode{ .frame = 2 * second / 2, .value = 110.0 },
+    harold.CurveNode{ .frame = 3 * second / 2, .value = 660.0 },
+    harold.CurveNode{ .frame = 4 * second / 2, .value = 330.0 },
+    harold.CurveNode{ .frame = 6 * second / 2, .value = 20.0 },
 };
 
 const modulatorCurve = []harold.CurveNode {
-    harold.CurveNode{ .frame = 0 * second / 2, .freq = 110.0 },
-    harold.CurveNode{ .frame = 3 * second / 2, .freq = 55.0 },
-    harold.CurveNode{ .frame = 6 * second / 2, .freq = 220.0 },
+    harold.CurveNode{ .frame = 0 * second / 2, .value = 110.0 },
+    harold.CurveNode{ .frame = 3 * second / 2, .value = 55.0 },
+    harold.CurveNode{ .frame = 6 * second / 2, .value = 220.0 },
 };
 
 const CurvePlayer = struct {

@@ -4,7 +4,7 @@ const std = @import("std");
 // they can't be created in real-time
 pub const CurveNode = struct {
     frame: usize, // frames (e.g. 44100 for one second in)
-    freq: f32, // TODO - rename to 'value'
+    value: f32,
 };
 
 pub const CurveSpanValues = struct {
