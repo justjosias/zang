@@ -30,7 +30,6 @@ pub const ImpulseQueue = struct {
         impulse_frame: usize,
         freq: ?f32,
         current_frame_index: usize,
-        frame_length: usize,
     ) void {
         if (self.length >= self.array.len) {
             std.debug.warn("outta spots\n");

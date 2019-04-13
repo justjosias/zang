@@ -89,7 +89,7 @@ pub fn main() !void {
                     if (main_module.keyEvent(event.key.keysym.sym, true)) |evt| {
                         c.SDL_LockAudioDevice(device);
                         const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, main_module.frame_index);
-                        evt.iq.push(impulse_frame, evt.freq, main_module.frame_index, AUDIO_BUFFER_SIZE);
+                        evt.iq.push(impulse_frame, evt.freq, main_module.frame_index);
                         c.SDL_UnlockAudioDevice(device);
                     }
                 }
@@ -98,7 +98,7 @@ pub fn main() !void {
                 if (main_module.keyEvent(event.key.keysym.sym, false)) |evt| {
                     c.SDL_LockAudioDevice(device);
                     const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time, main_module.frame_index);
-                    evt.iq.push(impulse_frame, evt.freq, main_module.frame_index, AUDIO_BUFFER_SIZE);
+                    evt.iq.push(impulse_frame, evt.freq, main_module.frame_index);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },
