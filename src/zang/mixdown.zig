@@ -5,23 +5,33 @@ pub const AudioFormat = enum {
     S16LSB,
 };
 
-pub fn mixDown(dst: []u8, mix_buffer: []const f32, audio_format: AudioFormat, num_channels: usize, channel_index: usize) void {
+pub fn mixDown(
+    dst: []u8,
+    mix_buffer: []const f32,
+    audio_format: AudioFormat,
+    num_channels: usize,
+    channel_index: usize,
+    vol: f32,
+) void {
     switch (audio_format) {
         AudioFormat.S8 => {
-            mixDownS8(dst, mix_buffer, num_channels, channel_index);
+            mixDownS8(dst, mix_buffer, num_channels, channel_index, vol);
         },
         AudioFormat.S16LSB => {
-            mixDownS16LSB(dst, mix_buffer, num_channels, channel_index);
+            mixDownS16LSB(dst, mix_buffer, num_channels, channel_index, vol);
         },
     }
 }
 
 // convert from float to 16-bit, applying clamping
-fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize) void {
+// `vol` should be set to something lower than 1.0 to avoid clipping
+fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize, vol: f32) void {
     std.debug.assert(dst.len == mix_buffer.len * 2 * num_channels);
 
+    const mul = vol * 32767.0;
+
     var i: usize = 0; while (i < mix_buffer.len) : (i += 1) {
-        const value = mix_buffer[i] * 8192.0; // 1.0 will end up at 25% volume
+        const value = mix_buffer[i] * mul;
 
         const clamped_value =
             if (value <= -32767.0)
@@ -36,11 +46,13 @@ fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channe
     }
 }
 
-fn mixDownS8(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize) void {
+fn mixDownS8(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize, vol: f32) void {
     std.debug.assert(dst.len == mix_buffer.len * num_channels);
 
+    const mul = vol * 127.0;
+
     var i: usize = 0; while (i < mix_buffer.len) : (i += 1) {
-        const value = mix_buffer[i] * 64.0; // 1.0 will end up at 25% volume
+        const value = mix_buffer[i] * mul;
 
         const clamped_value =
             if (value <= -127.0)

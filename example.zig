@@ -18,7 +18,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     const buffers = main_module.paint();
 
     for (buffers) |buf, i| {
-        zang.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i);
+        zang.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i, 0.25);
     }
 }
 
