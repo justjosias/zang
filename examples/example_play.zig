@@ -1,20 +1,20 @@
 // in this example you can play a simple monophonic synth with the keyboard
 
 const std = @import("std");
-const harold = @import("harold");
+const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
-pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
 // an example of a custom "module"
 const PulseModOscillator = struct {
-    carrier: harold.Oscillator,
-    modulator: harold.Oscillator,
-    dc: harold.DC,
+    carrier: zang.Oscillator,
+    modulator: zang.Oscillator,
+    dc: zang.DC,
     // ratio: the carrier oscillator will use whatever frequency you give the
     // PulseModOscillator. the modulator oscillator will multiply the frequency
     // by this ratio. for example, a ratio of 0.5 means that the modulator
@@ -27,9 +27,9 @@ const PulseModOscillator = struct {
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = harold.Oscillator.init(.Sine),
-            .modulator = harold.Oscillator.init(.Sine),
-            .dc = harold.DC.init(),
+            .carrier = zang.Oscillator.init(.Sine),
+            .modulator = zang.Oscillator.init(.Sine),
+            .dc = zang.DC.init(),
             .ratio = ratio,
             .multiplier = multiplier,
         };
@@ -45,7 +45,7 @@ const PulseModOscillator = struct {
         self: *PulseModOscillator,
         sample_rate: u32,
         out: []f32,
-        track: []const harold.Impulse,
+        track: []const zang.Impulse,
         tmp0: []f32,
         tmp1: []f32,
         tmp2: []f32,
@@ -55,14 +55,14 @@ const PulseModOscillator = struct {
         std.debug.assert(out.len == tmp1.len);
         std.debug.assert(out.len == tmp2.len);
 
-        harold.zero(tmp0);
-        harold.zero(tmp1);
+        zang.zero(tmp0);
+        zang.zero(tmp1);
         self.dc.paintFrequencyFromImpulses(tmp0, track, frame_index);
-        harold.multiplyScalar(tmp1, tmp0, self.ratio);
-        harold.zero(tmp2);
+        zang.multiplyScalar(tmp1, tmp0, self.ratio);
+        zang.zero(tmp2);
         self.modulator.paintControlledFrequency(sample_rate, tmp2, tmp1);
-        harold.zero(tmp1);
-        harold.multiplyScalar(tmp1, tmp2, self.multiplier);
+        zang.zero(tmp1);
+        zang.multiplyScalar(tmp1, tmp2, self.multiplier);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
     }
 };
@@ -79,7 +79,7 @@ var g_note_held0: ?i32 = null;
 var g_note_held1: ?i32 = null;
 
 const NoteParams = struct {
-    iq: *harold.ImpulseQueue,
+    iq: *zang.ImpulseQueue,
     nh: *?i32,
     freq: f32,
 };
@@ -87,36 +87,36 @@ const NoteParams = struct {
 pub const MainModule = struct {
     frame_index: usize,
 
-    iq0: harold.ImpulseQueue,
+    iq0: zang.ImpulseQueue,
     osc0: PulseModOscillator,
-    env0: harold.Envelope,
+    env0: zang.Envelope,
 
-    iq1: harold.ImpulseQueue,
-    osc1: harold.Oscillator,
-    env1: harold.Envelope,
+    iq1: zang.ImpulseQueue,
+    osc1: zang.Oscillator,
+    env1: zang.Envelope,
 
-    flt: harold.Filter,
+    flt: zang.Filter,
 
     pub fn init() MainModule {
         return MainModule{
             .frame_index = 0,
-            .iq0 = harold.ImpulseQueue.init(),
+            .iq0 = zang.ImpulseQueue.init(),
             .osc0 = PulseModOscillator.init(1.0, 1.5),
-            .env0 = harold.Envelope.init(harold.EnvParams {
+            .env0 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .iq1 = harold.ImpulseQueue.init(),
-            .osc1 = harold.Oscillator.init(.Sawtooth),
-            .env1 = harold.Envelope.init(harold.EnvParams {
+            .iq1 = zang.ImpulseQueue.init(),
+            .osc1 = zang.Oscillator.init(.Sawtooth),
+            .env1 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .flt = harold.Filter.init(.LowPass, harold.note_frequencies.C5, 0.7),
+            .flt = zang.Filter.init(.LowPass, zang.note_frequencies.C5, 0.7),
         };
     }
 
@@ -127,27 +127,27 @@ pub const MainModule = struct {
         const tmp2 = g_buffers.buf3[0..];
         const tmp3 = g_buffers.buf4[0..];
 
-        harold.zero(out);
+        zang.zero(out);
 
         if (!self.iq0.isEmpty()) {
             // use ADSR envelope with pulse mod oscillator
-            harold.zero(tmp0);
+            zang.zero(tmp0);
             self.osc0.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, self.iq0.getImpulses(), tmp1, tmp2, tmp3, self.frame_index);
-            harold.zero(tmp1);
+            zang.zero(tmp1);
             self.env0.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, self.iq0.getImpulses(), self.frame_index);
-            harold.multiply(out, tmp0, tmp1);
+            zang.multiply(out, tmp0, tmp1);
         }
 
         if (!self.iq1.isEmpty()) {
             // sawtooth wave with resonant low pselfs filter
-            harold.zero(tmp3);
+            zang.zero(tmp3);
             self.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp3, self.iq1.getImpulses(), self.frame_index, null);
-            harold.zero(tmp0);
-            harold.multiplyScalar(tmp0, tmp3, 2.5); // sawtooth volume
-            harold.zero(tmp1);
+            zang.zero(tmp0);
+            zang.multiplyScalar(tmp0, tmp3, 2.5); // sawtooth volume
+            zang.zero(tmp1);
             self.env1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, self.iq1.getImpulses(), self.frame_index);
-            harold.zero(tmp2);
-            harold.multiply(tmp2, tmp0, tmp1);
+            zang.zero(tmp2);
+            zang.multiply(tmp2, tmp0, tmp1);
             self.flt.paint(AUDIO_SAMPLE_RATE, out, tmp2);
         }
 
@@ -162,7 +162,7 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = harold.note_frequencies;
+        const f = zang.note_frequencies;
 
         if (switch (key) {
             c.SDLK_SPACE => NoteParams{ .iq = &self.iq1, .nh = &g_note_held1, .freq = f.C4 / 4.0 },

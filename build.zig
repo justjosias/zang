@@ -16,6 +16,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "stereo", "examples/example_stereo.zig");
     example(b, mode, windows, "curve", "examples/example_curve.zig");
     example(b, mode, windows, "detuned", "examples/example_detuned.zig");
+    example(b, mode, windows, "laser", "examples/example_laser.zig");
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {
@@ -26,7 +27,7 @@ fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []cons
         exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
     }
 
-    exe.addPackagePath("harold", "src/harold.zig");
+    exe.addPackagePath("zang", "src/zang.zig");
     exe.addBuildOption([]const u8, "example", "\"" ++ source_file ++ "\"");
 
     exe.linkSystemLibrary("SDL2");

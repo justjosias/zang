@@ -1,5 +1,5 @@
-# harold
-[Zig](https://ziglang.org/) audio library in need of a better name.
+# zang
+[Zig](https://ziglang.org/) audio library.
 
 This library provides functions to "paint" audio (generators and effects) into buffers. (How the buffers get sent to the audio device is out of the scope of the library, but can be seen in the provided examples.)
 

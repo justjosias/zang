@@ -1,7 +1,7 @@
 // this is the main file which is used by all examples.
 
 const std = @import("std");
-const harold = @import("harold");
+const zang = @import("zang");
 const common = @import("examples/common.zig");
 const c = @import("examples/common/sdl.zig");
 const example = @import(@import("build_options").example);
@@ -18,7 +18,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     const buffers = main_module.paint();
 
     for (buffers) |buf, i| {
-        harold.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i);
+        zang.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i);
     }
 }
 
@@ -33,7 +33,7 @@ pub fn main() !void {
 
     const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
     const window = c.SDL_CreateWindow(
-        c"harold",
+        c"zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
         640, 480,
@@ -47,8 +47,8 @@ pub fn main() !void {
     var want: c.SDL_AudioSpec = undefined;
     want.freq = AUDIO_SAMPLE_RATE;
     want.format = switch (AUDIO_FORMAT) {
-        harold.AudioFormat.S8 => u16(c.AUDIO_S8),
-        harold.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
+        zang.AudioFormat.S8 => u16(c.AUDIO_S8),
+        zang.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
     };
     want.channels = AUDIO_CHANNELS;
     want.samples = AUDIO_BUFFER_SIZE;

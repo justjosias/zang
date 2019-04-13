@@ -1,17 +1,17 @@
 // in this example a canned melody is played
 
 const std = @import("std");
-const harold = @import("harold");
+const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
-pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 1;
 
 const Note = common.Note;
-const f = harold.note_frequencies;
+const f = zang.note_frequencies;
 const track1Init = []Note{
     Note{ .freq = f.A4, .dur = 1 },
     Note{ .freq = f.G4, .dur = 1 },
@@ -117,7 +117,7 @@ const track8Init = []Note{
 const NUM_TRACKS = 8;
 const NOTE_DURATION = 0.08;
 
-const tracks = [NUM_TRACKS][]const harold.Impulse {
+const tracks = [NUM_TRACKS][]const zang.Impulse {
     common.compileSong(track1Init.len, track1Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
     common.compileSong(track2Init.len, track2Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
     common.compileSong(track3Init.len, track3Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
@@ -130,9 +130,9 @@ const tracks = [NUM_TRACKS][]const harold.Impulse {
 
 // an example of a custom "module"
 const PulseModOscillator = struct {
-    carrier: harold.Oscillator,
-    modulator: harold.Oscillator,
-    dc: harold.DC,
+    carrier: zang.Oscillator,
+    modulator: zang.Oscillator,
+    dc: zang.DC,
     // ratio: the carrier oscillator will use whatever frequency you give the
     // PulseModOscillator. the modulator oscillator will multiply the frequency
     // by this ratio. for example, a ratio of 0.5 means that the modulator
@@ -145,9 +145,9 @@ const PulseModOscillator = struct {
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = harold.Oscillator.init(.Sine),
-            .modulator = harold.Oscillator.init(.Sine),
-            .dc = harold.DC.init(),
+            .carrier = zang.Oscillator.init(.Sine),
+            .modulator = zang.Oscillator.init(.Sine),
+            .dc = zang.DC.init(),
             .ratio = ratio,
             .multiplier = multiplier,
         };
@@ -157,7 +157,7 @@ const PulseModOscillator = struct {
         self: *PulseModOscillator,
         sample_rate: u32,
         out: []f32,
-        track: []const harold.Impulse,
+        track: []const zang.Impulse,
         tmp0: []f32,
         tmp1: []f32,
         tmp2: []f32,
@@ -167,14 +167,14 @@ const PulseModOscillator = struct {
         std.debug.assert(out.len == tmp1.len);
         std.debug.assert(out.len == tmp2.len);
 
-        harold.zero(tmp0);
-        harold.zero(tmp1);
+        zang.zero(tmp0);
+        zang.zero(tmp1);
         self.dc.paintFrequencyFromImpulses(tmp0, track, frame_index);
-        harold.multiplyScalar(tmp1, tmp0, self.ratio);
-        harold.zero(tmp2);
+        zang.multiplyScalar(tmp1, tmp0, self.ratio);
+        zang.zero(tmp2);
         self.modulator.paintControlledFrequency(sample_rate, tmp2, tmp1);
-        harold.zero(tmp1);
-        harold.multiplyScalar(tmp1, tmp2, self.multiplier);
+        zang.zero(tmp1);
+        zang.multiplyScalar(tmp1, tmp2, self.multiplier);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
     }
 };
@@ -191,7 +191,7 @@ pub const MainModule = struct {
     frame_index: usize,
 
     osc: [NUM_TRACKS]PulseModOscillator,
-    env: [NUM_TRACKS]harold.Envelope,
+    env: [NUM_TRACKS]zang.Envelope,
 
     pub fn init() MainModule {
         return MainModule{
@@ -199,8 +199,8 @@ pub const MainModule = struct {
             .osc = [1]PulseModOscillator{
                 PulseModOscillator.init(1.0, 1.5)
             } ** NUM_TRACKS,
-            .env = [1]harold.Envelope{
-                harold.Envelope.init(harold.EnvParams {
+            .env = [1]zang.Envelope{
+                zang.Envelope.init(zang.EnvParams {
                     .attack_duration = 0.025,
                     .decay_duration = 0.1,
                     .sustain_volume = 0.5,
@@ -217,15 +217,15 @@ pub const MainModule = struct {
         const tmp2 = g_buffers.buf3[0..];
         const tmp3 = g_buffers.buf4[0..];
 
-        harold.zero(out);
+        zang.zero(out);
 
         var i: usize = 0;
         while (i < NUM_TRACKS) : (i += 1) {
-            harold.zero(tmp0);
+            zang.zero(tmp0);
             self.osc[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3, self.frame_index);
-            harold.zero(tmp1);
+            zang.zero(tmp1);
             self.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], self.frame_index);
-            harold.multiply(out, tmp0, tmp1);
+            zang.multiply(out, tmp0, tmp1);
         }
 
         self.frame_index += out.len;

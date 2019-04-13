@@ -1,4 +1,4 @@
-// in this example a little melody plays every time you hit a key
+// in this example you can play a simple monophonic synth with the keyboard
 
 const std = @import("std");
 const zang = @import("zang");
@@ -12,22 +12,32 @@ pub const AUDIO_CHANNELS = 1;
 
 const second = @floatToInt(usize, @intToFloat(f32, AUDIO_SAMPLE_RATE));
 
+const A = 1000.0;
+const B = 200.0;
+const C = 100.0;
+
 const carrierCurve = []zang.CurveNode {
-    zang.CurveNode{ .frame = 0 * second / 2, .value = 440.0 },
-    zang.CurveNode{ .frame = 1 * second / 2, .value = 880.0 },
-    zang.CurveNode{ .frame = 2 * second / 2, .value = 110.0 },
-    zang.CurveNode{ .frame = 3 * second / 2, .value = 660.0 },
-    zang.CurveNode{ .frame = 4 * second / 2, .value = 330.0 },
-    zang.CurveNode{ .frame = 6 * second / 2, .value = 20.0 },
+    zang.CurveNode{ .frame = 0 * second / 10, .value = A },
+    zang.CurveNode{ .frame = 1 * second / 10, .value = B },
+    zang.CurveNode{ .frame = 2 * second / 10, .value = C },
 };
 
 const modulatorCurve = []zang.CurveNode {
-    zang.CurveNode{ .frame = 0 * second / 2, .value = 110.0 },
-    zang.CurveNode{ .frame = 3 * second / 2, .value = 55.0 },
-    zang.CurveNode{ .frame = 6 * second / 2, .value = 220.0 },
+    zang.CurveNode{ .frame = 0 * second / 10, .value = A },
+    zang.CurveNode{ .frame = 1 * second / 10, .value = B },
+    zang.CurveNode{ .frame = 2 * second / 10, .value = C },
+};
+
+const volumeCurve = []zang.CurveNode {
+    zang.CurveNode{ .frame = 0 * second / 10, .value = 0.0 },
+    zang.CurveNode{ .frame = 1 * second / 250, .value = 1.0 },
+    zang.CurveNode{ .frame = 2 * second / 10, .value = 0.0 },
 };
 
 const CurvePlayer = struct {
+    carrier_mul: f32,
+    modulator_mul: f32,
+    modulator_rad: f32,
     curve: zang.Curve,
     carrier: zang.Oscillator,
     modulator: zang.Oscillator,
@@ -35,8 +45,11 @@ const CurvePlayer = struct {
     note_id: usize,
     freq: f32,
 
-    fn init() CurvePlayer {
+    fn init(carrier_mul: f32, modulator_mul: f32, modulator_rad: f32) CurvePlayer {
         return CurvePlayer{
+            .carrier_mul = carrier_mul,
+            .modulator_mul = modulator_mul,
+            .modulator_rad = modulator_rad,
             .curve = zang.Curve.init(.SmoothStep),
             .carrier = zang.Oscillator.init(.Sine),
             .modulator = zang.Oscillator.init(.Sine),
@@ -46,17 +59,21 @@ const CurvePlayer = struct {
         };
     }
 
-    fn paint(self: *CurvePlayer, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32) void {
+    fn paint(self: *CurvePlayer, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32, tmp2: []f32) void {
         const freq_mul = self.freq / 440.0;
 
         zang.zero(tmp0);
-        self.curve.paintFromCurve(sample_rate, tmp0, modulatorCurve, self.sub_frame_index, freq_mul);
+        self.curve.paintFromCurve(sample_rate, tmp0, modulatorCurve, self.sub_frame_index, freq_mul * self.modulator_mul);
         zang.zero(tmp1);
         self.modulator.paintControlledFrequency(sample_rate, tmp1, tmp0);
+        zang.multiplyWithScalar(tmp1, self.modulator_rad);
         zang.zero(tmp0);
-        // note it's almost always bad to reuse a module, but Curve happens to hold no state so it works here...
-        self.curve.paintFromCurve(sample_rate, tmp0, carrierCurve, self.sub_frame_index, freq_mul);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
+        self.curve.paintFromCurve(sample_rate, tmp0, carrierCurve, self.sub_frame_index, freq_mul * self.carrier_mul);
+        zang.zero(tmp2);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, tmp2, tmp1, tmp0);
+        zang.zero(tmp0);
+        self.curve.paintFromCurve(sample_rate, tmp0, volumeCurve, self.sub_frame_index, null);
+        zang.multiply(out, tmp0, tmp2);
 
         self.sub_frame_index += out.len;
     }
@@ -68,6 +85,7 @@ const CurvePlayer = struct {
         track: []const zang.Impulse,
         tmp0: []f32,
         tmp1: []f32,
+        tmp2: []f32,
         frame_index: usize,
     ) void {
         std.debug.assert(out.len == tmp0.len);
@@ -85,6 +103,7 @@ const CurvePlayer = struct {
             const buf_span = out[note_span.start .. note_span.end];
             const tmp0_span = tmp0[note_span.start .. note_span.end];
             const tmp1_span = tmp1[note_span.start .. note_span.end];
+            const tmp2_span = tmp2[note_span.start .. note_span.end];
 
             if (note_span.note) |note| {
                 if (note.id != self.note_id) {
@@ -95,7 +114,7 @@ const CurvePlayer = struct {
                     self.sub_frame_index = 0;
                 }
 
-                self.paint(sample_rate, buf_span, tmp0_span, tmp1_span);
+                self.paint(sample_rate, buf_span, tmp0_span, tmp1_span, tmp2_span);
             } else {
                 // gap between notes. but keep playing (sampler currently ignores note
                 // end events).
@@ -103,7 +122,7 @@ const CurvePlayer = struct {
                 // don't paint at all if note_freq is null. that means we haven't hit
                 // the first note yet
                 if (self.note_id > 0) {
-                    self.paint(sample_rate, buf_span, tmp0_span, tmp1_span);
+                    self.paint(sample_rate, buf_span, tmp0_span, tmp1_span, tmp2_span);
                 }
             }
 
@@ -116,6 +135,8 @@ var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
     buf1: [AUDIO_BUFFER_SIZE]f32,
     buf2: [AUDIO_BUFFER_SIZE]f32,
+    buf3: [AUDIO_BUFFER_SIZE]f32,
+    buf4: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
 pub const MainModule = struct {
@@ -124,11 +145,17 @@ pub const MainModule = struct {
     iq: zang.ImpulseQueue,
     curve_player: CurvePlayer,
 
+    r: std.rand.Xoroshiro128,
+
     pub fn init() MainModule {
         return MainModule{
             .frame_index = 0,
             .iq = zang.ImpulseQueue.init(),
-            .curve_player = CurvePlayer.init(),
+            // .curve_player = CurvePlayer.init(4.0, 0.125, 1.0), // enemy laser
+            // .curve_player = CurvePlayer.init(0.5, 0.125, 1.0), // pain sound?
+            // .curve_player = CurvePlayer.init(1.0, 9.0, 1.0), // some web effect?
+            .curve_player = CurvePlayer.init(2.0, 0.5, 0.5), // player laser
+            .r = std.rand.DefaultPrng.init(0),
         };
     }
 
@@ -136,10 +163,12 @@ pub const MainModule = struct {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
+        const tmp2 = g_buffers.buf3[0..];
+        const tmp3 = g_buffers.buf4[0..];
 
         zang.zero(out);
 
-        self.curve_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, self.iq.getImpulses(), tmp0, tmp1, self.frame_index);
+        self.curve_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, self.iq.getImpulses(), tmp1, tmp2, tmp3, self.frame_index);
 
         self.iq.flush(self.frame_index, out.len);
 
@@ -151,31 +180,13 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = zang.note_frequencies;
+        if (key == c.SDLK_SPACE and down) {
+            const base_freq = 440.0;
+            const variance = 80.0;
 
-        if (!down) {
-            return null;
-        }
-
-        if (switch (key) {
-            c.SDLK_a => f.C4,
-            c.SDLK_w => f.Cs4,
-            c.SDLK_s => f.D4,
-            c.SDLK_e => f.Ds4,
-            c.SDLK_d => f.E4,
-            c.SDLK_f => f.F4,
-            c.SDLK_t => f.Fs4,
-            c.SDLK_g => f.G4,
-            c.SDLK_y => f.Gs4,
-            c.SDLK_h => f.A4,
-            c.SDLK_u => f.As4,
-            c.SDLK_j => f.B4,
-            c.SDLK_k => f.C5,
-            else => null,
-        }) |freq| {
             return common.KeyEvent{
                 .iq = &self.iq,
-                .freq = freq,
+                .freq = base_freq + self.r.random.float(f32) * variance - 0.5 * variance,
             };
         }
 

@@ -1,17 +1,17 @@
 // in this example a little melody plays every time you hit a key
 
 const std = @import("std");
-const harold = @import("harold");
+const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
-pub const AUDIO_FORMAT = harold.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
 const Note = common.Note;
-const f = harold.note_frequencies;
+const f = zang.note_frequencies;
 const subtrackInit = []Note{
     Note{ .freq = f.C4, .dur = 1 },
     Note{ .freq = f.Ab3, .dur = 1 },
@@ -26,16 +26,16 @@ const subtrack = common.compileSong(subtrackInit.len, subtrackInit, AUDIO_SAMPLE
 
 // an example of a custom "module"
 const SubtrackPlayer = struct {
-    osc: harold.Oscillator,
-    env: harold.Envelope,
+    osc: zang.Oscillator,
+    env: zang.Envelope,
     sub_frame_index: usize,
     note_id: usize,
     freq: f32,
 
     fn init() SubtrackPlayer {
         return SubtrackPlayer{
-            .osc = harold.Oscillator.init(.Sawtooth),
-            .env = harold.Envelope.init(harold.EnvParams {
+            .osc = zang.Oscillator.init(.Sawtooth),
+            .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
@@ -50,11 +50,11 @@ const SubtrackPlayer = struct {
     fn paint(self: *SubtrackPlayer, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32) void {
         const freq_mul = self.freq / 440.0;
 
-        harold.zero(tmp0);
+        zang.zero(tmp0);
         self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index, freq_mul);
-        harold.zero(tmp1);
+        zang.zero(tmp1);
         self.env.paintFromImpulses(sample_rate, tmp1, subtrack, self.sub_frame_index);
-        harold.multiply(out, tmp0, tmp1);
+        zang.multiply(out, tmp0, tmp1);
 
         self.sub_frame_index += out.len;
     }
@@ -63,7 +63,7 @@ const SubtrackPlayer = struct {
         self: *SubtrackPlayer,
         sample_rate: u32,
         out: []f32,
-        track: []const harold.Impulse,
+        track: []const zang.Impulse,
         tmp0: []f32,
         tmp1: []f32,
         frame_index: usize,
@@ -74,7 +74,7 @@ const SubtrackPlayer = struct {
         var start: usize = 0;
 
         while (start < out.len) {
-            const note_span = harold.getNextNoteSpan(track, frame_index, start, out.len);
+            const note_span = zang.getNextNoteSpan(track, frame_index, start, out.len);
 
             std.debug.assert(note_span.start == start);
             std.debug.assert(note_span.end > start);
@@ -120,13 +120,13 @@ var g_buffers: struct {
 pub const MainModule = struct {
     frame_index: usize,
 
-    iq: harold.ImpulseQueue,
+    iq: zang.ImpulseQueue,
     subtrack_player: SubtrackPlayer,
 
     pub fn init() MainModule {
         return MainModule{
             .frame_index = 0,
-            .iq = harold.ImpulseQueue.init(),
+            .iq = zang.ImpulseQueue.init(),
             .subtrack_player = SubtrackPlayer.init(),
         };
     }
@@ -136,7 +136,7 @@ pub const MainModule = struct {
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
 
-        harold.zero(out);
+        zang.zero(out);
 
         self.subtrack_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, self.iq.getImpulses(), tmp0, tmp1, self.frame_index);
 
