@@ -139,9 +139,9 @@ pub const MainModule = struct {
         }
 
         if (!self.iq1.isEmpty()) {
-            // sawtooth wave with resonant low pselfs filter
+            // sawtooth wave with resonant low pass filter
             zang.zero(tmp3);
-            self.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp3, self.iq1.getImpulses(), self.frame_index, null);
+            self.osc1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp3, self.iq1.getImpulses(), self.frame_index, null, true);
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // sawtooth volume
             zang.zero(tmp1);

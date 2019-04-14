@@ -4,7 +4,7 @@ const std = @import("std");
 // basically they are something scheduled. (in the case of dynamic sounds,
 // they are scheduled for the immediate future)
 pub const Impulse = struct {
-    id: usize, // simple autoincrement
+    id: usize, // simple autoincrement (TODO - looks like it's not even used if freq is null?)
     frame: usize, // frames (e.g. 44100 for one second in)
     freq: ?f32, // if null, this is a "note off" event
 };

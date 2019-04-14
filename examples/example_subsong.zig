@@ -51,7 +51,7 @@ const SubtrackPlayer = struct {
         const freq_mul = self.freq / 440.0;
 
         zang.zero(tmp0);
-        self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index, freq_mul);
+        self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index, freq_mul, true);
         zang.zero(tmp1);
         self.env.paintFromImpulses(sample_rate, tmp1, subtrack, self.sub_frame_index);
         zang.multiply(out, tmp0, tmp1);

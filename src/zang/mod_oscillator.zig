@@ -111,6 +111,7 @@ pub const Oscillator = struct {
         // TODO - come up with a more general and systematic to apply functions to
         // notes
         freq_mul: ?f32,
+        ignore_note_off: bool,
     ) void {
         var start: usize = 0;
 
@@ -123,9 +124,18 @@ pub const Oscillator = struct {
                         note.freq * mul
                     else
                         note.freq;
-            }
 
-            self.paint(sample_rate, buf[note_span.start .. note_span.end]);
+                self.paint(sample_rate, buf[note_span.start .. note_span.end]);
+            } else if (ignore_note_off) {
+                // no note active right now, but if `ignore_note_off` is set
+                // we'll keep playing the most recent note. (this is useful if
+                // you want to use an envelope to have the note fade away on
+                // release)
+                // TODO - maybe change the arg to a number representing a
+                // delay, after which we do cut it off here (as an
+                // optimization)
+                self.paint(sample_rate, buf[note_span.start .. note_span.end]);
+            }
 
             start = note_span.end;
         }
