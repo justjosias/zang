@@ -18,12 +18,21 @@ pub const FilterType = enum{
     AllPass,
 };
 
+// convert a frequency into a cutoff value so it can be used with the filter
+pub fn cutoffFromFrequency(frequency: f32, sample_rate: u32) f32 {
+    var v: f32 = undefined;
+    v = 2.0 * (1.0 - std.math.cos(std.math.pi * frequency / @intToFloat(f32, sample_rate)));
+    v = std.math.max(0.0, std.math.min(1.0, v));
+    v = std.math.sqrt(v);
+    return v;
+}
+
 pub const Filter = struct{
     filterType: FilterType,
     l: f32,
     b: f32,
-    cutoff: f32,
-    resonance: f32,
+    cutoff: f32, // 0-1
+    resonance: f32, // 0-1
 
     pub fn init(filterType: FilterType, cutoff: f32, resonance: f32) Filter {
         return Filter{
@@ -35,7 +44,7 @@ pub const Filter = struct{
         };
     }
 
-    pub fn paint(self: *Filter, sample_rate: u32, buf: []f32, input: []const f32) void {
+    pub fn paint(self: *Filter, buf: []f32, input: []const f32) void {
         std.debug.assert(buf.len == input.len);
 
         var l_mul: f32 = 0.0;
@@ -69,14 +78,7 @@ pub const Filter = struct{
 
         var i: usize = 0;
 
-        const freq = blk: {
-            var v: f32 = undefined;
-            v = 2.0 * (1.0 - std.math.cos(std.math.pi * self.cutoff / @intToFloat(f32, sample_rate)));
-            v = std.math.max(0.0, std.math.min(1.0, v));
-            v = std.math.sqrt(v);
-            break :blk v;
-        };
-
+        const cutoff = std.math.max(0.0, std.math.min(1.0, self.cutoff));
         const res = 1.0 - std.math.max(0.0, std.math.min(1.0, self.resonance));
 
         var l = self.l;
@@ -92,13 +94,13 @@ pub const Filter = struct{
             const in = input[i] + fcdcoffset;
 
             // step 1
-            l += freq * b - fcdcoffset; // undo bias here (1 sample delay)
-            b += freq * (in - b * res - l);
+            l += cutoff * b - fcdcoffset; // undo bias here (1 sample delay)
+            b += cutoff * (in - b * res - l);
 
             // step 2
-            l += freq * b;
+            l += cutoff * b;
             h = in - b * res - l;
-            b += freq * h;
+            b += cutoff * h;
 
             buf[i] += l * l_mul + b * b_mul + h * h_mul;
         }
@@ -135,5 +137,81 @@ pub const Filter = struct{
         }
     }
 
-    // TODO - allow cutoff and resonance to be controlled
+    pub fn paintControlledCutoff(
+        self: *Filter,
+        sample_rate: u32,
+        buf: []f32,
+        input: []const f32,
+        input_cutoff: []const f32,
+    ) void {
+        std.debug.assert(buf.len == input.len);
+
+        var l_mul: f32 = 0.0;
+        var b_mul: f32 = 0.0;
+        var h_mul: f32 = 0.0;
+
+        switch (self.filterType) {
+            .Bypass => {
+                std.mem.copy(f32, buf, input);
+                return;
+            },
+            .LowPass => {
+                l_mul = 1.0;
+            },
+            .BandPass => {
+                b_mul = 1.0;
+            },
+            .HighPass => {
+                h_mul = 1.0;
+            },
+            .Notch => {
+                l_mul = 1.0;
+                h_mul = 1.0;
+            },
+            .AllPass => {
+                l_mul = 1.0;
+                b_mul = 1.0;
+                h_mul = 1.0;
+            },
+        }
+
+        var i: usize = 0;
+
+        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, self.resonance));
+
+        var l = self.l;
+        var b = self.b;
+        var h: f32 = undefined;
+
+        while (i < buf.len) : (i += 1) {
+            const cutoff = std.math.max(0.0, std.math.min(1.0, input_cutoff[i]));
+
+            // run 2x oversampled step
+
+            // the filters get slightly biased inputs to avoid the state variables
+            // getting too close to 0 for prolonged periods of time (which would
+            // cause denormals to appear)
+            const in = input[i] + fcdcoffset;
+
+            // step 1
+            l += cutoff * b - fcdcoffset; // undo bias here (1 sample delay)
+            b += cutoff * (in - b * res - l);
+
+            // step 2
+            l += cutoff * b;
+            h = in - b * res - l;
+            b += cutoff * h;
+
+            buf[i] += l * l_mul + b * b_mul + h * h_mul;
+        }
+
+        self.l = l;
+        self.b = b;
+
+        if (buf.len > 0) {
+            self.cutoff = input_cutoff[buf.len - 1];
+        }
+    }
+
+    // TODO - allow resonance to be controlled
 };

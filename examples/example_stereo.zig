@@ -17,14 +17,14 @@ const NoiseModule = struct {
     fn init(seed: u64, freq: f32) NoiseModule {
         return NoiseModule{
             .noise = zang.Noise.init(seed),
-            .flt = zang.Filter.init(.LowPass, freq, 0.4),
+            .flt = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(freq, AUDIO_SAMPLE_RATE), 0.4),
         };
     }
 
     fn paint(self: *NoiseModule, out: []f32, tmp0: []f32) void {
         zang.zero(tmp0);
         self.noise.paint(tmp0);
-        self.flt.paint(AUDIO_SAMPLE_RATE, out, tmp0);
+        self.flt.paint(out, tmp0);
     }
 };
 

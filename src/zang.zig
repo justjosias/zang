@@ -43,6 +43,7 @@ pub const Envelope = mod_envelope.Envelope;
 const mod_filter = @import("zang/mod_filter.zig");
 pub const Filter = mod_filter.Filter;
 pub const FilterType = mod_filter.FilterType;
+pub const cutoffFromFrequency = mod_filter.cutoffFromFrequency;
 
 const mod_noise = @import("zang/mod_noise.zig");
 pub const Noise = mod_noise.Noise;

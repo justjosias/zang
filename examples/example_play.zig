@@ -116,7 +116,7 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .flt = zang.Filter.init(.LowPass, zang.note_frequencies.C5, 0.7),
+            .flt = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(zang.note_frequencies.C5, AUDIO_SAMPLE_RATE), 0.7),
         };
     }
 
@@ -148,7 +148,7 @@ pub const MainModule = struct {
             self.env1.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, self.iq1.getImpulses(), self.frame_index);
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp0, tmp1);
-            self.flt.paint(AUDIO_SAMPLE_RATE, out, tmp2);
+            self.flt.paint(out, tmp2);
         }
 
         self.iq0.flush(self.frame_index, out.len);

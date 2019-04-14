@@ -38,7 +38,7 @@ pub const MainModule = struct {
             // filter frequency set at 4hz. i wanted to go slower but
             // unfortunately at below 4, the filter degrades and the
             // output frequency slowly sinks to nothing
-            .noise_filter = zang.Filter.init(.LowPass, 4.0, 0.0),
+            .noise_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(4.0, AUDIO_SAMPLE_RATE), 0.0),
             .iq = zang.ImpulseQueue.init(),
             .dc = zang.DC.init(),
             .osc = zang.Oscillator.init(.Sawtooth),
@@ -48,7 +48,7 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .main_filter = zang.Filter.init(.LowPass, 880.0, 0.9),
+            .main_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(880.0, AUDIO_SAMPLE_RATE), 0.9),
         };
     }
 
@@ -64,7 +64,7 @@ pub const MainModule = struct {
         zang.zero(tmp1);
         self.noise.paint(tmp1);
         zang.zero(tmp0);
-        self.noise_filter.paint(AUDIO_SAMPLE_RATE, tmp0, tmp1);
+        self.noise_filter.paint(tmp0, tmp1);
         zang.multiplyWithScalar(tmp0, 200.0); // intensity of warble effect
 
         if (!self.iq.isEmpty()) {
@@ -79,7 +79,7 @@ pub const MainModule = struct {
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
-            self.main_filter.paint(AUDIO_SAMPLE_RATE, out, tmp2);
+            self.main_filter.paint(out, tmp2);
             // volume boost
             zang.multiplyWithScalar(out, 2.0);
         }
