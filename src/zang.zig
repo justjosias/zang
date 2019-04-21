@@ -1,11 +1,11 @@
-const types = @import("zang/types.zig");
-pub const Impulse = types.Impulse;
-pub const NoteSpanNote = types.NoteSpanNote;
-
-const note_tracker = @import("zang/note_tracker.zig");
-pub const SongNote = note_tracker.SongNote;
-pub const NoteTracker = note_tracker.NoteTracker;
-pub const DynamicNoteTracker = note_tracker.DynamicNoteTracker;
+const notes = @import("zang/notes.zig");
+pub const Impulse = notes.Impulse;
+pub const NoteSpanNote = notes.NoteSpanNote;
+pub const SongNote = notes.SongNote;
+pub const NoteTracker = notes.NoteTracker;
+pub const DynamicNoteTracker = notes.DynamicNoteTracker;
+pub const ImpulseQueue = notes.ImpulseQueue;
+pub const Trigger = notes.Trigger;
 
 const curves = @import("zang/curves.zig");
 pub const CurveNode = curves.CurveNode;
@@ -14,12 +14,6 @@ pub const getNextCurveNode = curves.getNextCurveNode;
 const curve_tracker = @import("zang/curve_tracker.zig");
 pub const CurveTracker = curve_tracker.CurveTracker;
 pub const CurveTrackerNode = curve_tracker.CurveTrackerNode;
-
-const impulse_queue = @import("zang/impulse_queue.zig");
-pub const ImpulseQueue = impulse_queue.ImpulseQueue;
-
-const triggerable = @import("zang/triggerable.zig");
-pub const Triggerable = triggerable.Triggerable;
 
 const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;

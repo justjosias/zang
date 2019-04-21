@@ -97,7 +97,7 @@ var g_buffers: struct {
 pub const MainModule = struct {
     iq: zang.ImpulseQueue,
     laser_player: LaserPlayer,
-    laser_triggerable: zang.Triggerable(LaserPlayer),
+    laser_trigger: zang.Trigger(LaserPlayer),
 
     r: std.rand.Xoroshiro128,
 
@@ -113,7 +113,7 @@ pub const MainModule = struct {
                 .modulator_mul = 0.5,
                 .modulator_rad = 0.5,
             }),
-            .laser_triggerable = zang.Triggerable(LaserPlayer).init(),
+            .laser_trigger = zang.Trigger(LaserPlayer).init(),
             .r = std.rand.DefaultPrng.init(0),
         };
     }
@@ -126,7 +126,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.laser_triggerable.paintFromImpulses(&self.laser_player, AUDIO_SAMPLE_RATE, out, self.iq.consume(), [3][]f32{tmp0, tmp1, tmp2});
+        self.laser_trigger.paintFromImpulses(&self.laser_player, AUDIO_SAMPLE_RATE, out, self.iq.consume(), [3][]f32{tmp0, tmp1, tmp2});
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

@@ -43,7 +43,7 @@ pub const Filter = struct{
         };
     }
 
-    // FIXME - make this work with Triggerable
+    // FIXME - make this work with Trigger
     pub fn paint(self: *Filter, buf: []f32, input: []const f32) void {
         std.debug.assert(buf.len == input.len);
 

@@ -21,9 +21,9 @@ pub const MainModule = struct {
     keys_held: u32,
     noise: zang.Noise,
     env: zang.Envelope,
-    env_triggerable: zang.Triggerable(zang.Envelope),
+    env_trigger: zang.Trigger(zang.Envelope),
     porta: zang.Portamento,
-    porta_triggerable: zang.Triggerable(zang.Portamento),
+    porta_trigger: zang.Trigger(zang.Portamento),
     flt: zang.Filter,
 
     pub fn init() MainModule {
@@ -44,9 +44,9 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env_triggerable = zang.Triggerable(zang.Envelope).init(),
+            .env_trigger = zang.Trigger(zang.Envelope).init(),
             .porta = zang.Portamento.init(400.0),
-            .porta_triggerable = zang.Triggerable(zang.Portamento).init(),
+            .porta_trigger = zang.Trigger(zang.Portamento).init(),
             .flt = zang.Filter.init(.LowPass, cutoff, 0.985),
         };
     }
@@ -67,7 +67,7 @@ pub const MainModule = struct {
             self.noise.paint(tmp0);
 
             zang.zero(tmp1);
-            self.porta_triggerable.paintFromImpulses(&self.porta, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            self.porta_trigger.paintFromImpulses(&self.porta, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
             // FIXME do this to the impulses, not the buffer
             i = 0; while (i < tmp1.len) : (i += 1) {
                 tmp1[i] = zang.cutoffFromFrequency(tmp1[i], AUDIO_SAMPLE_RATE);
@@ -77,7 +77,7 @@ pub const MainModule = struct {
             self.flt.paintControlledCutoff(AUDIO_SAMPLE_RATE, tmp2, tmp0, tmp1);
 
             zang.zero(tmp0);
-            self.env_triggerable.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            self.env_trigger.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
 
             zang.multiply(out, tmp2, tmp0);
         }

@@ -25,10 +25,10 @@ pub const MainModule = struct {
     iq: zang.ImpulseQueue,
     key: ?i32,
     dc: zang.DC,
-    dc_triggerable: zang.Triggerable(zang.DC),
+    dc_trigger: zang.Trigger(zang.DC),
     osc: zang.Oscillator,
     env: zang.Envelope,
-    env_triggerable: zang.Triggerable(zang.Envelope),
+    env_trigger: zang.Trigger(zang.Envelope),
     main_filter: zang.Filter,
 
     pub fn init() MainModule {
@@ -41,7 +41,7 @@ pub const MainModule = struct {
             .iq = zang.ImpulseQueue.init(),
             .key = null,
             .dc = zang.DC.init(),
-            .dc_triggerable = zang.Triggerable(zang.DC).init(),
+            .dc_trigger = zang.Trigger(zang.DC).init(),
             .osc = zang.Oscillator.init(.Sawtooth),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
@@ -49,7 +49,7 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env_triggerable = zang.Triggerable(zang.Envelope).init(),
+            .env_trigger = zang.Trigger(zang.Envelope).init(),
             .main_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(880.0, AUDIO_SAMPLE_RATE), 0.9),
         };
     }
@@ -73,13 +73,13 @@ pub const MainModule = struct {
             // add note frequencies onto filtered noise
             const impulses = self.iq.consume();
 
-            self.dc_triggerable.paintFromImpulses(&self.dc, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            self.dc_trigger.paintFromImpulses(&self.dc, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
             // paint with oscillator into tmp1
             zang.zero(tmp1);
             self.osc.paintControlledFrequency(AUDIO_SAMPLE_RATE, tmp1, tmp0);
             // combine with envelope
             zang.zero(tmp0);
-            self.env_triggerable.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            self.env_trigger.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter

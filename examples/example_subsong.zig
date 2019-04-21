@@ -20,9 +20,9 @@ const SubtrackPlayer = struct {
 
     tracker: zang.NoteTracker,
     osc: zang.Oscillator,
-    osc_triggerable: zang.Triggerable(zang.Oscillator),
+    osc_trigger: zang.Trigger(zang.Oscillator),
     env: zang.Envelope,
-    env_triggerable: zang.Triggerable(zang.Envelope),
+    env_trigger: zang.Trigger(zang.Envelope),
 
     fn init() SubtrackPlayer {
         const f = note_frequencies;
@@ -37,14 +37,14 @@ const SubtrackPlayer = struct {
                 zang.SongNote{ .t = 0.5, .freq = null },
             }),
             .osc = zang.Oscillator.init(.Sawtooth),
-            .osc_triggerable = zang.Triggerable(zang.Oscillator).init(),
+            .osc_trigger = zang.Trigger(zang.Oscillator).init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
             }),
-            .env_triggerable = zang.Triggerable(zang.Envelope).init(),
+            .env_trigger = zang.Trigger(zang.Envelope).init(),
         };
     }
 
@@ -52,9 +52,9 @@ const SubtrackPlayer = struct {
         const impulses = self.tracker.getImpulses(sample_rate, out.len, freq / BaseFrequency);
 
         zang.zero(tmp[0]);
-        self.osc_triggerable.paintFromImpulses(&self.osc, sample_rate, tmp[0], impulses, [0][]f32{});
+        self.osc_trigger.paintFromImpulses(&self.osc, sample_rate, tmp[0], impulses, [0][]f32{});
         zang.zero(tmp[1]);
-        self.env_triggerable.paintFromImpulses(&self.env, sample_rate, tmp[1], impulses, [0][]f32{});
+        self.env_trigger.paintFromImpulses(&self.env, sample_rate, tmp[1], impulses, [0][]f32{});
         zang.multiply(out, tmp[0], tmp[1]);
     }
 
@@ -76,14 +76,14 @@ pub const MainModule = struct {
     iq: zang.ImpulseQueue,
     key: ?i32,
     subtrack_player: SubtrackPlayer,
-    subtrack_triggerable: zang.Triggerable(SubtrackPlayer),
+    subtrack_trigger: zang.Trigger(SubtrackPlayer),
 
     pub fn init() MainModule {
         return MainModule{
             .iq = zang.ImpulseQueue.init(),
             .key = null,
             .subtrack_player = SubtrackPlayer.init(),
-            .subtrack_triggerable = zang.Triggerable(SubtrackPlayer).init(),
+            .subtrack_trigger = zang.Trigger(SubtrackPlayer).init(),
         };
     }
 
@@ -96,7 +96,7 @@ pub const MainModule = struct {
 
         const impulses = self.iq.consume();
 
-        self.subtrack_triggerable.paintFromImpulses(&self.subtrack_player, AUDIO_SAMPLE_RATE, out, impulses, [2][]f32{tmp0, tmp1});
+        self.subtrack_trigger.paintFromImpulses(&self.subtrack_player, AUDIO_SAMPLE_RATE, out, impulses, [2][]f32{tmp0, tmp1});
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

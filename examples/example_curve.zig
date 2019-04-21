@@ -72,13 +72,13 @@ var g_buffers: struct {
 pub const MainModule = struct {
     iq: zang.ImpulseQueue,
     curve_player: CurvePlayer,
-    curve_triggerable: zang.Triggerable(CurvePlayer),
+    curve_trigger: zang.Trigger(CurvePlayer),
 
     pub fn init() MainModule {
         return MainModule{
             .iq = zang.ImpulseQueue.init(),
             .curve_player = CurvePlayer.init(),
-            .curve_triggerable = zang.Triggerable(CurvePlayer).init(),
+            .curve_trigger = zang.Trigger(CurvePlayer).init(),
         };
     }
 
@@ -89,7 +89,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.curve_triggerable.paintFromImpulses(&self.curve_player, AUDIO_SAMPLE_RATE, out, self.iq.consume(), [2][]f32{tmp0, tmp1});
+        self.curve_trigger.paintFromImpulses(&self.curve_player, AUDIO_SAMPLE_RATE, out, self.iq.consume(), [2][]f32{tmp0, tmp1});
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

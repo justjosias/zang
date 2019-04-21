@@ -67,16 +67,16 @@ pub const MainModule = struct {
     iq0: zang.ImpulseQueue,
     key0: ?i32,
     osc0: PulseModOscillator,
-    osc0_triggerable: zang.Triggerable(PulseModOscillator),
+    osc0_trigger: zang.Trigger(PulseModOscillator),
     env0: zang.Envelope,
-    env0_triggerable: zang.Triggerable(zang.Envelope),
+    env0_trigger: zang.Trigger(zang.Envelope),
 
     iq1: zang.ImpulseQueue,
     key1: ?i32,
     osc1: zang.Oscillator,
-    osc1_triggerable: zang.Triggerable(zang.Oscillator),
+    osc1_trigger: zang.Trigger(zang.Oscillator),
     env1: zang.Envelope,
-    env1_triggerable: zang.Triggerable(zang.Envelope),
+    env1_trigger: zang.Trigger(zang.Envelope),
 
     flt: zang.Filter,
 
@@ -87,25 +87,25 @@ pub const MainModule = struct {
             .iq0 = zang.ImpulseQueue.init(),
             .key0 = null,
             .osc0 = PulseModOscillator.init(1.0, 1.5),
-            .osc0_triggerable = zang.Triggerable(PulseModOscillator).init(),
+            .osc0_trigger = zang.Trigger(PulseModOscillator).init(),
             .env0 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env0_triggerable = zang.Triggerable(zang.Envelope).init(),
+            .env0_trigger = zang.Trigger(zang.Envelope).init(),
             .iq1 = zang.ImpulseQueue.init(),
             .key1 = null,
             .osc1 = zang.Oscillator.init(.Sawtooth),
-            .osc1_triggerable = zang.Triggerable(zang.Oscillator).init(),
+            .osc1_trigger = zang.Trigger(zang.Oscillator).init(),
             .env1 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env1_triggerable = zang.Triggerable(zang.Envelope).init(),
+            .env1_trigger = zang.Trigger(zang.Envelope).init(),
             .flt = zang.Filter.init(.LowPass, cutoff, 0.7),
         };
     }
@@ -124,9 +124,9 @@ pub const MainModule = struct {
             const impulses = self.iq0.consume();
 
             zang.zero(tmp0);
-            self.osc0_triggerable.paintFromImpulses(&self.osc0, AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
+            self.osc0_trigger.paintFromImpulses(&self.osc0, AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
             zang.zero(tmp1);
-            self.env0_triggerable.paintFromImpulses(&self.env0, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            self.env0_trigger.paintFromImpulses(&self.env0, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
             zang.multiply(out, tmp0, tmp1);
         }
 
@@ -135,11 +135,11 @@ pub const MainModule = struct {
             const impulses = self.iq1.consume();
 
             zang.zero(tmp3);
-            self.osc1_triggerable.paintFromImpulses(&self.osc1, AUDIO_SAMPLE_RATE, tmp3, impulses, [0][]f32{});
+            self.osc1_trigger.paintFromImpulses(&self.osc1, AUDIO_SAMPLE_RATE, tmp3, impulses, [0][]f32{});
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // boost sawtooth volume
             zang.zero(tmp1);
-            self.env1_triggerable.paintFromImpulses(&self.env1, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            self.env1_trigger.paintFromImpulses(&self.env1, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp0, tmp1);
             self.flt.paint(out, tmp2);

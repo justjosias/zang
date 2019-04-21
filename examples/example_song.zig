@@ -176,9 +176,9 @@ var g_buffers: struct {
 
 pub const MainModule = struct {
     osc: [NUM_TRACKS]PulseModOscillator,
-    osc_triggerable: [NUM_TRACKS]zang.Triggerable(PulseModOscillator),
+    osc_trigger: [NUM_TRACKS]zang.Trigger(PulseModOscillator),
     env: [NUM_TRACKS]zang.Envelope,
-    env_triggerable: [NUM_TRACKS]zang.Triggerable(zang.Envelope),
+    env_trigger: [NUM_TRACKS]zang.Trigger(zang.Envelope),
     trackers: [NUM_TRACKS]zang.NoteTracker,
 
     pub fn init() MainModule {
@@ -187,14 +187,14 @@ pub const MainModule = struct {
         var i: usize = 0;
         while (i < NUM_TRACKS) : (i += 1) {
             mod.osc[i] = PulseModOscillator.init(1.0, 1.5);
-            mod.osc_triggerable[i] = zang.Triggerable(PulseModOscillator).init();
+            mod.osc_trigger[i] = zang.Trigger(PulseModOscillator).init();
             mod.env[i] = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
             });
-            mod.env_triggerable[i] = zang.Triggerable(zang.Envelope).init();
+            mod.env_trigger[i] = zang.Trigger(zang.Envelope).init();
             mod.trackers[i] = zang.NoteTracker.init(tracks[i]);
         }
 
@@ -215,9 +215,9 @@ pub const MainModule = struct {
             const impulses = self.trackers[i].getImpulses(AUDIO_SAMPLE_RATE, out.len, null);
 
             zang.zero(tmp0);
-            self.osc_triggerable[i].paintFromImpulses(&self.osc[i], AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
+            self.osc_trigger[i].paintFromImpulses(&self.osc[i], AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
             zang.zero(tmp1);
-            self.env_triggerable[i].paintFromImpulses(&self.env[i], AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            self.env_trigger[i].paintFromImpulses(&self.env[i], AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
             zang.multiply(out, tmp0, tmp1);
         }
 
