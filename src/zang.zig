@@ -39,6 +39,7 @@ pub const addInto = basics.addInto;
 pub const addScalar = basics.addScalar;
 pub const addScalarInto = basics.addScalarInto;
 pub const multiply = basics.multiply;
+pub const multiplyWith = basics.multiplyWith;
 pub const multiplyScalar = basics.multiplyScalar;
 pub const multiplyWithScalar = basics.multiplyWithScalar;
 

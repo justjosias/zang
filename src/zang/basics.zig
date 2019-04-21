@@ -62,6 +62,16 @@ pub fn multiply(dest: []f32, a: []const f32, b: []const f32) void {
     }
 }
 
+pub fn multiplyWith(dest: []f32, a: []const f32) void {
+    std.debug.assert(dest.len == a.len);
+
+    var i: usize = 0;
+
+    while (i < dest.len) : (i += 1) {
+        dest[i] *= a[i];
+    }
+}
+
 pub fn multiplyScalar(dest: []f32, a: []const f32, b: f32) void {
     std.debug.assert(dest.len == a.len);
 

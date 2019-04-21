@@ -19,6 +19,8 @@ const NoteSpan = struct {
 // TODO - somehow generalize the note value. currently it's a frequency but you
 // might want to use it for something else, like filter cutoff. maybe the
 // module even has multiple paint methods?
+// TODO - reset method could be replaced by an argument to the paint method,
+// should i do this?
 pub fn Triggerable(comptime ModuleType: type) type {
     return struct {
         // this tracks the last playing note in order to be able to detect
