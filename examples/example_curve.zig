@@ -14,52 +14,46 @@ pub const AUDIO_CHANNELS = 1;
 const CurvePlayer = struct {
     pub const NumTempBufs = 2;
 
-    carrier_tracker: zang.CurveTracker,
-    modulator_tracker: zang.CurveTracker,
-
-    curve: zang.Curve,
+    carrier_curve: zang.Curve,
     carrier: zang.Oscillator,
+    modulator_curve: zang.Curve,
     modulator: zang.Oscillator,
 
     fn init() CurvePlayer {
         return CurvePlayer {
-            .carrier_tracker = zang.CurveTracker.init([]zang.CurveTrackerNode {
-                zang.CurveTrackerNode{ .t = 0.0, .value = 440.0 },
-                zang.CurveTrackerNode{ .t = 0.5, .value = 880.0 },
-                zang.CurveTrackerNode{ .t = 1.0, .value = 110.0 },
-                zang.CurveTrackerNode{ .t = 1.5, .value = 660.0 },
-                zang.CurveTrackerNode{ .t = 2.0, .value = 330.0 },
-                zang.CurveTrackerNode{ .t = 3.9, .value = 20.0 },
+            .carrier_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
+                zang.CurveNode{ .t = 0.0, .value = 440.0 },
+                zang.CurveNode{ .t = 0.5, .value = 880.0 },
+                zang.CurveNode{ .t = 1.0, .value = 110.0 },
+                zang.CurveNode{ .t = 1.5, .value = 660.0 },
+                zang.CurveNode{ .t = 2.0, .value = 330.0 },
+                zang.CurveNode{ .t = 3.9, .value = 20.0 },
             }),
-            .modulator_tracker = zang.CurveTracker.init([]zang.CurveTrackerNode {
-                zang.CurveTrackerNode{ .t = 0.0, .value = 110.0 },
-                zang.CurveTrackerNode{ .t = 1.5, .value = 55.0 },
-                zang.CurveTrackerNode{ .t = 3.0, .value = 220.0 },
-            }),
-            .curve = zang.Curve.init(.SmoothStep),
             .carrier = zang.Oscillator.init(.Sine),
+            .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
+                zang.CurveNode{ .t = 0.0, .value = 110.0 },
+                zang.CurveNode{ .t = 1.5, .value = 55.0 },
+                zang.CurveNode{ .t = 3.0, .value = 220.0 },
+            }),
             .modulator = zang.Oscillator.init(.Sine),
         };
     }
 
     fn paint(self: *CurvePlayer, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [NumTempBufs][]f32) void {
-        const carrier_curve = self.carrier_tracker.getCurveNodes(sample_rate, out.len);
-        const modulator_curve = self.modulator_tracker.getCurveNodes(sample_rate, out.len);
         const freq_mul = freq / 440.0;
 
         zang.zero(tmp[0]);
-        self.curve.paintFromCurve(tmp[0], modulator_curve, freq_mul);
+        self.modulator_curve.paint(sample_rate, tmp[0], freq_mul);
         zang.zero(tmp[1]);
         self.modulator.paintControlledFrequency(sample_rate, tmp[1], tmp[0]);
         zang.zero(tmp[0]);
-        // note it's almost always bad to reuse a module, but Curve happens to hold no state so it works here...
-        self.curve.paintFromCurve(tmp[0], carrier_curve, freq_mul);
+        self.carrier_curve.paint(sample_rate, tmp[0], freq_mul);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp[1], tmp[0]);
     }
 
     fn reset(self: *CurvePlayer) void {
-        self.carrier_tracker.reset();
-        self.modulator_tracker.reset();
+        self.carrier_curve.reset();
+        self.modulator_curve.reset();
     }
 };
 

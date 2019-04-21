@@ -191,50 +191,37 @@ pub const ImpulseQueue = struct {
     // return impulses and advance state.
     // make sure to use the returned impulse list before pushing more stuff
     pub fn consume(self: *ImpulseQueue) ?*const Impulse {
-        defer self.length = 0;
+        // the dyn_tracker will carry over an impulse that was started previously
+        const impulses = self.dyn_tracker.getImpulses(if (self.length > 0) &self.array[0] else null);
 
-        return self.dyn_tracker.getImpulses(if (self.length > 0) &self.array[0] else null);
+        self.length = 0;
+
+        return impulses;
     }
 
-    pub fn push(self: *ImpulseQueue, impulse_frame: usize, freq: ?f32) void {
-        const current_frame_index = 0; // TODO remove
-
-        if (self.length >= self.array.len) {
-            std.debug.warn("outta spots\n");
-            return;
-        }
-
-        // because we're in the main thread, `current_frame_index` points to the
-        // beginning of the next mix invocation.
-
-        // rules:
-        // - never create an impulse that is in the past. if we did, the start of
-        //   the sound would get cut off.
-        // - never create an impulse before an already scheduled impulse. they are
-        //   expected to be in chronological order. (this situation might occur if
-        //   the caller uses complicated time-syncing logic to calculate the
-        //   impulse_frame.)
-        // assume that this method was called in good faith, and that the caller is
-        // really trying to play a sound in the near future. so never throw away
-        // the sound if it's "too soon". instead always clamp it.
-        const min_frame = blk: {
-            var min_frame: i32 = current_frame_index;
+    pub fn push(self: *ImpulseQueue, impulse_frame_: usize, freq: ?f32) void {
+        const impulse_frame = blk: {
+            const impulse_frame = @intCast(i32, impulse_frame_);
 
             if (self.length > 0) {
-                const last_impulse = self.array[self.length - 1];
+                const last_impulse_frame = self.array[self.length - 1].frame;
 
-                if (last_impulse.frame > min_frame) {
-                    min_frame = last_impulse.frame;
+                // if the new impulse would be at the same time or earlier than
+                // the previous one, have it replace the previous one
+                if (impulse_frame <= last_impulse_frame) {
+                    self.length -= 1;
+                    break :blk last_impulse_frame;
                 }
             }
 
-            break :blk min_frame;
+            break :blk impulse_frame;
         };
 
         const note = blk: {
             if (freq) |actual_freq| {
                 const id = self.next_id;
                 self.next_id += 1;
+
                 break :blk NoteSpanNote {
                     .id = id,
                     .freq = actual_freq,
@@ -244,8 +231,12 @@ pub const ImpulseQueue = struct {
             }
         };
 
+        if (self.length >= self.array.len) {
+            std.debug.warn("ImpulseQueue: no more slots\n");
+            return;
+        }
         self.array[self.length] = Impulse{
-            .frame = max(i32, min_frame, @intCast(i32, impulse_frame)),
+            .frame = impulse_frame,
             .note = note,
             .next = null,
         };

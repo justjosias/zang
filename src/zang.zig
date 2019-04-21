@@ -7,14 +7,6 @@ pub const DynamicNoteTracker = notes.DynamicNoteTracker;
 pub const ImpulseQueue = notes.ImpulseQueue;
 pub const Trigger = notes.Trigger;
 
-const curves = @import("zang/curves.zig");
-pub const CurveNode = curves.CurveNode;
-pub const getNextCurveNode = curves.getNextCurveNode;
-
-const curve_tracker = @import("zang/curve_tracker.zig");
-pub const CurveTracker = curve_tracker.CurveTracker;
-pub const CurveTrackerNode = curve_tracker.CurveTrackerNode;
-
 const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;
 pub const mixDown = mixdown.mixDown;
@@ -37,6 +29,7 @@ pub const multiplyWithScalar = basics.multiplyWithScalar;
 
 const mod_curve = @import("zang/mod_curve.zig");
 pub const Curve = mod_curve.Curve;
+pub const CurveNode = mod_curve.CurveNode;
 pub const InterpolationFunction = mod_curve.InterpolationFunction;
 
 const mod_dc = @import("zang/mod_dc.zig");

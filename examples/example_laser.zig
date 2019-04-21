@@ -19,16 +19,14 @@ const LaserPlayer = struct {
         modulator_rad: f32,
     };
 
-    carrier_tracker: zang.CurveTracker,
-    modulator_tracker: zang.CurveTracker,
-    volume_tracker: zang.CurveTracker,
-
     carrier_mul: f32,
+    carrier_curve: zang.Curve,
+    carrier: zang.Oscillator,
     modulator_mul: f32,
     modulator_rad: f32,
-    curve: zang.Curve,
-    carrier: zang.Oscillator,
+    modulator_curve: zang.Curve,
     modulator: zang.Oscillator,
+    volume_curve: zang.Curve,
 
     fn init(params: InitParams) LaserPlayer {
         const A = 1000.0;
@@ -36,54 +34,50 @@ const LaserPlayer = struct {
         const C = 100.0;
 
         return LaserPlayer {
-            .carrier_tracker = zang.CurveTracker.init([]zang.CurveTrackerNode {
-                zang.CurveTrackerNode{ .t = 0.0, .value = A },
-                zang.CurveTrackerNode{ .t = 0.1, .value = B },
-                zang.CurveTrackerNode{ .t = 0.2, .value = C },
-            }),
-            .modulator_tracker = zang.CurveTracker.init([]zang.CurveTrackerNode {
-                zang.CurveTrackerNode{ .t = 0.0, .value = A },
-                zang.CurveTrackerNode{ .t = 0.1, .value = B },
-                zang.CurveTrackerNode{ .t = 0.2, .value = C },
-            }),
-            .volume_tracker = zang.CurveTracker.init([]zang.CurveTrackerNode {
-                zang.CurveTrackerNode{ .t = 0.0, .value = 0.0 },
-                zang.CurveTrackerNode{ .t = 0.004, .value = 1.0 },
-                zang.CurveTrackerNode{ .t = 0.2, .value = 0.0 },
-            }),
             .carrier_mul = params.carrier_mul,
+            .carrier_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
+                zang.CurveNode{ .t = 0.0, .value = A },
+                zang.CurveNode{ .t = 0.1, .value = B },
+                zang.CurveNode{ .t = 0.2, .value = C },
+            }),
+            .carrier = zang.Oscillator.init(.Sine),
             .modulator_mul = params.modulator_mul,
             .modulator_rad = params.modulator_rad,
-            .curve = zang.Curve.init(.SmoothStep),
-            .carrier = zang.Oscillator.init(.Sine),
+            .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
+                zang.CurveNode{ .t = 0.0, .value = A },
+                zang.CurveNode{ .t = 0.1, .value = B },
+                zang.CurveNode{ .t = 0.2, .value = C },
+            }),
             .modulator = zang.Oscillator.init(.Sine),
+            .volume_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
+                zang.CurveNode{ .t = 0.0, .value = 0.0 },
+                zang.CurveNode{ .t = 0.004, .value = 1.0 },
+                zang.CurveNode{ .t = 0.2, .value = 0.0 },
+            }),
         };
     }
 
     fn paint(self: *LaserPlayer, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [NumTempBufs][]f32) void {
-        const carrier_curve = self.carrier_tracker.getCurveNodes(sample_rate, out.len);
-        const modulator_curve = self.modulator_tracker.getCurveNodes(sample_rate, out.len);
-        const volume_curve = self.volume_tracker.getCurveNodes(sample_rate, out.len);
         const freq_mul = freq;
 
         zang.zero(tmp[0]);
-        self.curve.paintFromCurve(tmp[0], modulator_curve, freq_mul * self.modulator_mul);
+        self.modulator_curve.paint(sample_rate, tmp[0], freq_mul * self.modulator_mul);
         zang.zero(tmp[1]);
         self.modulator.paintControlledFrequency(sample_rate, tmp[1], tmp[0]);
         zang.multiplyWithScalar(tmp[1], self.modulator_rad);
         zang.zero(tmp[0]);
-        self.curve.paintFromCurve(tmp[0], carrier_curve, freq_mul * self.carrier_mul);
+        self.carrier_curve.paint(sample_rate, tmp[0], freq_mul * self.carrier_mul);
         zang.zero(tmp[2]);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, tmp[2], tmp[1], tmp[0]);
         zang.zero(tmp[0]);
-        self.curve.paintFromCurve(tmp[0], volume_curve, null);
+        self.volume_curve.paint(sample_rate, tmp[0], null);
         zang.multiply(out, tmp[0], tmp[2]);
     }
 
     fn reset(self: *LaserPlayer) void {
-        self.carrier_tracker.reset();
-        self.modulator_tracker.reset();
-        self.volume_tracker.reset();
+        self.carrier_curve.reset();
+        self.modulator_curve.reset();
+        self.volume_curve.reset();
     }
 };
 
