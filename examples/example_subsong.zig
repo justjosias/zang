@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
+const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -15,7 +16,7 @@ pub const AUDIO_CHANNELS = 1;
 // an example of a custom "module"
 const SubtrackPlayer = struct {
     pub const NumTempBufs = 2;
-    pub const BaseFrequency = zang.note_frequencies.C4;
+    pub const BaseFrequency = note_frequencies.C4;
 
     tracker: zang.NoteTracker,
     osc: zang.Oscillator,
@@ -24,7 +25,7 @@ const SubtrackPlayer = struct {
     env_triggerable: zang.Triggerable(zang.Envelope),
 
     fn init() SubtrackPlayer {
-        const f = zang.note_frequencies;
+        const f = note_frequencies;
 
         return SubtrackPlayer{
             .tracker = zang.NoteTracker.init([]zang.SongNote {
@@ -103,7 +104,7 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = zang.note_frequencies;
+        const f = note_frequencies;
 
         if (switch (key) {
             c.SDLK_a => f.C4,

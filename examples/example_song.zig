@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
+const f = @import("zang-12tet").NoteFrequencies(440.0);
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -11,7 +12,6 @@ pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 1;
 
 const Note = common.Note;
-const f = zang.note_frequencies;
 const track1Init = []Note{
     Note{ .freq = f.A4, .dur = 1 },
     Note{ .freq = f.G4, .dur = 1 },

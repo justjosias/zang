@@ -1,5 +1,6 @@
 const std = @import("std");
 const zang = @import("zang");
+const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -31,7 +32,7 @@ pub const MainModule = struct {
         // function
         // maybe all modules should have an enabled/disabled switch (and be
         // disabled by default)
-        const cutoff = zang.cutoffFromFrequency(zang.note_frequencies.C5, AUDIO_SAMPLE_RATE);
+        const cutoff = zang.cutoffFromFrequency(note_frequencies.C5, AUDIO_SAMPLE_RATE);
 
         return MainModule{
             .iq = zang.ImpulseQueue.init(),
@@ -91,7 +92,7 @@ pub const MainModule = struct {
     // - the frequency is always that of the highest key held
     // - note-off only occurs when all keys are released
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = zang.note_frequencies;
+        const f = note_frequencies;
 
         const key_freqs = [13]f32 {
             f.C4,

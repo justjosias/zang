@@ -1,0 +1,98 @@
+const std = @import("std");
+
+const SEMITONE = std.math.pow(f32, 2.0, 1.0 / 12.0);
+
+pub fn NoteFrequencies(comptime A4_FREQUENCY: f32) type {
+    return struct {
+        fn calcNoteFreq(note: i32) f32 {
+            return A4_FREQUENCY * std.math.pow(f32, SEMITONE, @intToFloat(f32, note));
+        }
+
+        pub const C1 = calcNoteFreq(-45);
+        pub const Cs1 = calcNoteFreq(-44);
+        pub const Db1 = calcNoteFreq(-44);
+        pub const D1 = calcNoteFreq(-43);
+        pub const Ds1 = calcNoteFreq(-42);
+        pub const Eb1 = calcNoteFreq(-42);
+        pub const E1 = calcNoteFreq(-41);
+        pub const F1 = calcNoteFreq(-40);
+        pub const Fs1 = calcNoteFreq(-39);
+        pub const Gb1 = calcNoteFreq(-39);
+        pub const G1 = calcNoteFreq(-38);
+        pub const Gs1 = calcNoteFreq(-37);
+        pub const Ab1 = calcNoteFreq(-37);
+        pub const A1 = calcNoteFreq(-36);
+        pub const As1 = calcNoteFreq(-35);
+        pub const Bb1 = calcNoteFreq(-35);
+        pub const B1 = calcNoteFreq(-34);
+        pub const C2 = calcNoteFreq(-33);
+        pub const Cs2 = calcNoteFreq(-32);
+        pub const Db2 = calcNoteFreq(-32);
+        pub const D2 = calcNoteFreq(-31);
+        pub const Ds2 = calcNoteFreq(-30);
+        pub const Eb2 = calcNoteFreq(-30);
+        pub const E2 = calcNoteFreq(-29);
+        pub const F2 = calcNoteFreq(-28);
+        pub const Fs2 = calcNoteFreq(-27);
+        pub const Gb2 = calcNoteFreq(-27);
+        pub const G2 = calcNoteFreq(-26);
+        pub const Gs2 = calcNoteFreq(-25);
+        pub const Ab2 = calcNoteFreq(-25);
+        pub const A2 = calcNoteFreq(-24);
+        pub const As2 = calcNoteFreq(-23);
+        pub const Bb2 = calcNoteFreq(-23);
+        pub const B2 = calcNoteFreq(-22);
+        pub const C3 = calcNoteFreq(-21);
+        pub const Cs3 = calcNoteFreq(-20);
+        pub const Db3 = calcNoteFreq(-20);
+        pub const D3 = calcNoteFreq(-19);
+        pub const Ds3 = calcNoteFreq(-18);
+        pub const Eb3 = calcNoteFreq(-18);
+        pub const E3 = calcNoteFreq(-17);
+        pub const F3 = calcNoteFreq(-16);
+        pub const Fs3 = calcNoteFreq(-15);
+        pub const Gb3 = calcNoteFreq(-15);
+        pub const G3 = calcNoteFreq(-14);
+        pub const Gs3 = calcNoteFreq(-13);
+        pub const Ab3 = calcNoteFreq(-13);
+        pub const A3 = calcNoteFreq(-12);
+        pub const As3 = calcNoteFreq(-11);
+        pub const Bb3 = calcNoteFreq(-11);
+        pub const B3 = calcNoteFreq(-10);
+        pub const C4 = calcNoteFreq(-9);
+        pub const Cs4 = calcNoteFreq(-8);
+        pub const Db4 = calcNoteFreq(-8);
+        pub const D4 = calcNoteFreq(-7);
+        pub const Ds4 = calcNoteFreq(-6);
+        pub const Eb4 = calcNoteFreq(-6);
+        pub const E4 = calcNoteFreq(-5);
+        pub const F4 = calcNoteFreq(-4);
+        pub const Fs4 = calcNoteFreq(-3);
+        pub const Gb4 = calcNoteFreq(-3);
+        pub const G4 = calcNoteFreq(-2);
+        pub const Gs4 = calcNoteFreq(-1);
+        pub const Ab4 = calcNoteFreq(-1);
+        pub const A4 = calcNoteFreq(0);
+        pub const As4 = calcNoteFreq(1);
+        pub const Bb4 = calcNoteFreq(1);
+        pub const B4 = calcNoteFreq(2);
+        pub const C5 = calcNoteFreq(3);
+        pub const Cs5 = calcNoteFreq(4);
+        pub const Db5 = calcNoteFreq(4);
+        pub const D5 = calcNoteFreq(5);
+        pub const Ds5 = calcNoteFreq(6);
+        pub const Eb5 = calcNoteFreq(6);
+        pub const E5 = calcNoteFreq(7);
+        pub const F5 = calcNoteFreq(8);
+        pub const Fs5 = calcNoteFreq(9);
+        pub const Gb5 = calcNoteFreq(9);
+        pub const G5 = calcNoteFreq(10);
+        pub const Gs5 = calcNoteFreq(11);
+        pub const Ab5 = calcNoteFreq(11);
+        pub const A5 = calcNoteFreq(12);
+        pub const As5 = calcNoteFreq(13);
+        pub const Bb5 = calcNoteFreq(13);
+        pub const B5 = calcNoteFreq(14);
+        pub const C6 = calcNoteFreq(15);
+    };
+}

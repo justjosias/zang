@@ -1,5 +1,3 @@
-pub const note_frequencies = @import("zang/note_frequencies.zig");
-
 const types = @import("zang/types.zig");
 pub const Impulse = types.Impulse;
 pub const NoteSpanNote = types.NoteSpanNote;

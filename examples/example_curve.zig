@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
+const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -96,7 +97,7 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = zang.note_frequencies;
+        const f = note_frequencies;
 
         if (!down) {
             return null;
