@@ -1,4 +1,6 @@
 // in this example a little melody plays every time you hit a key
+// TODO - maybe add an envelope effect at the outer level, to demonstrate that
+// the note events are nesting correctly
 
 const std = @import("std");
 const zang = @import("zang");
@@ -10,104 +12,56 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-const Note = common.Note;
-const f = zang.note_frequencies;
-const subtrackInit = []Note{
-    Note{ .freq = f.C4, .dur = 1 },
-    Note{ .freq = f.Ab3, .dur = 1 },
-    Note{ .freq = f.G3, .dur = 1 },
-    Note{ .freq = f.Eb3, .dur = 1 },
-    Note{ .freq = f.C3, .dur = 1 },
-};
-
-const NOTE_DURATION = 0.1;
-
-const subtrack = common.compileSong(subtrackInit.len, subtrackInit, AUDIO_SAMPLE_RATE, NOTE_DURATION);
-
 // an example of a custom "module"
 const SubtrackPlayer = struct {
+    pub const NumTempBufs = 2;
+    pub const BaseFrequency = zang.note_frequencies.C4;
+
+    tracker: zang.NoteTracker,
     osc: zang.Oscillator,
+    osc_triggerable: zang.Triggerable(zang.Oscillator),
     env: zang.Envelope,
-    sub_frame_index: usize,
-    note_id: usize,
-    freq: f32,
+    env_triggerable: zang.Triggerable(zang.Envelope),
 
     fn init() SubtrackPlayer {
+        const f = zang.note_frequencies;
+
         return SubtrackPlayer{
+            .tracker = zang.NoteTracker.init([]zang.SongNote {
+                zang.SongNote{ .t = 0.0, .freq = f.C4 },
+                zang.SongNote{ .t = 0.1, .freq = f.Ab3 },
+                zang.SongNote{ .t = 0.2, .freq = f.G3 },
+                zang.SongNote{ .t = 0.3, .freq = f.Eb3 },
+                zang.SongNote{ .t = 0.4, .freq = f.C3 },
+                zang.SongNote{ .t = 0.5, .freq = null },
+            }),
             .osc = zang.Oscillator.init(.Sawtooth),
+            .osc_triggerable = zang.Triggerable(zang.Oscillator).init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
             }),
-            .sub_frame_index = 0,
-            .note_id = 0,
-            .freq = 0.0,
+            .env_triggerable = zang.Triggerable(zang.Envelope).init(),
         };
     }
 
-    fn paint(self: *SubtrackPlayer, sample_rate: u32, out: []f32, tmp0: []f32, tmp1: []f32) void {
-        const freq_mul = self.freq / 440.0;
+    fn paint(self: *SubtrackPlayer, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [NumTempBufs][]f32) void {
+        const impulses = self.tracker.getImpulses(sample_rate, out.len, freq / BaseFrequency);
 
-        zang.zero(tmp0);
-        self.osc.paintFromImpulses(sample_rate, tmp0, subtrack, self.sub_frame_index, freq_mul, true);
-        zang.zero(tmp1);
-        self.env.paintFromImpulses(sample_rate, tmp1, subtrack, self.sub_frame_index);
-        zang.multiply(out, tmp0, tmp1);
-
-        self.sub_frame_index += out.len;
+        zang.zero(tmp[0]);
+        self.osc_triggerable.paintFromImpulses(&self.osc, sample_rate, tmp[0], impulses, [0][]f32{});
+        zang.zero(tmp[1]);
+        self.env_triggerable.paintFromImpulses(&self.env, sample_rate, tmp[1], impulses, [0][]f32{});
+        zang.multiply(out, tmp[0], tmp[1]);
     }
 
-    fn paintFromImpulses(
-        self: *SubtrackPlayer,
-        sample_rate: u32,
-        out: []f32,
-        track: []const zang.Impulse,
-        tmp0: []f32,
-        tmp1: []f32,
-        frame_index: usize,
-    ) void {
-        std.debug.assert(out.len == tmp0.len);
-        std.debug.assert(out.len == tmp1.len);
-
-        var start: usize = 0;
-
-        while (start < out.len) {
-            const note_span = zang.getNextNoteSpan(track, frame_index, start, out.len);
-
-            std.debug.assert(note_span.start == start);
-            std.debug.assert(note_span.end > start);
-            std.debug.assert(note_span.end <= out.len);
-
-            const buf_span = out[note_span.start .. note_span.end];
-            const tmp0_span = tmp0[note_span.start .. note_span.end];
-            const tmp1_span = tmp1[note_span.start .. note_span.end];
-
-            if (note_span.note) |note| {
-                if (note.id != self.note_id) {
-                    std.debug.assert(note.id > self.note_id);
-
-                    self.note_id = note.id;
-                    self.freq = note.freq;
-                    self.env.note_id = 0; // TODO - make an API method for this
-                    self.sub_frame_index = 0;
-                }
-
-                self.paint(sample_rate, buf_span, tmp0_span, tmp1_span);
-            } else {
-                // gap between notes. but keep playing (sampler currently ignores note
-                // end events).
-
-                // don't paint at all if note_freq is null. that means we haven't hit
-                // the first note yet
-                if (self.note_id > 0) {
-                    self.paint(sample_rate, buf_span, tmp0_span, tmp1_span);
-                }
-            }
-
-            start = note_span.end;
-        }
+    fn reset(self: *SubtrackPlayer) void {
+        // FIXME - i think something's still not right. i hear clicking sometimes when you press notes
+        self.tracker.reset();
+        self.osc.reset();
+        self.env.reset();
     }
 };
 
@@ -118,16 +72,17 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    frame_index: usize,
-
     iq: zang.ImpulseQueue,
+    key: ?i32,
     subtrack_player: SubtrackPlayer,
+    subtrack_triggerable: zang.Triggerable(SubtrackPlayer),
 
     pub fn init() MainModule {
         return MainModule{
-            .frame_index = 0,
             .iq = zang.ImpulseQueue.init(),
+            .key = null,
             .subtrack_player = SubtrackPlayer.init(),
+            .subtrack_triggerable = zang.Triggerable(SubtrackPlayer).init(),
         };
     }
 
@@ -138,11 +93,9 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.subtrack_player.paintFromImpulses(AUDIO_SAMPLE_RATE, out, self.iq.getImpulses(), tmp0, tmp1, self.frame_index);
+        const impulses = self.iq.consume();
 
-        self.iq.flush(self.frame_index, out.len);
-
-        self.frame_index += out.len;
+        self.subtrack_triggerable.paintFromImpulses(&self.subtrack_player, AUDIO_SAMPLE_RATE, out, impulses, [2][]f32{tmp0, tmp1});
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
@@ -150,9 +103,7 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        if (!down) {
-            return null;
-        }
+        const f = zang.note_frequencies;
 
         if (switch (key) {
             c.SDLK_a => f.C4,
@@ -170,10 +121,23 @@ pub const MainModule = struct {
             c.SDLK_k => f.C5,
             else => null,
         }) |freq| {
-            return common.KeyEvent{
-                .iq = &self.iq,
-                .freq = freq,
-            };
+            if (down) {
+                self.key = key;
+
+                return common.KeyEvent {
+                    .iq = &self.iq,
+                    .freq = freq,
+                };
+            } else {
+                if (if (self.key) |nh| nh == key else false) {
+                    self.key = null;
+
+                    return common.KeyEvent {
+                        .iq = &self.iq,
+                        .freq = null,
+                    };
+                }
+            }
         }
 
         return null;

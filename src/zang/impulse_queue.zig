@@ -1,43 +1,39 @@
 const std = @import("std");
 
-const Impulse = @import("note_span.zig").Impulse;
+const Impulse = @import("types.zig").Impulse;
+const NoteSpanNote = @import("types.zig").NoteSpanNote;
+const DynamicNoteTracker = @import("note_tracker.zig").DynamicNoteTracker;
 
-// impulse queue is used to create new impulses on the fly from the main thread
 pub const ImpulseQueue = struct {
     array: [32]Impulse,
     length: usize,
     next_id: usize,
+    dyn_tracker: DynamicNoteTracker,
 
     pub fn init() ImpulseQueue {
         return ImpulseQueue{
             .array = undefined,
             .length = 0,
             .next_id = 1,
+            .dyn_tracker = DynamicNoteTracker.init(),
         };
     }
 
-    pub fn isEmpty(self: *const ImpulseQueue) bool {
-        return self.length == 0;
+    // return impulses and advance state.
+    // make sure to use the returned impulse list before pushing more stuff
+    pub fn consume(self: *ImpulseQueue) ?*const Impulse {
+        defer self.length = 0;
+
+        return self.dyn_tracker.getImpulses(if (self.length > 0) &self.array[0] else null);
     }
 
-    pub fn getImpulses(self: *const ImpulseQueue) []const Impulse {
-        return self.array[0..self.length];
-    }
+    pub fn push(self: *ImpulseQueue, impulse_frame: usize, freq: ?f32) void {
+        const current_frame_index = 0; // TODO remove
 
-    // call this in the main thread (with mutex locked)
-    pub fn push(
-        self: *ImpulseQueue,
-        impulse_frame: usize,
-        freq: ?f32,
-        current_frame_index: usize,
-    ) void {
         if (self.length >= self.array.len) {
             std.debug.warn("outta spots\n");
             return;
         }
-
-        const id = self.next_id;
-        self.next_id += 1;
 
         // because we're in the main thread, `current_frame_index` points to the
         // beginning of the next mix invocation.
@@ -53,7 +49,7 @@ pub const ImpulseQueue = struct {
         // really trying to play a sound in the near future. so never throw away
         // the sound if it's "too soon". instead always clamp it.
         const min_frame = blk: {
-            var min_frame = current_frame_index;
+            var min_frame: i32 = current_frame_index;
 
             if (self.length > 0) {
                 const last_impulse = self.array[self.length - 1];
@@ -66,41 +62,31 @@ pub const ImpulseQueue = struct {
             break :blk min_frame;
         };
 
-        self.array[self.length] = Impulse{
-            .id = id,
-            .frame = std.math.max(min_frame, impulse_frame),
-            .freq = freq,
+        const note = blk: {
+            if (freq) |actual_freq| {
+                const id = self.next_id;
+                self.next_id += 1;
+                break :blk NoteSpanNote {
+                    .id = id,
+                    .freq = actual_freq,
+                };
+            } else {
+                break :blk null;
+            }
         };
+
+        self.array[self.length] = Impulse{
+            .frame = max(i32, min_frame, @intCast(i32, impulse_frame)),
+            .note = note,
+            .next = null,
+        };
+        if (self.length > 0) {
+            self.array[self.length - 1].next = &self.array[self.length];
+        }
         self.length += 1;
     }
-
-    // call this in the audio thread, after mixing
-    pub fn flush(self: *ImpulseQueue, current_frame_index: usize, frame_length: usize) void {
-        const next_frame_index = current_frame_index + frame_length;
-
-        // delete all impulses that started before the end of this buffer, except
-        // the last one (since that one will sustain into the next frame).
-
-        // find the first future impulse.
-        var i: usize = 0;
-        while (i < self.length) : (i += 1) {
-            if (self.array[i].frame >= next_frame_index) {
-                break;
-            }
-        }
-
-        // now, i is equal to the index of the first future impulse, or, if there
-        // were none, the end of the queue.
-
-        // now, delete everything up to that point, except for the last one before
-        // that point (because that one will sustain into the future).
-        if (i > 1) {
-            const num_to_delete = i - 1;
-            i = 0;
-            while (i < self.length - num_to_delete) : (i += 1) {
-                self.array[i] = self.array[i + num_to_delete];
-            }
-            self.length -= num_to_delete;
-        }
-    }
 };
+
+fn max(comptime T: type, a: T, b: T) T {
+    return if (a > b) a else b;
+}

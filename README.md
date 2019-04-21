@@ -26,6 +26,7 @@ Modules:
 * DC: just a way to paint incoming note frequencies into a buffer
 * Envelope: ADSR (attack, decay, sustain, release) envelope generator
 * Filter: lowpass, highpass, notch, bandpass, including resonance
+* Gate: a simpler Envelope, just outputs 1 or 0 based on note on and off events
 * Noise: basic white noise
 * Oscillator: generate a sine, triangle, sawtooth, or triangle wave
 * Portamento: interpolate the frequency of an incoming stream of notes
@@ -47,7 +48,7 @@ My goals for the core library:
 * Documentation
 * There was another one but I forgot
 
-The library is currently 1400 lines of code. A lot of the above is already in there, although it needs to be cleaned up. And it already contains some fat that could be trimmed. I don't see the library getting much bigger than say 2500 lines of code, assuming not many more modules are added.
+The library is currently 1800 lines of code. A lot of the above is already in there, although it needs to be cleaned up. And it already contains some fat that could be trimmed. I don't see the library getting much bigger than say 2500 lines of code, assuming not many more modules are added.
 
 What needs the most work (other than the API surface in general) is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. This applies also to curves, and to notes created on the fly in interactive applications.
 

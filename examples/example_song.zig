@@ -117,22 +117,23 @@ const track8Init = []Note{
 const NUM_TRACKS = 8;
 const NOTE_DURATION = 0.08;
 
-const tracks = [NUM_TRACKS][]const zang.Impulse {
-    common.compileSong(track1Init.len, track1Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track2Init.len, track2Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track3Init.len, track3Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track4Init.len, track4Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track5Init.len, track5Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track6Init.len, track6Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track7Init.len, track7Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
-    common.compileSong(track8Init.len, track8Init, AUDIO_SAMPLE_RATE, NOTE_DURATION),
+const tracks = [NUM_TRACKS][]const zang.SongNote {
+    common.compileSong(track1Init.len, track1Init, NOTE_DURATION),
+    common.compileSong(track2Init.len, track2Init, NOTE_DURATION),
+    common.compileSong(track3Init.len, track3Init, NOTE_DURATION),
+    common.compileSong(track4Init.len, track4Init, NOTE_DURATION),
+    common.compileSong(track5Init.len, track5Init, NOTE_DURATION),
+    common.compileSong(track6Init.len, track6Init, NOTE_DURATION),
+    common.compileSong(track7Init.len, track7Init, NOTE_DURATION),
+    common.compileSong(track8Init.len, track8Init, NOTE_DURATION),
 };
 
 // an example of a custom "module"
 const PulseModOscillator = struct {
+    pub const NumTempBufs = 3;
+
     carrier: zang.Oscillator,
     modulator: zang.Oscillator,
-    dc: zang.DC,
     // ratio: the carrier oscillator will use whatever frequency you give the
     // PulseModOscillator. the modulator oscillator will multiply the frequency
     // by this ratio. for example, a ratio of 0.5 means that the modulator
@@ -147,35 +148,21 @@ const PulseModOscillator = struct {
         return PulseModOscillator{
             .carrier = zang.Oscillator.init(.Sine),
             .modulator = zang.Oscillator.init(.Sine),
-            .dc = zang.DC.init(),
             .ratio = ratio,
             .multiplier = multiplier,
         };
     }
 
-    fn paintFromImpulses(
-        self: *PulseModOscillator,
-        sample_rate: u32,
-        out: []f32,
-        track: []const zang.Impulse,
-        tmp0: []f32,
-        tmp1: []f32,
-        tmp2: []f32,
-        frame_index: usize,
-    ) void {
-        std.debug.assert(out.len == tmp0.len);
-        std.debug.assert(out.len == tmp1.len);
-        std.debug.assert(out.len == tmp2.len);
+    fn reset(self: *PulseModOscillator) void {}
 
-        zang.zero(tmp0);
-        zang.zero(tmp1);
-        self.dc.paintFrequencyFromImpulses(tmp0, track, frame_index);
-        zang.multiplyScalar(tmp1, tmp0, self.ratio);
-        zang.zero(tmp2);
-        self.modulator.paintControlledFrequency(sample_rate, tmp2, tmp1);
-        zang.zero(tmp1);
-        zang.multiplyScalar(tmp1, tmp2, self.multiplier);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp1, tmp0);
+    fn paint(self: *PulseModOscillator, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [3][]f32) void {
+        zang.set(tmp[0], freq);
+        zang.set(tmp[1], freq * self.ratio);
+        zang.zero(tmp[2]);
+        self.modulator.paintControlledFrequency(sample_rate, tmp[2], tmp[1]);
+        zang.zero(tmp[1]);
+        zang.multiplyScalar(tmp[1], tmp[2], self.multiplier);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp[1], tmp[0]);
     }
 };
 
@@ -188,26 +175,30 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    frame_index: usize,
-
     osc: [NUM_TRACKS]PulseModOscillator,
+    osc_triggerable: [NUM_TRACKS]zang.Triggerable(PulseModOscillator),
     env: [NUM_TRACKS]zang.Envelope,
+    env_triggerable: [NUM_TRACKS]zang.Triggerable(zang.Envelope),
+    trackers: [NUM_TRACKS]zang.NoteTracker,
 
     pub fn init() MainModule {
-        return MainModule{
-            .frame_index = 0,
-            .osc = [1]PulseModOscillator{
-                PulseModOscillator.init(1.0, 1.5)
-            } ** NUM_TRACKS,
-            .env = [1]zang.Envelope{
-                zang.Envelope.init(zang.EnvParams {
-                    .attack_duration = 0.025,
-                    .decay_duration = 0.1,
-                    .sustain_volume = 0.5,
-                    .release_duration = 0.15,
-                })
-            } ** NUM_TRACKS,
-        };
+        var mod: MainModule = undefined;
+
+        var i: usize = 0;
+        while (i < NUM_TRACKS) : (i += 1) {
+            mod.osc[i] = PulseModOscillator.init(1.0, 1.5);
+            mod.osc_triggerable[i] = zang.Triggerable(PulseModOscillator).init();
+            mod.env[i] = zang.Envelope.init(zang.EnvParams {
+                .attack_duration = 0.025,
+                .decay_duration = 0.1,
+                .sustain_volume = 0.5,
+                .release_duration = 0.15,
+            });
+            mod.env_triggerable[i] = zang.Triggerable(zang.Envelope).init();
+            mod.trackers[i] = zang.NoteTracker.init(tracks[i]);
+        }
+
+        return mod;
     }
 
     pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
@@ -221,14 +212,14 @@ pub const MainModule = struct {
 
         var i: usize = 0;
         while (i < NUM_TRACKS) : (i += 1) {
+            const impulses = self.trackers[i].getImpulses(AUDIO_SAMPLE_RATE, out.len, null);
+
             zang.zero(tmp0);
-            self.osc[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, tracks[i], tmp1, tmp2, tmp3, self.frame_index);
+            self.osc_triggerable[i].paintFromImpulses(&self.osc[i], AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
             zang.zero(tmp1);
-            self.env[i].paintFromImpulses(AUDIO_SAMPLE_RATE, tmp1, tracks[i], self.frame_index);
+            self.env_triggerable[i].paintFromImpulses(&self.env[i], AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
             zang.multiply(out, tmp0, tmp1);
         }
-
-        self.frame_index += out.len;
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

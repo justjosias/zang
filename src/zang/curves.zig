@@ -3,7 +3,7 @@ const std = @import("std");
 // curves are like notes except the value will be interpolated in between them.
 // they can't be created in real-time
 pub const CurveNode = struct {
-    frame: usize, // frames (e.g. 44100 for one second in)
+    frame: i32, // frames (e.g. 44100 for one second in)
     value: f32,
 };
 
@@ -18,18 +18,17 @@ pub const CurveSpan = struct {
     values: ?CurveSpanValues, // if null, this is a silent gap between curves
 };
 
-pub fn getNextCurveSpan(
-    curve_nodes: []const CurveNode,
-    frame_index: usize,
-    dest_start: usize,
-    dest_end: usize,
-) CurveSpan {
-    std.debug.assert(dest_start < dest_end);
+// note: will possibly emit an end node past the end of the buffer (necessary for interpolation)
+pub fn getNextCurveSpan(curve_nodes: []const CurveNode, dest_start_: usize, dest_end_: usize) CurveSpan {
+    std.debug.assert(dest_start_ < dest_end_);
+
+    const dest_start = @intCast(i32, dest_start_);
+    const dest_end = @intCast(i32, dest_end_);
 
     for (curve_nodes) |curve_node, i| {
         const start_pos = curve_node.frame;
 
-        if (start_pos >= frame_index + dest_end) {
+        if (start_pos >= dest_end) {
             // this curve_node (and all after it, since they're in chronological order)
             // starts after the end of the buffer
             break;
@@ -39,31 +38,31 @@ pub fn getNextCurveSpan(
         // end of the buffer, whichever comes first
         const end_pos =
             if (i < curve_nodes.len - 1)
-                std.math.min(frame_index + dest_end, curve_nodes[i + 1].frame)
+                min(i32, dest_end, curve_nodes[i + 1].frame)
             else
-                frame_index + dest_end;
+                dest_end;
 
-        if (end_pos <= frame_index + dest_start) {
+        if (end_pos <= dest_start) {
             // curve_node is entirely in the past. skip it
             continue;
         }
 
         const note_start_clipped =
-            if (start_pos > frame_index + dest_start)
-                start_pos - frame_index
+            if (start_pos > dest_start)
+                start_pos
             else
                 dest_start;
 
         if (note_start_clipped > dest_start) {
             // gap before the note begins
             return CurveSpan{
-                .start = dest_start,
-                .end = note_start_clipped,
+                .start = @intCast(usize, dest_start),
+                .end = @intCast(usize, note_start_clipped),
                 .values = null,
             };
         }
 
-        const note_end = end_pos - frame_index;
+        const note_end = end_pos;
         const note_end_clipped =
             if (note_end > dest_end)
                 dest_end
@@ -71,8 +70,8 @@ pub fn getNextCurveSpan(
                 note_end;
 
         return CurveSpan{
-            .start = note_start_clipped,
-            .end = note_end_clipped,
+            .start = @intCast(usize, note_start_clipped),
+            .end = @intCast(usize, note_end_clipped),
             .values =
                 if (i < curve_nodes.len - 1)
                     CurveSpanValues{
@@ -87,8 +86,12 @@ pub fn getNextCurveSpan(
     std.debug.assert(dest_start < dest_end);
 
     return CurveSpan{
-        .start = dest_start,
-        .end = dest_end,
+        .start = @intCast(usize, dest_start),
+        .end = @intCast(usize, dest_end),
         .values = null,
     };
+}
+
+fn min(comptime T: type, a: T, b: T) T {
+    return if (a < b) a else b;
 }

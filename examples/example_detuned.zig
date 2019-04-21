@@ -18,29 +18,29 @@ var g_buffers: struct {
     buf4: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
-var g_note_held: ?i32 = null;
-
 pub const MainModule = struct {
-    frame_index: usize,
-
     noise: zang.Noise,
     noise_filter: zang.Filter,
     iq: zang.ImpulseQueue,
+    key: ?i32,
     dc: zang.DC,
+    dc_triggerable: zang.Triggerable(zang.DC),
     osc: zang.Oscillator,
     env: zang.Envelope,
+    env_triggerable: zang.Triggerable(zang.Envelope),
     main_filter: zang.Filter,
 
     pub fn init() MainModule {
         return MainModule{
-            .frame_index = 0,
             .noise = zang.Noise.init(0),
             // filter frequency set at 4hz. i wanted to go slower but
             // unfortunately at below 4, the filter degrades and the
             // output frequency slowly sinks to nothing
             .noise_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(4.0, AUDIO_SAMPLE_RATE), 0.0),
             .iq = zang.ImpulseQueue.init(),
+            .key = null,
             .dc = zang.DC.init(),
+            .dc_triggerable = zang.Triggerable(zang.DC).init(),
             .osc = zang.Oscillator.init(.Sawtooth),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
@@ -48,6 +48,7 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
+            .env_triggerable = zang.Triggerable(zang.Envelope).init(),
             .main_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(880.0, AUDIO_SAMPLE_RATE), 0.9),
         };
     }
@@ -67,15 +68,17 @@ pub const MainModule = struct {
         self.noise_filter.paint(tmp0, tmp1);
         zang.multiplyWithScalar(tmp0, 200.0); // intensity of warble effect
 
-        if (!self.iq.isEmpty()) {
+        {
             // add note frequencies onto filtered noise
-            self.dc.paintFrequencyFromImpulses(tmp0, self.iq.getImpulses(), self.frame_index);
+            const impulses = self.iq.consume();
+
+            self.dc_triggerable.paintFromImpulses(&self.dc, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
             // paint with oscillator into tmp1
             zang.zero(tmp1);
             self.osc.paintControlledFrequency(AUDIO_SAMPLE_RATE, tmp1, tmp0);
             // combine with envelope
             zang.zero(tmp0);
-            self.env.paintFromImpulses(AUDIO_SAMPLE_RATE, tmp0, self.iq.getImpulses(), self.frame_index);
+            self.env_triggerable.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
@@ -83,10 +86,6 @@ pub const MainModule = struct {
             // volume boost
             zang.multiplyWithScalar(out, 2.0);
         }
-
-        self.iq.flush(self.frame_index, out.len);
-
-        self.frame_index += out.len;
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
@@ -113,15 +112,15 @@ pub const MainModule = struct {
             else => null,
         }) |freq| {
             if (down) {
-                g_note_held = key;
+                self.key = key;
 
                 return common.KeyEvent{
                     .iq = &self.iq,
                     .freq = freq,
                 };
             } else {
-                if (if (g_note_held) |nh| nh == key else false) {
-                    g_note_held = null;
+                if (if (self.key) |nh| nh == key else false) {
+                    self.key = null;
 
                     return common.KeyEvent{
                         .iq = &self.iq,

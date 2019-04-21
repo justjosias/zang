@@ -1,6 +1,11 @@
 const std = @import("std");
 
-pub fn readWav(buf: []const u8, out_sample_rate: *u32) ![]const u8 {
+pub const WavContents = struct {
+    data: []const u8,
+    sample_rate: u32,
+};
+
+pub fn readWav(buf: []const u8) !WavContents {
     var sis = std.io.SliceInStream.init(buf);
     const stream = &sis.stream;
 
@@ -72,7 +77,8 @@ pub fn readWav(buf: []const u8, out_sample_rate: *u32) ![]const u8 {
     // data is here.
     const data_index = 44;
 
-    out_sample_rate.* = frequency;
-
-    return buf[data_index .. data_index + data_len];
+    return WavContents {
+        .data = buf[data_index .. data_index + data_len],
+        .sample_rate = frequency,
+    };
 }

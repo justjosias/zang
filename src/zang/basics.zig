@@ -4,6 +4,10 @@ pub fn zero(dest: []f32) void {
     std.mem.set(f32, dest, 0.0);
 }
 
+pub fn set(dest: []f32, a: f32) void {
+    std.mem.set(f32, dest, a);
+}
+
 pub fn copy(dest: []f32, src: []const f32) void {
     std.debug.assert(dest.len == src.len);
 
@@ -37,6 +41,14 @@ pub fn addScalar(dest: []f32, a: []const f32, b: f32) void {
 
     while (i < dest.len) : (i += 1) {
         dest[i] += a[i] + b;
+    }
+}
+
+pub fn addScalarInto(dest: []f32, a: f32) void {
+    var i: usize = 0;
+
+    while (i < dest.len) : (i += 1) {
+        dest[i] += a;
     }
 }
 

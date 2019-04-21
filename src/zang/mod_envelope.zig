@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const Impulse = @import("note_span.zig").Impulse;
-const getNextNoteSpan = @import("note_span.zig").getNextNoteSpan;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
 // durations: these are how long it would take to go from zero.
@@ -21,31 +20,27 @@ pub const EnvState = enum {
 };
 
 pub const Envelope = struct {
+    pub const NumTempBufs = 0;
+
     params: EnvParams,
     envelope: f32,
     state: EnvState,
-    note_id: usize,
 
     pub fn init(params: EnvParams) Envelope {
         return Envelope{
             .params = params,
             .envelope = 0.0,
             .state = .Idle,
-            .note_id = 0,
         };
     }
 
-    pub fn paintOn(self: *Envelope, sample_rate: u32, buf: []f32) void {
+    pub fn reset(self: *Envelope) void {
+        self.state = .Idle;
+    }
+
+    fn paintOn(self: *Envelope, sample_rate: f32, buf: []f32) void {
         const buf_len = @intCast(u31, buf.len);
         var i: u31 = 0;
-
-        // this function will only have been called if we know that the note is
-        // active during this buffer (either it has already started, or it starts
-        // during this buffer).
-
-        // FURTHERMORE, if note starts during this frame, we'll have received only
-        // the relevant slice of dest_buffer. in other words, note always starts at
-        // beginning of dest_buffer!
 
         if (self.state == .Idle) {
             self.state = .Attack;
@@ -86,7 +81,9 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paintOff(self: *Envelope, sample_rate: u32, buf: []f32) void {
+    fn paintOff(self: *Envelope, sample_rate: f32, buf: []f32) void {
+        self.state = .Idle;
+
         if (self.envelope > 0.0) {
             var i: u31 = 0;
 
@@ -94,41 +91,11 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paintFromImpulses(
-        self: *Envelope,
-        sample_rate: u32,
-        buf: []f32,
-        impulses: []const Impulse,
-        frame_index: usize,
-    ) void {
-        var start: usize = 0;
-
-        while (start < buf.len) {
-            const note_span = getNextNoteSpan(impulses, frame_index, start, buf.len);
-
-            std.debug.assert(note_span.start == start);
-            std.debug.assert(note_span.end > start);
-            std.debug.assert(note_span.end <= buf.len);
-
-            const buf_span = buf[note_span.start .. note_span.end];
-
-            if (note_span.note) |note| {
-                if (note.id != self.note_id) {
-                    std.debug.assert(note.id > self.note_id);
-
-                    self.note_id = note.id;
-                    self.state = .Idle;
-                }
-
-                self.paintOn(sample_rate, buf_span);
-            } else {
-                self.note_id = 0;
-                self.state = .Idle;
-
-                self.paintOff(sample_rate, buf_span);
-            }
-
-            start = note_span.end;
+    pub fn paint(self: *Envelope, sample_rate: f32, buf: []f32, note_on: bool, freq: f32, tmp: [0][]f32) void {
+        if (note_on) {
+            self.paintOn(sample_rate, buf);
+        } else {
+            self.paintOff(sample_rate, buf);
         }
     }
 };

@@ -5,7 +5,6 @@
 const std = @import("std");
 
 const Impulse = @import("note_span.zig").Impulse;
-const getNextNoteSpan = @import("note_span.zig").getNextNoteSpan;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
@@ -19,9 +18,9 @@ pub const FilterType = enum{
 };
 
 // convert a frequency into a cutoff value so it can be used with the filter
-pub fn cutoffFromFrequency(frequency: f32, sample_rate: u32) f32 {
+pub fn cutoffFromFrequency(frequency: f32, sample_rate: f32) f32 {
     var v: f32 = undefined;
-    v = 2.0 * (1.0 - std.math.cos(std.math.pi * frequency / @intToFloat(f32, sample_rate)));
+    v = 2.0 * (1.0 - std.math.cos(std.math.pi * frequency / sample_rate));
     v = std.math.max(0.0, std.math.min(1.0, v));
     v = std.math.sqrt(v);
     return v;
@@ -44,6 +43,7 @@ pub const Filter = struct{
         };
     }
 
+    // FIXME - make this work with Triggerable
     pub fn paint(self: *Filter, buf: []f32, input: []const f32) void {
         std.debug.assert(buf.len == input.len);
 
@@ -109,37 +109,9 @@ pub const Filter = struct{
         self.b = b;
     }
 
-    pub fn paintFromImpulses(
-        self: *Filter,
-        sample_rate: u32,
-        buf: []f32,
-        input: []const f32,
-        impulses: []const Impulse,
-        frame_index: usize,
-    ) void {
-        std.debug.assert(buf.len == input.len);
-
-        var start: usize = 0;
-
-        while (start < buf.len) {
-            const note_span = getNextNoteSpan(impulses, frame_index, start, buf.len);
-
-            const buf_span = buf[note_span.start .. note_span.end];
-            const input_span = input[note_span.start .. note_span.end];
-
-            if (note_span.note) |note| {
-                self.cutoff = note.freq;
-            }
-
-            self.paint(sample_rate, buf_span, input_span);
-
-            start = note_span.end;
-        }
-    }
-
     pub fn paintControlledCutoff(
         self: *Filter,
-        sample_rate: u32,
+        sample_rate: f32,
         buf: []f32,
         input: []const f32,
         input_cutoff: []const f32,

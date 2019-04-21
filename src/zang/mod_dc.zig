@@ -1,39 +1,18 @@
 const std = @import("std");
+const basics = @import("basics.zig");
 
-const Impulse = @import("note_span.zig").Impulse;
-const getNextNoteSpan = @import("note_span.zig").getNextNoteSpan;
-
+// when notes and curves are merged this can probably be removed in favour
+// of using the Curve module
 pub const DC = struct {
-    value: f32,
+    pub const NumTempBufs = 0;
 
     pub fn init() DC {
-        return DC{
-            .value = 0.0,
-        };
+        return DC {};
     }
 
-    // this function is like a portamento that snaps instantly
-    pub fn paintFrequencyFromImpulses(
-        self: *DC,
-        buf: []f32,
-        impulses: []const Impulse,
-        frame_index: usize,
-    ) void {
-        var start: usize = 0;
+    pub fn reset(self: *DC) void {}
 
-        while (start < buf.len) {
-            const note_span = getNextNoteSpan(impulses, frame_index, start, buf.len);
-
-            if (note_span.note) |note| {
-                self.value = note.freq;
-            }
-
-            var i: usize = note_span.start;
-            while (i < note_span.end) : (i += 1) {
-                buf[i] += self.value;
-            }
-
-            start = note_span.end;
-        }
+    pub fn paint(self: *DC, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [0][]f32) void {
+        basics.addScalarInto(out, freq);
     }
 };

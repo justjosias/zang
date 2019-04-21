@@ -6,35 +6,35 @@ pub const Note = struct {
     dur: usize,
 };
 
-pub fn compileSong(comptime len: usize, notes: [len]Note, sample_rate: usize, note_duration: f32) [len + 1]zang.Impulse {
-    const samples_per_note = @floatToInt(usize, note_duration * @intToFloat(f32, sample_rate));
+pub fn compileSong(
+    comptime len: usize,
+    notes: [len]Note,
+    note_duration: f32,
+) [len + 1]zang.SongNote {
+    var song_notes: [len + 1]zang.SongNote = undefined;
 
-    var impulses: [len + 1]zang.Impulse = undefined;
-
-    var pos: usize = 0;
+    var pos: f32 = 0.0;
     var i: usize = 0;
 
     for (notes) |note| {
-        impulses[i] = zang.Impulse{
-            .id = i + 1,
+        song_notes[i] = zang.SongNote {
+            .t = pos,
             .freq = note.freq,
-            .frame = pos,
         };
         i += 1;
-        pos += note.dur * samples_per_note;
+        pos += @intToFloat(f32, note.dur) * note_duration;
     }
 
     // final note off event
-    impulses[i] = zang.Impulse{
-        .id = i + 1,
+    song_notes[i] = zang.SongNote {
+        .t = pos,
         .freq = null,
-        .frame = pos,
     };
     i += 1;
 
     std.debug.assert(i == len + 1);
 
-    return impulses;
+    return song_notes;
 }
 
 pub const KeyEvent = struct {

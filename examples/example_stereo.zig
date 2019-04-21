@@ -100,8 +100,7 @@ pub const MainModule = struct {
 
         // tmp0 = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(tmp0);
-        self.osc.freq = 0.1;
-        self.osc.paint(AUDIO_SAMPLE_RATE, tmp0);
+        self.osc.paint(AUDIO_SAMPLE_RATE, tmp0, true, 0.1, [0][]f32{});
 
         // paint two noise voices
         paintOne(out0, out1, &self.noisem0, tmp0, tmp1, tmp2, tmp3, 0.0, 0.5);

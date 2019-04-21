@@ -1,5 +1,7 @@
 const std = @import("std");
 
+// FIXME - why am i using u31 all over the place?
+
 // linear interpolation. v1 is where we want to end up after full_length.
 // full_length may be past the end of the buffer
 // returns the value of the last sample rendered (will be the same as v1 if
@@ -31,13 +33,13 @@ pub fn paintLine(buf: []f32, full_length: u31, v0: f32, v1: f32) f32 {
 }
 
 // return true if goal was reached
-pub fn paintLineTowards(value: *f32, sample_rate: u32, buf: []f32, i_ptr: *u31, dur: f32, goal: f32) bool {
+pub fn paintLineTowards(value: *f32, sample_rate: f32, buf: []f32, i_ptr: *u31, dur: f32, goal: f32) bool {
     const buf_len = @intCast(u31, buf.len);
 
     // how long will it take to get there?
     const time = std.math.fabs(goal - value.*) * dur;
 
-    const s_time_in_samples = @floatToInt(i32, time * @intToFloat(f32, sample_rate));
+    const s_time_in_samples = @floatToInt(i32, time * sample_rate);
 
     if (s_time_in_samples <= 0) {
         value.* = goal;

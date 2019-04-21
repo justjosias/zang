@@ -12,37 +12,34 @@ pub const Curve = struct {
     function: InterpolationFunction,
 
     pub fn init(function: InterpolationFunction) Curve {
-        return Curve{
+        return Curve {
             .function = function,
         };
     }
 
     pub fn paintFromCurve(
         self: *Curve,
-        sample_rate: usize,
         buf: []f32,
         curve_nodes: []const CurveNode,
-        frame_index: usize,
         freq_mul: ?f32,
     ) void {
         var start: usize = 0;
 
         while (start < buf.len) {
-            const curve_span = getNextCurveSpan(curve_nodes, frame_index, start, buf.len);
+            const curve_span = getNextCurveSpan(curve_nodes, start, buf.len);
 
             if (curve_span.values) |values| {
                 // the full range between nodes
                 const fstart = values.start_node.frame;
                 const fend = values.end_node.frame;
 
-                // the part of the above range that we are currently painting
-                const paint_start = frame_index + curve_span.start;
-                const paint_end = frame_index + curve_span.end;
+                const paint_start = @intCast(i32, curve_span.start);
+                const paint_end = @intCast(i32, curve_span.end);
 
-                std.debug.assert(fstart < fend);
-                std.debug.assert(fstart <= paint_start);
-                std.debug.assert(paint_start < paint_end);
-                std.debug.assert(paint_end <= fend);
+                // std.debug.assert(fstart < fend);
+                // std.debug.assert(fstart <= paint_start);
+                // std.debug.assert(curve_span.start < paint_end);
+                // std.debug.assert(curve_span.end <= fend);
 
                 // 'x' values are 0-1
                 const start_x = @intToFloat(f32, paint_start - fstart) / @intToFloat(f32, fend - fstart);
