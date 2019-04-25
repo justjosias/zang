@@ -1,8 +1,6 @@
 const std = @import("std");
 const basics = @import("basics.zig");
 
-// when notes and curves are merged this can probably be removed in favour
-// of using the Curve module
 pub const DC = struct {
     pub const NumTempBufs = 0;
 

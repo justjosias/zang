@@ -3,7 +3,6 @@ const std = @import("std");
 const Impulse = @import("note_span.zig").Impulse;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
-// i might be able to replace this with a curve interpolation mode.
 pub const Portamento = struct {
     pub const NumTempBufs = 0;
 
