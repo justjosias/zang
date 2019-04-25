@@ -12,6 +12,7 @@ pub const AudioFormat = mixdown.AudioFormat;
 pub const mixDown = mixdown.mixDown;
 
 const read_wav = @import("zang/read_wav.zig");
+pub const WavContents = read_wav.WavContents;
 pub const readWav = read_wav.readWav;
 
 const basics = @import("zang/basics.zig");
