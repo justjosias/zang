@@ -3,8 +3,6 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const std = @import("std");
-const Impulse = @import("note_span.zig").Impulse;
-const Notes = @import("notes.zig").Notes;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
@@ -38,14 +36,12 @@ pub const Filter = struct {
     filterType: FilterType,
     l: f32,
     b: f32,
-    trigger: Notes(Params).Trigger(Filter),
 
     pub fn init(filterType: FilterType) Filter {
         return Filter{
             .filterType = filterType,
             .l = 0.0,
             .b = 0.0,
-            .trigger = Notes(Params).Trigger(Filter).init(),
         };
     }
 
@@ -115,10 +111,6 @@ pub const Filter = struct {
 
         self.l = l;
         self.b = b;
-    }
-
-    pub fn paint(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 
     pub fn paintControlledCutoff(

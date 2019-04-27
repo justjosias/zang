@@ -1,5 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
 pub const Portamento = struct {
@@ -15,7 +14,6 @@ pub const Portamento = struct {
     value: f32,
     goal: f32,
     gap: bool,
-    trigger: Notes(Params).Trigger(Portamento),
 
     pub fn init(velocity: f32) Portamento {
         return Portamento {
@@ -23,7 +21,6 @@ pub const Portamento = struct {
             .value = 0.0,
             .goal = 0.0,
             .gap = true,
-            .trigger = Notes(Params).Trigger(Portamento).init(),
         };
     }
 
@@ -54,9 +51,5 @@ pub const Portamento = struct {
                 std.mem.set(f32, buf[i..], self.goal);
             }
         }
-    }
-
-    pub fn paint(self: *Portamento, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

@@ -25,7 +25,6 @@ const CurvePlayer = struct {
     carrier: zang.Oscillator,
     modulator_curve: zang.Curve,
     modulator: zang.Oscillator,
-    trigger: zang.Notes(Params).Trigger(CurvePlayer),
 
     fn init() CurvePlayer {
         return CurvePlayer {
@@ -44,7 +43,6 @@ const CurvePlayer = struct {
                 zang.CurveNode{ .t = 3.0, .value = 220.0 },
             }),
             .modulator = zang.Oscillator.init(.Sine),
-            .trigger = zang.Notes(Params).Trigger(CurvePlayer).init(),
         };
     }
 
@@ -58,16 +56,16 @@ const CurvePlayer = struct {
         const freq_mul = params.freq / 440.0;
 
         zang.zero(temps[0]);
-        self.modulator_curve.paint(sample_rate, temps[0], freq_mul);
+        self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
+            .freq_mul = freq_mul,
+        });
         zang.zero(temps[1]);
         self.modulator.paintControlledFrequency(sample_rate, temps[1], temps[0]);
         zang.zero(temps[0]);
-        self.carrier_curve.paint(sample_rate, temps[0], freq_mul);
+        self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
+            .freq_mul = freq_mul,
+        });
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
-    }
-
-    pub fn paint(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -79,12 +77,12 @@ var g_buffers: struct {
 
 pub const MainModule = struct {
     iq: MyNotes.ImpulseQueue,
-    curve_player: CurvePlayer,
+    curve_player: zang.Triggerable(CurvePlayer),
 
     pub fn init() MainModule {
         return MainModule{
             .iq = MyNotes.ImpulseQueue.init(),
-            .curve_player = CurvePlayer.init(),
+            .curve_player = zang.initTriggerable(CurvePlayer.init()),
         };
     }
 
@@ -95,7 +93,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.curve_player.paint(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, self.iq.consume());
+        self.curve_player.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, self.iq.consume());
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

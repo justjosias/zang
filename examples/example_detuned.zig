@@ -8,7 +8,7 @@ const c = @import("common/sdl.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 1024;
+pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 1;
 
 var g_buffers: struct {
@@ -30,9 +30,9 @@ pub const MainModule = struct {
     noise_filter: zang.Filter,
     iq: MyNotes.ImpulseQueue,
     key: ?i32,
-    dc: zang.DC,
+    dc: zang.Triggerable(zang.DC),
     osc: zang.Oscillator,
-    env: zang.Envelope,
+    env: zang.Triggerable(zang.Envelope),
     main_filter: zang.Filter,
 
     pub fn init() MainModule {
@@ -41,14 +41,14 @@ pub const MainModule = struct {
             .noise_filter = zang.Filter.init(.LowPass),
             .iq = MyNotes.ImpulseQueue.init(),
             .key = null,
-            .dc = zang.DC.init(),
+            .dc = zang.initTriggerable(zang.DC.init()),
             .osc = zang.Oscillator.init(.Sawtooth),
-            .env = zang.Envelope.init(zang.EnvParams {
+            .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
-            }),
+            })),
             .main_filter = zang.Filter.init(.LowPass),
         };
     }
@@ -85,7 +85,7 @@ pub const MainModule = struct {
                         .value = pair.source.freq,
                     };
                 }
-                self.dc.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                self.dc.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
             }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
@@ -94,7 +94,7 @@ pub const MainModule = struct {
             zang.zero(tmp0);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);

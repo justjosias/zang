@@ -30,7 +30,6 @@ const LaserPlayer = struct {
     modulator_curve: zang.Curve,
     modulator: zang.Oscillator,
     volume_curve: zang.Curve,
-    trigger: zang.Notes(Params).Trigger(LaserPlayer),
 
     fn init() LaserPlayer {
         const A = 1000.0;
@@ -55,7 +54,6 @@ const LaserPlayer = struct {
                 zang.CurveNode{ .t = 0.004, .value = 1.0 },
                 zang.CurveNode{ .t = 0.2, .value = 0.0 },
             }),
-            .trigger = zang.Notes(Params).Trigger(LaserPlayer).init(),
         };
     }
 
@@ -87,10 +85,6 @@ const LaserPlayer = struct {
         });
         zang.multiply(out, temps[0], temps[2]);
     }
-
-    fn paint(self: *LaserPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const MyNotes.Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
-    }
 };
 
 var g_buffers: struct {
@@ -102,14 +96,14 @@ var g_buffers: struct {
 
 pub const MainModule = struct {
     iq: MyNotes.ImpulseQueue,
-    laser_player: LaserPlayer,
+    laser_player: zang.Triggerable(LaserPlayer),
 
     r: std.rand.Xoroshiro128,
 
     pub fn init() MainModule {
         return MainModule{
             .iq = MyNotes.ImpulseQueue.init(),
-            .laser_player = LaserPlayer.init(),
+            .laser_player = zang.initTriggerable(LaserPlayer.init()),
             .r = std.rand.DefaultPrng.init(0),
         };
     }
@@ -122,7 +116,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.laser_player.paint(sample_rate, [1][]f32{out}, [0][]f32{}, [3][]f32{tmp0, tmp1, tmp2}, self.iq.consume());
+        self.laser_player.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [3][]f32{tmp0, tmp1, tmp2}, self.iq.consume());
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

@@ -1,5 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
 
 pub const InterpolationFunction = enum {
     Linear,
@@ -119,10 +118,6 @@ pub const Curve = struct {
 
             start = curve_span.end;
         }
-    }
-
-    pub fn paint(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 
     fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize) []CurveSpanNode {

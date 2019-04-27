@@ -35,7 +35,6 @@ const PulseModOscillator = struct {
     // multiplier: the modulator oscillator's output is multiplied by this
     // before it is fed in to the phase input of the carrier oscillator.
     multiplier: f32,
-    trigger: zang.Notes(Params).Trigger(PulseModOscillator),
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
@@ -43,7 +42,6 @@ const PulseModOscillator = struct {
             .modulator = zang.Oscillator.init(.Sine),
             .ratio = ratio,
             .multiplier = multiplier,
-            .trigger = zang.Notes(Params).Trigger(PulseModOscillator).init(),
         };
     }
 
@@ -59,10 +57,6 @@ const PulseModOscillator = struct {
         zang.zero(temps[1]);
         zang.multiplyScalar(temps[1], temps[2], self.multiplier);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
-    }
-
-    pub fn paint(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -83,37 +77,37 @@ const NoteParams = struct {
 pub const MainModule = struct {
     iq0: MyNotes.ImpulseQueue,
     key0: ?i32,
-    osc0: PulseModOscillator,
-    env0: zang.Envelope,
+    osc0: zang.Triggerable(PulseModOscillator),
+    env0: zang.Triggerable(zang.Envelope),
 
     iq1: MyNotes.ImpulseQueue,
     key1: ?i32,
-    osc1: zang.Oscillator,
-    env1: zang.Envelope,
+    osc1: zang.Triggerable(zang.Oscillator),
+    env1: zang.Triggerable(zang.Envelope),
 
-    flt: zang.Filter,
+    flt: zang.Triggerable(zang.Filter),
 
     pub fn init() MainModule {
         return MainModule{
             .iq0 = MyNotes.ImpulseQueue.init(),
             .key0 = null,
-            .osc0 = PulseModOscillator.init(1.0, 1.5),
-            .env0 = zang.Envelope.init(zang.EnvParams {
+            .osc0 = zang.initTriggerable(PulseModOscillator.init(1.0, 1.5)),
+            .env0 = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
-            }),
+            })),
             .iq1 = MyNotes.ImpulseQueue.init(),
             .key1 = null,
-            .osc1 = zang.Oscillator.init(.Sawtooth),
-            .env1 = zang.Envelope.init(zang.EnvParams {
+            .osc1 = zang.initTriggerable(zang.Oscillator.init(.Sawtooth)),
+            .env1 = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
-            }),
-            .flt = zang.Filter.init(.LowPass),
+            })),
+            .flt = zang.initTriggerable(zang.Filter.init(.LowPass)),
         };
     }
 
@@ -131,11 +125,11 @@ pub const MainModule = struct {
             const impulses = self.iq0.consume();
 
             zang.zero(tmp0);
-            self.osc0.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
+            self.osc0.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env0.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env0.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, tmp0, tmp1);
         }
@@ -147,14 +141,14 @@ pub const MainModule = struct {
             zang.zero(tmp3);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
-                self.osc1.paint(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.osc1.paintFromImpulses(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // boost sawtooth volume
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env1.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env1.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp0, tmp1);
@@ -166,7 +160,7 @@ pub const MainModule = struct {
                         .resonance = 0.7,
                     };
                 }
-                self.flt.paint(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, conv.getImpulses());
+                self.flt.paintFromImpulses(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, conv.getImpulses());
             }
         }
 

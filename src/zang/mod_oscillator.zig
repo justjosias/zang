@@ -1,5 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
 
 pub const Waveform = enum {
     Sine,
@@ -56,13 +55,11 @@ pub const Oscillator = struct {
 
     waveform: Waveform,
     t: f32,
-    trigger: Notes(Params).Trigger(Oscillator),
 
     pub fn init(waveform: Waveform) Oscillator {
         return Oscillator{
             .waveform = waveform,
             .t = 0.0,
-            .trigger = Notes(Params).Trigger(Oscillator).init(),
         };
     }
 
@@ -104,10 +101,6 @@ pub const Oscillator = struct {
         t -= std.math.trunc(t); // it actually goes out of tune without this!...
 
         self.t = t;
-    }
-
-    pub fn paint(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 
     pub fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, input_frequency: []const f32) void {

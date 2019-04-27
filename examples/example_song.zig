@@ -159,7 +159,6 @@ const PulseModOscillator = struct {
     // multiplier: the modulator oscillator's output is multiplied by this
     // before it is fed in to the phase input of the carrier oscillator.
     multiplier: f32,
-    trigger: zang.Notes(Params).Trigger(PulseModOscillator),
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
@@ -167,7 +166,6 @@ const PulseModOscillator = struct {
             .modulator = zang.Oscillator.init(.Sine),
             .ratio = ratio,
             .multiplier = multiplier,
-            .trigger = zang.Notes(Params).Trigger(PulseModOscillator).init(),
         };
     }
 
@@ -184,10 +182,6 @@ const PulseModOscillator = struct {
         zang.multiplyScalar(temps[1], temps[2], self.multiplier);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
     }
-
-    pub fn paint(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
-    }
 };
 
 var g_buffers: struct {
@@ -199,8 +193,8 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    osc: [NUM_TRACKS]PulseModOscillator,
-    env: [NUM_TRACKS]zang.Envelope,
+    osc: [NUM_TRACKS]zang.Triggerable(PulseModOscillator),
+    env: [NUM_TRACKS]zang.Triggerable(zang.Envelope),
     trackers: [NUM_TRACKS]MyNotes.NoteTracker,
 
     pub fn init() MainModule {
@@ -208,13 +202,13 @@ pub const MainModule = struct {
 
         var i: usize = 0;
         while (i < NUM_TRACKS) : (i += 1) {
-            mod.osc[i] = PulseModOscillator.init(1.0, 1.5);
-            mod.env[i] = zang.Envelope.init(zang.EnvParams {
+            mod.osc[i] = zang.initTriggerable(PulseModOscillator.init(1.0, 1.5));
+            mod.env[i] = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
-            });
+            }));
             mod.trackers[i] = MyNotes.NoteTracker.init(tracks[i]);
         }
 
@@ -235,11 +229,11 @@ pub const MainModule = struct {
             const impulses = self.trackers[i].getImpulses(sample_rate, out.len);
 
             zang.zero(tmp0);
-            self.osc[i].paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
+            self.osc[i].paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env[i].paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env[i].paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, tmp0, tmp1);
         }

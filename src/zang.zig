@@ -1,6 +1,10 @@
 const notes = @import("zang/notes.zig");
 pub const Notes = notes.Notes;
 
+const triggerable = @import("zang/triggerable.zig");
+pub const initTriggerable = triggerable.initTriggerable;
+pub const Triggerable = triggerable.Triggerable;
+
 const params_converter = @import("zang/params_converter.zig");
 pub const ParamsConverter = params_converter.ParamsConverter;
 

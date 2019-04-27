@@ -1,5 +1,4 @@
 const basics = @import("basics.zig");
-const Notes = @import("notes.zig").Notes;
 
 // this is a simple version of the Envelope
 pub const Gate = struct {
@@ -10,12 +9,8 @@ pub const Gate = struct {
         note_on: bool,
     };
 
-    trigger: Notes(Params).Trigger(Gate),
-
     pub fn init() Gate {
-        return Gate {
-            .trigger = Notes(Params).Trigger(Gate).init(),
-        };
+        return Gate {};
     }
 
     pub fn reset(self: *Gate) void {}
@@ -24,9 +19,5 @@ pub const Gate = struct {
         if (params.note_on) {
             basics.addScalarInto(outputs[0], 1.0);
         }
-    }
-
-    pub fn paint(self: *Gate, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

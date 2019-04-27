@@ -1,5 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
 
 fn getSample(data: []const u8, index: usize) f32 {
     if (index < data.len / 2) {
@@ -29,12 +28,10 @@ pub const Sampler = struct {
     };
 
     t: f32,
-    trigger: Notes(Params).Trigger(Sampler),
 
     pub fn init() Sampler {
         return Sampler {
             .t = 0.0,
-            .trigger = Notes(Params).Trigger(Sampler).init(),
         };
     }
 
@@ -93,9 +90,5 @@ pub const Sampler = struct {
                 self.t += ratio;
             }
         }
-    }
-
-    pub fn paint(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

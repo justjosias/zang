@@ -1,7 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
-
-const Impulse = @import("note_span.zig").Impulse;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
 // durations: these are how long it would take to go from zero.
@@ -31,14 +28,12 @@ pub const Envelope = struct {
     params: EnvParams,
     envelope: f32,
     state: EnvState,
-    trigger: Notes(Params).Trigger(Envelope),
 
     pub fn init(params: EnvParams) Envelope {
         return Envelope{
             .params = params,
             .envelope = 0.0,
             .state = .Idle,
-            .trigger = Notes(Params).Trigger(Envelope).init(),
         };
     }
 
@@ -105,9 +100,5 @@ pub const Envelope = struct {
         } else {
             self.paintOff(sample_rate, outputs[0]);
         }
-    }
-
-    pub fn paint(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

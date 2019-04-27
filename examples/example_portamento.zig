@@ -26,8 +26,8 @@ pub const MainModule = struct {
     iq: MyNotes.ImpulseQueue,
     keys_held: u32,
     noise: zang.Noise,
-    env: zang.Envelope,
-    porta: zang.Portamento,
+    env: zang.Triggerable(zang.Envelope),
+    porta: zang.Triggerable(zang.Portamento),
     flt: zang.Filter,
 
     pub fn init() MainModule {
@@ -35,13 +35,13 @@ pub const MainModule = struct {
             .iq = MyNotes.ImpulseQueue.init(),
             .keys_held = 0,
             .noise = zang.Noise.init(0),
-            .env = zang.Envelope.init(zang.EnvParams {
+            .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
-            }),
-            .porta = zang.Portamento.init(0.05),
+            })),
+            .porta = zang.initTriggerable(zang.Portamento.init(0.05)),
             .flt = zang.Filter.init(.LowPass),
         };
     }
@@ -70,7 +70,7 @@ pub const MainModule = struct {
                         .note_on = pair.source.note_on,
                     };
                 }
-                self.porta.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                self.porta.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
             }
 
             zang.zero(tmp2);
@@ -79,7 +79,7 @@ pub const MainModule = struct {
             zang.zero(tmp0);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
 
             zang.multiply(out, tmp2, tmp0);

@@ -40,13 +40,11 @@ const NoiseModule = struct {
 
     noise: zang.Noise,
     flt: zang.Filter,
-    trigger: zang.Notes(Params).Trigger(NoiseModule),
 
     fn init(seed: u64) NoiseModule {
         return NoiseModule{
             .noise = zang.Noise.init(seed),
             .flt = zang.Filter.init(.LowPass),
-            .trigger = zang.Notes(Params).Trigger(NoiseModule).init(),
         };
     }
 
@@ -76,10 +74,6 @@ const NoiseModule = struct {
 
         // right channel += temps[0] * temps[1]
         zang.multiply(outputs[1], temps[0], temps[1]);
-    }
-
-    pub fn paint(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 

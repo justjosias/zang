@@ -1,5 +1,4 @@
 const std = @import("std");
-const Notes = @import("notes.zig").Notes;
 
 pub const Noise = struct {
     pub const NumOutputs = 1;
@@ -8,12 +7,10 @@ pub const Noise = struct {
     pub const Params = struct {};
 
     r: std.rand.Xoroshiro128,
-    trigger: Notes(Params).Trigger(Noise),
 
     pub fn init(seed: u64) Noise {
         return Noise{
             .r = std.rand.DefaultPrng.init(seed),
-            .trigger = Notes(Params).Trigger(Noise).init(),
         };
     }
 
@@ -29,9 +26,5 @@ pub const Noise = struct {
         }
 
         self.r = r;
-    }
-
-    pub fn paint(self: *Noise, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

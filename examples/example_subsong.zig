@@ -28,9 +28,8 @@ const SubtrackPlayer = struct {
     pub const BaseFrequency = note_frequencies.C4;
 
     tracker: MyNotes.NoteTracker,
-    osc: zang.Oscillator,
-    env: zang.Envelope,
-    trigger: MyNotes.Trigger(SubtrackPlayer),
+    osc: zang.Triggerable(zang.Oscillator),
+    env: zang.Triggerable(zang.Envelope),
 
     fn init() SubtrackPlayer {
         const f = note_frequencies;
@@ -44,19 +43,17 @@ const SubtrackPlayer = struct {
                 MyNotes.SongNote{ .t = 0.4, .params = MyNoteParams{ .freq = f.C3, .note_on = true }},
                 MyNotes.SongNote{ .t = 0.5, .params = MyNoteParams{ .freq = f.C3, .note_on = false }},
             }),
-            .osc = zang.Oscillator.init(.Sawtooth),
-            .env = zang.Envelope.init(zang.EnvParams {
+            .osc = zang.initTriggerable(zang.Oscillator.init(.Sawtooth)),
+            .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
-            }),
-            .trigger = MyNotes.Trigger(SubtrackPlayer).init(),
+            })),
         };
     }
 
     fn reset(self: *SubtrackPlayer) void {
-        // FIXME - i think something's still not right. i hear clicking sometimes when you press notes
         self.tracker.reset();
         self.osc.reset();
         self.env.reset();
@@ -74,18 +71,14 @@ const SubtrackPlayer = struct {
                     .freq = pair.source.freq * params.freq / BaseFrequency,
                 };
             }
-            self.osc.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+            self.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
         }
         zang.zero(temps[1]);
         {
             var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-            self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            self.env.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
         }
         zang.multiply(out, temps[0], temps[1]);
-    }
-
-    pub fn paint(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const MyNotes.Impulse) void {
-        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -98,13 +91,13 @@ var g_buffers: struct {
 pub const MainModule = struct {
     iq: MyNotes.ImpulseQueue,
     key: ?i32,
-    subtrack_player: SubtrackPlayer,
+    subtrack_player: zang.Triggerable(SubtrackPlayer),
 
     pub fn init() MainModule {
         return MainModule{
             .iq = MyNotes.ImpulseQueue.init(),
             .key = null,
-            .subtrack_player = SubtrackPlayer.init(),
+            .subtrack_player = zang.initTriggerable(SubtrackPlayer.init()),
         };
     }
 
@@ -117,7 +110,7 @@ pub const MainModule = struct {
 
         const impulses = self.iq.consume();
 
-        self.subtrack_player.paint(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
+        self.subtrack_player.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
