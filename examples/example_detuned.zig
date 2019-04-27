@@ -19,29 +19,29 @@ var g_buffers: struct {
     buf4: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
+pub const MyNoteParams = struct {
+    freq: f32,
+    note_on: bool,
+};
+pub const MyNotes = zang.Notes(MyNoteParams);
+
 pub const MainModule = struct {
     noise: zang.Noise,
     noise_filter: zang.Filter,
-    iq: zang.ImpulseQueue,
+    iq: MyNotes.ImpulseQueue,
     key: ?i32,
     dc: zang.DC,
-    dc_trigger: zang.Trigger(zang.DC),
     osc: zang.Oscillator,
     env: zang.Envelope,
-    env_trigger: zang.Trigger(zang.Envelope),
     main_filter: zang.Filter,
 
     pub fn init() MainModule {
-        return MainModule{
+        return MainModule {
             .noise = zang.Noise.init(0),
-            // filter frequency set at 4hz. i wanted to go slower but
-            // unfortunately at below 4, the filter degrades and the
-            // output frequency slowly sinks to nothing
-            .noise_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(4.0, AUDIO_SAMPLE_RATE), 0.0),
-            .iq = zang.ImpulseQueue.init(),
+            .noise_filter = zang.Filter.init(.LowPass),
+            .iq = MyNotes.ImpulseQueue.init(),
             .key = null,
             .dc = zang.DC.init(),
-            .dc_trigger = zang.Trigger(zang.DC).init(),
             .osc = zang.Oscillator.init(.Sawtooth),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
@@ -49,12 +49,11 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env_trigger = zang.Trigger(zang.Envelope).init(),
-            .main_filter = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(880.0, AUDIO_SAMPLE_RATE), 0.9),
+            .main_filter = zang.Filter.init(.LowPass),
         };
     }
 
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
@@ -63,27 +62,47 @@ pub const MainModule = struct {
         zang.zero(out);
 
         // tmp0 = filtered noise
+        // note: filter frequency is set to 4hz. i wanted to go slower but
+        // unfortunately at below 4, the filter degrades and the output
+        // frequency slowly sinks to zero
         zang.zero(tmp1);
-        self.noise.paint(tmp1);
+        self.noise.paintSpan(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(tmp0);
-        self.noise_filter.paint(tmp0, tmp1);
+        self.noise_filter.paintSpan(sample_rate, [1][]f32{tmp0}, [1][]f32{tmp1}, [0][]f32{}, zang.Filter.Params {
+            .cutoff = zang.cutoffFromFrequency(4.0, sample_rate),
+            .resonance = 0.0,
+        });
         zang.multiplyWithScalar(tmp0, 200.0); // intensity of warble effect
 
         {
             // add note frequencies onto filtered noise
             const impulses = self.iq.consume();
 
-            self.dc_trigger.paintFromImpulses(&self.dc, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.DC.Params).init();
+                for (conv.getPairs(impulses)) |*pair| {
+                    pair.dest = zang.DC.Params {
+                        .value = pair.source.freq,
+                    };
+                }
+                self.dc.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+            }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
-            self.osc.paintControlledFrequency(AUDIO_SAMPLE_RATE, tmp1, tmp0);
+            self.osc.paintControlledFrequency(sample_rate, tmp1, tmp0);
             // combine with envelope
             zang.zero(tmp0);
-            self.env_trigger.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
+                self.env.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
-            self.main_filter.paint(out, tmp2);
+            self.main_filter.paintSpan(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, zang.Filter.Params {
+                .cutoff = zang.cutoffFromFrequency(880.0, sample_rate),
+                .resonance = 0.9,
+            });
             // volume boost
             zang.multiplyWithScalar(out, 2.0);
         }
@@ -93,44 +112,15 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = note_frequencies;
-
-        if (switch (key) {
-            c.SDLK_a => f.C3,
-            c.SDLK_w => f.Cs3,
-            c.SDLK_s => f.D3,
-            c.SDLK_e => f.Ds3,
-            c.SDLK_d => f.E3,
-            c.SDLK_f => f.F3,
-            c.SDLK_t => f.Fs3,
-            c.SDLK_g => f.G3,
-            c.SDLK_y => f.Gs3,
-            c.SDLK_h => f.A3,
-            c.SDLK_u => f.As3,
-            c.SDLK_j => f.B3,
-            c.SDLK_k => f.C4,
-            else => null,
-        }) |freq| {
-            if (down) {
-                self.key = key;
-
-                return common.KeyEvent{
-                    .iq = &self.iq,
-                    .freq = freq,
-                };
-            } else {
-                if (if (self.key) |nh| nh == key else false) {
-                    self.key = null;
-
-                    return common.KeyEvent{
-                        .iq = &self.iq,
-                        .freq = null,
-                    };
-                }
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+        if (common.freqForKey(key)) |freq| {
+            if (down or (if (self.key) |nh| nh == key else false)) {
+                self.key = if (down) key else null;
+                out_iq.* = &self.iq;
+                out_params.* = MyNoteParams { .freq = freq * 0.5, .note_on = down };
+                return true;
             }
         }
-
-        return null;
+        return false;
     }
 };

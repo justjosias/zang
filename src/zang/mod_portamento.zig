@@ -1,35 +1,44 @@
 const std = @import("std");
-
-const Impulse = @import("note_span.zig").Impulse;
+const Notes = @import("notes.zig").Notes;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
 pub const Portamento = struct {
-    pub const NumTempBufs = 0;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 0;
+    pub const Params = struct {
+        value: f32,
+        note_on: bool,
+    };
 
     velocity: f32,
     value: f32,
     goal: f32,
     gap: bool,
+    trigger: Notes(Params).Trigger(Portamento),
 
     pub fn init(velocity: f32) Portamento {
-        return Portamento{
+        return Portamento {
             .velocity = velocity,
             .value = 0.0,
             .goal = 0.0,
             .gap = true,
+            .trigger = Notes(Params).Trigger(Portamento).init(),
         };
     }
 
     pub fn reset(self: *Portamento) void {}
 
-    pub fn paint(self: *Portamento, sample_rate: f32, buf: []f32, note_on: bool, freq: f32, tmp: [0][]f32) void {
-        if (note_on) {
+    pub fn paintSpan(self: *Portamento, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const buf = outputs[0];
+
+        if (params.note_on) {
             if (self.gap) {
-                // if this note comes after a gap, snap instantly to the goal frequency
-                self.value = freq;
+                // if this note comes after a gap, snap instantly to the goal value
+                self.value = params.value;
                 self.gap = false;
             }
-            self.goal = freq;
+            self.goal = params.value;
         } else {
             self.gap = true;
         }
@@ -45,5 +54,9 @@ pub const Portamento = struct {
                 std.mem.set(f32, buf[i..], self.goal);
             }
         }
+    }
+
+    pub fn paint(self: *Portamento, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

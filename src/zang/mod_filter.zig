@@ -3,8 +3,8 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const std = @import("std");
-
 const Impulse = @import("note_span.zig").Impulse;
+const Notes = @import("notes.zig").Notes;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
@@ -26,26 +26,34 @@ pub fn cutoffFromFrequency(frequency: f32, sample_rate: f32) f32 {
     return v;
 }
 
-pub const Filter = struct{
+pub const Filter = struct {
+    pub const NumOutputs = 1;
+    pub const NumInputs = 1;
+    pub const NumTemps = 0;
+    pub const Params = struct {
+        cutoff: f32, // 0-1
+        resonance: f32, // 0-1
+    };
+
     filterType: FilterType,
     l: f32,
     b: f32,
-    cutoff: f32, // 0-1
-    resonance: f32, // 0-1
+    trigger: Notes(Params).Trigger(Filter),
 
-    pub fn init(filterType: FilterType, cutoff: f32, resonance: f32) Filter {
+    pub fn init(filterType: FilterType) Filter {
         return Filter{
             .filterType = filterType,
             .l = 0.0,
             .b = 0.0,
-            .cutoff = cutoff,
-            .resonance = resonance,
+            .trigger = Notes(Params).Trigger(Filter).init(),
         };
     }
 
-    // FIXME - make this work with Trigger
-    pub fn paint(self: *Filter, buf: []f32, input: []const f32) void {
-        std.debug.assert(buf.len == input.len);
+    pub fn reset(self: *Filter) void {}
+
+    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, filterParams: Params) void {
+        const buf = outputs[0];
+        const input = inputs[0];
 
         var l_mul: f32 = 0.0;
         var b_mul: f32 = 0.0;
@@ -78,8 +86,8 @@ pub const Filter = struct{
 
         var i: usize = 0;
 
-        const cutoff = std.math.max(0.0, std.math.min(1.0, self.cutoff));
-        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, self.resonance));
+        const cutoff = std.math.max(0.0, std.math.min(1.0, filterParams.cutoff));
+        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, filterParams.resonance));
 
         var l = self.l;
         var b = self.b;
@@ -109,12 +117,17 @@ pub const Filter = struct{
         self.b = b;
     }
 
+    pub fn paint(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
+    }
+
     pub fn paintControlledCutoff(
         self: *Filter,
         sample_rate: f32,
         buf: []f32,
         input: []const f32,
         input_cutoff: []const f32,
+        resonance: f32,
     ) void {
         std.debug.assert(buf.len == input.len);
 
@@ -149,7 +162,7 @@ pub const Filter = struct{
 
         var i: usize = 0;
 
-        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, self.resonance));
+        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, resonance));
 
         var l = self.l;
         var b = self.b;
@@ -179,10 +192,6 @@ pub const Filter = struct{
 
         self.l = l;
         self.b = b;
-
-        if (buf.len > 0) {
-            self.cutoff = input_cutoff[buf.len - 1];
-        }
     }
 
     // TODO - allow resonance to be controlled

@@ -15,7 +15,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
-    const buffers = main_module.paint();
+    const buffers = main_module.paint(f32(AUDIO_SAMPLE_RATE));
 
     for (buffers) |buf, i| {
         zang.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i, 0.25);
@@ -86,21 +86,25 @@ pub fn main() !void {
                     break;
                 }
                 if (event.key.repeat == 0) {
-                    if (main_module.keyEvent(event.key.keysym.sym, true)) |evt| {
+                    var iq: *example.MyNotes.ImpulseQueue = undefined;
+                    var params: example.MyNoteParams = undefined;
+                    if (main_module.keyEvent(event.key.keysym.sym, true, &iq, &params)) {
                         c.SDL_LockAudioDevice(device);
                         // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
                         const impulse_frame = 0;
-                        evt.iq.push(impulse_frame, evt.freq);
+                        iq.push(impulse_frame, params);
                         c.SDL_UnlockAudioDevice(device);
                     }
                 }
             },
             c.SDL_KEYUP => {
-                if (main_module.keyEvent(event.key.keysym.sym, false)) |evt| {
+                var iq: *example.MyNotes.ImpulseQueue = undefined;
+                var params: example.MyNoteParams = undefined;
+                if (main_module.keyEvent(event.key.keysym.sym, false, &iq, &params)) {
                     c.SDL_LockAudioDevice(device);
                     // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
                     const impulse_frame = 0;
-                    evt.iq.push(impulse_frame, evt.freq);
+                    iq.push(impulse_frame, params);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },

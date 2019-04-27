@@ -1,6 +1,5 @@
 const std = @import("std");
-
-const Impulse = @import("note_span.zig").Impulse;
+const Notes = @import("notes.zig").Notes;
 
 pub const Waveform = enum {
     Sine,
@@ -48,25 +47,30 @@ fn osc(waveform: Waveform, t: f32) f32 {
 }
 
 pub const Oscillator = struct {
-    pub const NumTempBufs = 0;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 0;
+    pub const Params = struct {
+        freq: f32,
+    };
 
     waveform: Waveform,
     t: f32,
+    trigger: Notes(Params).Trigger(Oscillator),
 
     pub fn init(waveform: Waveform) Oscillator {
         return Oscillator{
             .waveform = waveform,
             .t = 0.0,
+            .trigger = Notes(Params).Trigger(Oscillator).init(),
         };
     }
 
-    pub fn reset(self: *Oscillator) void {
-        // do nothing. resetting t would cause clipping
-    }
+    pub fn reset(self: *Oscillator) void {}
 
-    // paint with a constant frequency
-    pub fn paint(self: *Oscillator, sample_rate: f32, buf: []f32, note_on: bool, freq: f32, tmp: [0][]f32) void {
-        const step = freq / sample_rate;
+    pub fn paintSpan(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const buf = outputs[0];
+        const step = params.freq / sample_rate;
         var t = self.t;
         var i: usize = 0;
 
@@ -100,6 +104,10 @@ pub const Oscillator = struct {
         t -= std.math.trunc(t); // it actually goes out of tune without this!...
 
         self.t = t;
+    }
+
+    pub fn paint(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 
     pub fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, input_frequency: []const f32) void {

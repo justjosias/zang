@@ -1,11 +1,8 @@
 const notes = @import("zang/notes.zig");
-pub const Impulse = notes.Impulse;
-pub const NoteSpanNote = notes.NoteSpanNote;
-pub const SongNote = notes.SongNote;
-pub const NoteTracker = notes.NoteTracker;
-pub const DynamicNoteTracker = notes.DynamicNoteTracker;
-pub const ImpulseQueue = notes.ImpulseQueue;
-pub const Trigger = notes.Trigger;
+pub const Notes = notes.Notes;
+
+const params_converter = @import("zang/params_converter.zig");
+pub const ParamsConverter = params_converter.ParamsConverter;
 
 const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const Notes = @import("notes.zig").Notes;
 
 const Impulse = @import("note_span.zig").Impulse;
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
@@ -20,17 +21,24 @@ pub const EnvState = enum {
 };
 
 pub const Envelope = struct {
-    pub const NumTempBufs = 0;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 0;
+    pub const Params = struct {
+        note_on: bool,
+    };
 
     params: EnvParams,
     envelope: f32,
     state: EnvState,
+    trigger: Notes(Params).Trigger(Envelope),
 
     pub fn init(params: EnvParams) Envelope {
         return Envelope{
             .params = params,
             .envelope = 0.0,
             .state = .Idle,
+            .trigger = Notes(Params).Trigger(Envelope).init(),
         };
     }
 
@@ -91,11 +99,15 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paint(self: *Envelope, sample_rate: f32, buf: []f32, note_on: bool, freq: f32, tmp: [0][]f32) void {
-        if (note_on) {
-            self.paintOn(sample_rate, buf);
+    pub fn paintSpan(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        if (params.note_on) {
+            self.paintOn(sample_rate, outputs[0]);
         } else {
-            self.paintOff(sample_rate, buf);
+            self.paintOff(sample_rate, outputs[0]);
         }
+    }
+
+    pub fn paint(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };

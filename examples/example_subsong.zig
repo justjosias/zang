@@ -13,49 +13,46 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
+pub const MyNoteParams = SubtrackPlayer.Params;
+pub const MyNotes = zang.Notes(MyNoteParams);
+
 // an example of a custom "module"
 const SubtrackPlayer = struct {
-    pub const NumTempBufs = 2;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 2;
+    pub const Params = struct {
+        freq: f32,
+        note_on: bool,
+    };
     pub const BaseFrequency = note_frequencies.C4;
 
-    tracker: zang.NoteTracker,
+    tracker: MyNotes.NoteTracker,
     osc: zang.Oscillator,
-    osc_trigger: zang.Trigger(zang.Oscillator),
     env: zang.Envelope,
-    env_trigger: zang.Trigger(zang.Envelope),
+    trigger: MyNotes.Trigger(SubtrackPlayer),
 
     fn init() SubtrackPlayer {
         const f = note_frequencies;
 
         return SubtrackPlayer{
-            .tracker = zang.NoteTracker.init([]zang.SongNote {
-                zang.SongNote{ .t = 0.0, .freq = f.C4 },
-                zang.SongNote{ .t = 0.1, .freq = f.Ab3 },
-                zang.SongNote{ .t = 0.2, .freq = f.G3 },
-                zang.SongNote{ .t = 0.3, .freq = f.Eb3 },
-                zang.SongNote{ .t = 0.4, .freq = f.C3 },
-                zang.SongNote{ .t = 0.5, .freq = null },
+            .tracker = MyNotes.NoteTracker.init([]MyNotes.SongNote {
+                MyNotes.SongNote{ .t = 0.0, .params = MyNoteParams{ .freq = f.C4, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.1, .params = MyNoteParams{ .freq = f.Ab3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.2, .params = MyNoteParams{ .freq = f.G3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.3, .params = MyNoteParams{ .freq = f.Eb3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.4, .params = MyNoteParams{ .freq = f.C3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.5, .params = MyNoteParams{ .freq = f.C3, .note_on = false }},
             }),
             .osc = zang.Oscillator.init(.Sawtooth),
-            .osc_trigger = zang.Trigger(zang.Oscillator).init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 0.15,
             }),
-            .env_trigger = zang.Trigger(zang.Envelope).init(),
+            .trigger = MyNotes.Trigger(SubtrackPlayer).init(),
         };
-    }
-
-    fn paint(self: *SubtrackPlayer, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [NumTempBufs][]f32) void {
-        const impulses = self.tracker.getImpulses(sample_rate, out.len, freq / BaseFrequency);
-
-        zang.zero(tmp[0]);
-        self.osc_trigger.paintFromImpulses(&self.osc, sample_rate, tmp[0], impulses, [0][]f32{});
-        zang.zero(tmp[1]);
-        self.env_trigger.paintFromImpulses(&self.env, sample_rate, tmp[1], impulses, [0][]f32{});
-        zang.multiply(out, tmp[0], tmp[1]);
     }
 
     fn reset(self: *SubtrackPlayer) void {
@@ -63,6 +60,32 @@ const SubtrackPlayer = struct {
         self.tracker.reset();
         self.osc.reset();
         self.env.reset();
+    }
+
+    fn paintSpan(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const out = outputs[0];
+        const impulses = self.tracker.getImpulses(sample_rate, out.len);
+
+        zang.zero(temps[0]);
+        {
+            var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
+            for (conv.getPairs(impulses)) |*pair| {
+                pair.dest = zang.Oscillator.Params {
+                    .freq = pair.source.freq * params.freq / BaseFrequency,
+                };
+            }
+            self.osc.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+        }
+        zang.zero(temps[1]);
+        {
+            var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
+            self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+        }
+        zang.multiply(out, temps[0], temps[1]);
+    }
+
+    pub fn paint(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const MyNotes.Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -73,21 +96,19 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: zang.ImpulseQueue,
+    iq: MyNotes.ImpulseQueue,
     key: ?i32,
     subtrack_player: SubtrackPlayer,
-    subtrack_trigger: zang.Trigger(SubtrackPlayer),
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = zang.ImpulseQueue.init(),
+            .iq = MyNotes.ImpulseQueue.init(),
             .key = null,
             .subtrack_player = SubtrackPlayer.init(),
-            .subtrack_trigger = zang.Trigger(SubtrackPlayer).init(),
         };
     }
 
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
@@ -96,51 +117,22 @@ pub const MainModule = struct {
 
         const impulses = self.iq.consume();
 
-        self.subtrack_trigger.paintFromImpulses(&self.subtrack_player, AUDIO_SAMPLE_RATE, out, impulses, [2][]f32{tmp0, tmp1});
+        self.subtrack_player.paint(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = note_frequencies;
-
-        if (switch (key) {
-            c.SDLK_a => f.C4,
-            c.SDLK_w => f.Cs4,
-            c.SDLK_s => f.D4,
-            c.SDLK_e => f.Ds4,
-            c.SDLK_d => f.E4,
-            c.SDLK_f => f.F4,
-            c.SDLK_t => f.Fs4,
-            c.SDLK_g => f.G4,
-            c.SDLK_y => f.Gs4,
-            c.SDLK_h => f.A4,
-            c.SDLK_u => f.As4,
-            c.SDLK_j => f.B4,
-            c.SDLK_k => f.C5,
-            else => null,
-        }) |freq| {
-            if (down) {
-                self.key = key;
-
-                return common.KeyEvent {
-                    .iq = &self.iq,
-                    .freq = freq,
-                };
-            } else {
-                if (if (self.key) |nh| nh == key else false) {
-                    self.key = null;
-
-                    return common.KeyEvent {
-                        .iq = &self.iq,
-                        .freq = null,
-                    };
-                }
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+        if (common.freqForKey(key)) |freq| {
+            if (down or (if (self.key) |nh| nh == key else false)) {
+                self.key = if (down) key else null;
+                out_iq.* = &self.iq;
+                out_params.* = MyNoteParams { .freq = freq, .note_on = down };
+                return true;
             }
         }
-
-        return null;
+        return false;
     }
 };

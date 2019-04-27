@@ -1,4 +1,5 @@
 const std = @import("std");
+const Notes = @import("notes.zig").Notes;
 
 pub const InterpolationFunction = enum {
     Linear,
@@ -29,6 +30,13 @@ const CurveSpan = struct {
 };
 
 pub const Curve = struct {
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 0;
+    pub const Params = struct {
+        freq_mul: f32, // TODO - remove this, not general enough
+    };
+
     function: InterpolationFunction,
     song: []const CurveNode,
     current_song_note: usize,
@@ -56,7 +64,8 @@ pub const Curve = struct {
         self.t = 0.0;
     }
 
-    pub fn paint(self: *Curve, sample_rate: f32, out: []f32, freq_mul: ?f32) void {
+    pub fn paintSpan(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const out = outputs[0];
         const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len);
 
         var start: usize = 0;
@@ -80,13 +89,8 @@ pub const Curve = struct {
                 // 'x' values are 0-1
                 const start_x = @intToFloat(f32, paint_start - fstart) / @intToFloat(f32, fend - fstart);
 
-                var start_value = values.start_node.value;
-                var value_delta = values.end_node.value - values.start_node.value;
-
-                if (freq_mul) |mul| {
-                    start_value *= mul;
-                    value_delta *= mul;
-                }
+                const start_value = params.freq_mul * values.start_node.value;
+                const value_delta = params.freq_mul * (values.end_node.value - values.start_node.value);
 
                 const x_step = 1.0 / @intToFloat(f32, fend - fstart);
 
@@ -115,6 +119,10 @@ pub const Curve = struct {
 
             start = curve_span.end;
         }
+    }
+
+    pub fn paint(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 
     fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize) []CurveSpanNode {

@@ -9,6 +9,12 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
+pub const MyNoteParams = struct {
+    freq: f32,
+    note_on: bool,
+};
+pub const MyNotes = zang.Notes(MyNoteParams);
+
 var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
     buf1: [AUDIO_BUFFER_SIZE]f32,
@@ -17,25 +23,16 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: zang.ImpulseQueue,
+    iq: MyNotes.ImpulseQueue,
     keys_held: u32,
     noise: zang.Noise,
     env: zang.Envelope,
-    env_trigger: zang.Trigger(zang.Envelope),
     porta: zang.Portamento,
-    porta_trigger: zang.Trigger(zang.Portamento),
     flt: zang.Filter,
 
     pub fn init() MainModule {
-        // FIXME - we don't initialize oscillator with a frequency, why should
-        // filter be initialized? i don't like using sample rate in the init
-        // function
-        // maybe all modules should have an enabled/disabled switch (and be
-        // disabled by default)
-        const cutoff = zang.cutoffFromFrequency(note_frequencies.C5, AUDIO_SAMPLE_RATE);
-
         return MainModule{
-            .iq = zang.ImpulseQueue.init(),
+            .iq = MyNotes.ImpulseQueue.init(),
             .keys_held = 0,
             .noise = zang.Noise.init(0),
             .env = zang.Envelope.init(zang.EnvParams {
@@ -44,14 +41,12 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env_trigger = zang.Trigger(zang.Envelope).init(),
-            .porta = zang.Portamento.init(400.0),
-            .porta_trigger = zang.Trigger(zang.Portamento).init(),
-            .flt = zang.Filter.init(.LowPass, cutoff, 0.985),
+            .porta = zang.Portamento.init(0.05),
+            .flt = zang.Filter.init(.LowPass),
         };
     }
 
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
@@ -64,20 +59,28 @@ pub const MainModule = struct {
             var i: usize = undefined;
 
             zang.zero(tmp0);
-            self.noise.paint(tmp0);
+            self.noise.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
 
             zang.zero(tmp1);
-            self.porta_trigger.paintFromImpulses(&self.porta, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
-            // FIXME do this to the impulses, not the buffer
-            i = 0; while (i < tmp1.len) : (i += 1) {
-                tmp1[i] = zang.cutoffFromFrequency(tmp1[i], AUDIO_SAMPLE_RATE);
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Portamento.Params).init();
+                for (conv.getPairs(impulses)) |*pair| {
+                    pair.dest = zang.Portamento.Params {
+                        .value = zang.cutoffFromFrequency(pair.source.freq, sample_rate),
+                        .note_on = pair.source.note_on,
+                    };
+                }
+                self.porta.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
             }
 
             zang.zero(tmp2);
-            self.flt.paintControlledCutoff(AUDIO_SAMPLE_RATE, tmp2, tmp0, tmp1);
+            self.flt.paintControlledCutoff(sample_rate, tmp2, tmp0, tmp1, 0.985);
 
             zang.zero(tmp0);
-            self.env_trigger.paintFromImpulses(&self.env, AUDIO_SAMPLE_RATE, tmp0, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
+                self.env.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            }
 
             zang.multiply(out, tmp2, tmp0);
         }
@@ -91,10 +94,10 @@ pub const MainModule = struct {
     // behaviour of analog monophonic synths with portamento:
     // - the frequency is always that of the highest key held
     // - note-off only occurs when all keys are released
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
         const f = note_frequencies;
 
-        const key_freqs = [13]f32 {
+        const key_freqs = [18]f32 {
             f.C4,
             f.Cs4,
             f.D4,
@@ -108,6 +111,11 @@ pub const MainModule = struct {
             f.As4,
             f.B4,
             f.C5,
+            f.Cs5,
+            f.D5,
+            f.Ds5,
+            f.E5,
+            f.F5,
         };
 
         if (switch (key) {
@@ -124,6 +132,11 @@ pub const MainModule = struct {
             c.SDLK_u => u5(10),
             c.SDLK_j => u5(11),
             c.SDLK_k => u5(12),
+            c.SDLK_o => u5(13),
+            c.SDLK_l => u5(14),
+            c.SDLK_p => u5(15),
+            c.SDLK_SEMICOLON => u5(16),
+            c.SDLK_QUOTE => u5(17),
             else => null,
         }) |key_index| {
             const key_flag = u32(1) << key_index;
@@ -133,28 +146,25 @@ pub const MainModule = struct {
                 self.keys_held |= key_flag;
 
                 if (key_flag > prev_keys_held) {
-                    return common.KeyEvent{
-                        .iq = &self.iq,
-                        .freq = key_freqs[key_index],
-                    };
+                    out_iq.* = &self.iq;
+                    out_params.* = MyNoteParams { .freq = key_freqs[key_index], .note_on = true };
+                    return true;
                 }
             } else {
                 self.keys_held &= ~key_flag;
 
                 if (self.keys_held == 0) {
-                    return common.KeyEvent{
-                        .iq = &self.iq,
-                        .freq = null,
-                    };
+                    out_iq.* = &self.iq;
+                    out_params.* = MyNoteParams { .freq = key_freqs[key_index], .note_on = false };
+                    return true;
                 } else {
-                    return common.KeyEvent{
-                        .iq = &self.iq,
-                        .freq = key_freqs[31 - @clz(self.keys_held)],
-                    };
+                    out_iq.* = &self.iq;
+                    out_params.* = MyNoteParams { .freq = key_freqs[31 - @clz(self.keys_held)], .note_on = true };
+                    return true;
                 }
             }
         }
 
-        return null;
+        return false;
     }
 };

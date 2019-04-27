@@ -10,23 +10,8 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 2;
 
-const NoiseModule = struct {
-    noise: zang.Noise,
-    flt: zang.Filter,
-
-    fn init(seed: u64, freq: f32) NoiseModule {
-        return NoiseModule{
-            .noise = zang.Noise.init(seed),
-            .flt = zang.Filter.init(.LowPass, zang.cutoffFromFrequency(freq, AUDIO_SAMPLE_RATE), 0.4),
-        };
-    }
-
-    fn paint(self: *NoiseModule, out: []f32, tmp0: []f32) void {
-        zang.zero(tmp0);
-        self.noise.paint(tmp0);
-        self.flt.paint(out, tmp0);
-    }
-};
+pub const MyNoteParams = NoiseModule.Params;
+pub const MyNotes = zang.Notes(MyNoteParams);
 
 // take input (-1 to +1) and scale it to (min to max)
 fn scaleWave(out: []f32, in: []f32, tmp0: []f32, min: f32, max: f32) void {
@@ -42,6 +27,61 @@ fn invertWaveInPlace(out: []f32, tmp0: []f32) void {
     zang.zero(out);
     zang.addScalar(out, tmp0, 1.0);
 }
+
+const NoiseModule = struct {
+    pub const NumOutputs = 2;
+    pub const NumInputs = 1;
+    pub const NumTemps = 3;
+    pub const Params = struct {
+        min: f32,
+        max: f32,
+        cutoff_frequency: f32,
+    };
+
+    noise: zang.Noise,
+    flt: zang.Filter,
+    trigger: zang.Notes(Params).Trigger(NoiseModule),
+
+    fn init(seed: u64) NoiseModule {
+        return NoiseModule{
+            .noise = zang.Noise.init(seed),
+            .flt = zang.Filter.init(.LowPass),
+            .trigger = zang.Notes(Params).Trigger(NoiseModule).init(),
+        };
+    }
+
+    fn reset(self: *NoiseModule) void {}
+
+    fn paintSpan(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const pan = inputs[0];
+
+        // temps[0] = filtered noise
+        zang.zero(temps[0]);
+        zang.zero(temps[1]);
+        self.noise.paintSpan(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
+        self.flt.paintSpan(sample_rate, [1][]f32{temps[0]}, [1][]f32{temps[1]}, [0][]f32{}, zang.Filter.Params {
+            .cutoff = zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate),
+            .resonance = 0.4,
+        });
+
+        // temps[1] = pan scaled to (min to max)
+        zang.zero(temps[1]);
+        scaleWave(temps[1], pan, temps[2], params.min, params.max);
+
+        // left channel += temps[0] * temps[1]
+        zang.multiply(outputs[0], temps[0], temps[1]);
+
+        // temps[1] = 1 - temps[1]
+        invertWaveInPlace(temps[1], temps[2]);
+
+        // right channel += temps[0] * temps[1]
+        zang.multiply(outputs[1], temps[0], temps[1]);
+    }
+
+    pub fn paint(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
+    }
+};
 
 var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
@@ -63,31 +103,12 @@ pub const MainModule = struct {
         return MainModule{
             .frame_index = 0,
             .osc = zang.Oscillator.init(.Sine),
-            .noisem0 = NoiseModule.init(0, 320.0),
-            .noisem1 = NoiseModule.init(1, 380.0),
+            .noisem0 = NoiseModule.init(0),
+            .noisem1 = NoiseModule.init(1),
         };
     }
 
-    fn paintOne(out0: []f32, out1: []f32, noisem: *NoiseModule, pan: []f32, tmp0: []f32, tmp1: []f32, tmp2: []f32, min: f32, max: f32) void {
-        // tmp0 = filtered noise
-        zang.zero(tmp0);
-        noisem.paint(tmp0, tmp1);
-
-        // tmp1 = pan scaled to (min to max)
-        zang.zero(tmp1);
-        scaleWave(tmp1, pan, tmp2, min, max);
-
-        // left channel += tmp0 * tmp1
-        zang.multiply(out0, tmp0, tmp1);
-
-        // tmp1 = 1 - tmp1
-        invertWaveInPlace(tmp1, tmp2);
-
-        // right channel += tmp0 * tmp1
-        zang.multiply(out1, tmp0, tmp1);
-    }
-
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out0 = g_buffers.buf0[0..];
         const out1 = g_buffers.buf1[0..];
         const tmp0 = g_buffers.buf2[0..];
@@ -100,11 +121,21 @@ pub const MainModule = struct {
 
         // tmp0 = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(tmp0);
-        self.osc.paint(AUDIO_SAMPLE_RATE, tmp0, true, 0.1, [0][]f32{});
+        self.osc.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, zang.Oscillator.Params {
+            .freq = 0.1,
+        });
 
         // paint two noise voices
-        paintOne(out0, out1, &self.noisem0, tmp0, tmp1, tmp2, tmp3, 0.0, 0.5);
-        paintOne(out0, out1, &self.noisem1, tmp0, tmp1, tmp2, tmp3, 0.5, 1.0);
+        self.noisem0.paintSpan(sample_rate, [2][]f32{out0, out1}, [1][]f32{tmp0}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
+            .min = 0.0,
+            .max = 0.5,
+            .cutoff_frequency = 320.0,
+        });
+        self.noisem1.paintSpan(sample_rate, [2][]f32{out0, out1}, [1][]f32{tmp0}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
+            .min = 0.5,
+            .max = 1.0,
+            .cutoff_frequency = 380.0,
+        });
 
         self.frame_index += out0.len;
 
@@ -114,7 +145,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        return null;
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+        return false;
     }
 };

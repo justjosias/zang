@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -11,13 +10,22 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
+pub const MyNoteParams = CurvePlayer.Params;
+pub const MyNotes = zang.Notes(MyNoteParams);
+
 const CurvePlayer = struct {
-    pub const NumTempBufs = 2;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 2;
+    pub const Params = struct {
+        freq: f32,
+    };
 
     carrier_curve: zang.Curve,
     carrier: zang.Oscillator,
     modulator_curve: zang.Curve,
     modulator: zang.Oscillator,
+    trigger: zang.Notes(Params).Trigger(CurvePlayer),
 
     fn init() CurvePlayer {
         return CurvePlayer {
@@ -36,24 +44,30 @@ const CurvePlayer = struct {
                 zang.CurveNode{ .t = 3.0, .value = 220.0 },
             }),
             .modulator = zang.Oscillator.init(.Sine),
+            .trigger = zang.Notes(Params).Trigger(CurvePlayer).init(),
         };
-    }
-
-    fn paint(self: *CurvePlayer, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [NumTempBufs][]f32) void {
-        const freq_mul = freq / 440.0;
-
-        zang.zero(tmp[0]);
-        self.modulator_curve.paint(sample_rate, tmp[0], freq_mul);
-        zang.zero(tmp[1]);
-        self.modulator.paintControlledFrequency(sample_rate, tmp[1], tmp[0]);
-        zang.zero(tmp[0]);
-        self.carrier_curve.paint(sample_rate, tmp[0], freq_mul);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp[1], tmp[0]);
     }
 
     fn reset(self: *CurvePlayer) void {
         self.carrier_curve.reset();
         self.modulator_curve.reset();
+    }
+
+    fn paintSpan(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const out = outputs[0];
+        const freq_mul = params.freq / 440.0;
+
+        zang.zero(temps[0]);
+        self.modulator_curve.paint(sample_rate, temps[0], freq_mul);
+        zang.zero(temps[1]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[1], temps[0]);
+        zang.zero(temps[0]);
+        self.carrier_curve.paint(sample_rate, temps[0], freq_mul);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
+    }
+
+    pub fn paint(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -64,61 +78,38 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: zang.ImpulseQueue,
+    iq: MyNotes.ImpulseQueue,
     curve_player: CurvePlayer,
-    curve_trigger: zang.Trigger(CurvePlayer),
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = zang.ImpulseQueue.init(),
+            .iq = MyNotes.ImpulseQueue.init(),
             .curve_player = CurvePlayer.init(),
-            .curve_trigger = zang.Trigger(CurvePlayer).init(),
         };
     }
 
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
 
         zang.zero(out);
 
-        self.curve_trigger.paintFromImpulses(&self.curve_player, AUDIO_SAMPLE_RATE, out, self.iq.consume(), [2][]f32{tmp0, tmp1});
+        self.curve_player.paint(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, self.iq.consume());
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = note_frequencies;
-
-        if (!down) {
-            return null;
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+        if (down) {
+            if (common.freqForKey(key)) |freq| {
+                out_iq.* = &self.iq;
+                out_params.* = MyNoteParams{ .freq = freq };
+                return true;
+            }
         }
-
-        if (switch (key) {
-            c.SDLK_a => f.C4,
-            c.SDLK_w => f.Cs4,
-            c.SDLK_s => f.D4,
-            c.SDLK_e => f.Ds4,
-            c.SDLK_d => f.E4,
-            c.SDLK_f => f.F4,
-            c.SDLK_t => f.Fs4,
-            c.SDLK_g => f.G4,
-            c.SDLK_y => f.Gs4,
-            c.SDLK_h => f.A4,
-            c.SDLK_u => f.As4,
-            c.SDLK_j => f.B4,
-            c.SDLK_k => f.C5,
-            else => null,
-        }) |freq| {
-            return common.KeyEvent{
-                .iq = &self.iq,
-                .freq = freq,
-            };
-        }
-
-        return null;
+        return false;
     }
 };

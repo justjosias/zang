@@ -11,9 +11,18 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
+pub const MyNoteParams = PulseModOscillator.Params;
+pub const MyNotes = zang.Notes(MyNoteParams);
+
 // an example of a custom "module"
 const PulseModOscillator = struct {
-    pub const NumTempBufs = 3;
+    pub const NumOutputs = 1;
+    pub const NumInputs = 0;
+    pub const NumTemps = 3;
+    pub const Params = struct {
+        freq: f32,
+        note_on: bool,
+    };
 
     carrier: zang.Oscillator,
     modulator: zang.Oscillator,
@@ -26,6 +35,7 @@ const PulseModOscillator = struct {
     // multiplier: the modulator oscillator's output is multiplied by this
     // before it is fed in to the phase input of the carrier oscillator.
     multiplier: f32,
+    trigger: zang.Notes(Params).Trigger(PulseModOscillator),
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
@@ -33,19 +43,26 @@ const PulseModOscillator = struct {
             .modulator = zang.Oscillator.init(.Sine),
             .ratio = ratio,
             .multiplier = multiplier,
+            .trigger = zang.Notes(Params).Trigger(PulseModOscillator).init(),
         };
     }
 
     fn reset(self: *PulseModOscillator) void {}
 
-    fn paint(self: *PulseModOscillator, sample_rate: f32, out: []f32, note_on: bool, freq: f32, tmp: [3][]f32) void {
-        zang.set(tmp[0], freq);
-        zang.set(tmp[1], freq * self.ratio);
-        zang.zero(tmp[2]);
-        self.modulator.paintControlledFrequency(sample_rate, tmp[2], tmp[1]);
-        zang.zero(tmp[1]);
-        zang.multiplyScalar(tmp[1], tmp[2], self.multiplier);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, tmp[1], tmp[0]);
+    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: MyNoteParams) void {
+        const out = outputs[0];
+
+        zang.set(temps[0], params.freq);
+        zang.set(temps[1], params.freq * self.ratio);
+        zang.zero(temps[2]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[2], temps[1]);
+        zang.zero(temps[1]);
+        zang.multiplyScalar(temps[1], temps[2], self.multiplier);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
+    }
+
+    pub fn paint(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, impulses: ?*const zang.Notes(Params).Impulse) void {
+        self.trigger.paintFromImpulses(self, sample_rate, outputs, inputs, temps, impulses);
     }
 };
 
@@ -58,59 +75,49 @@ var g_buffers: struct {
 } = undefined;
 
 const NoteParams = struct {
-    iq: *zang.ImpulseQueue,
+    iq: *MyNotes.ImpulseQueue,
     nh: *?i32,
     freq: f32,
 };
 
 pub const MainModule = struct {
-    iq0: zang.ImpulseQueue,
+    iq0: MyNotes.ImpulseQueue,
     key0: ?i32,
     osc0: PulseModOscillator,
-    osc0_trigger: zang.Trigger(PulseModOscillator),
     env0: zang.Envelope,
-    env0_trigger: zang.Trigger(zang.Envelope),
 
-    iq1: zang.ImpulseQueue,
+    iq1: MyNotes.ImpulseQueue,
     key1: ?i32,
     osc1: zang.Oscillator,
-    osc1_trigger: zang.Trigger(zang.Oscillator),
     env1: zang.Envelope,
-    env1_trigger: zang.Trigger(zang.Envelope),
 
     flt: zang.Filter,
 
     pub fn init() MainModule {
-        const cutoff = zang.cutoffFromFrequency(note_frequencies.C5, AUDIO_SAMPLE_RATE);
-
         return MainModule{
-            .iq0 = zang.ImpulseQueue.init(),
+            .iq0 = MyNotes.ImpulseQueue.init(),
             .key0 = null,
             .osc0 = PulseModOscillator.init(1.0, 1.5),
-            .osc0_trigger = zang.Trigger(PulseModOscillator).init(),
             .env0 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env0_trigger = zang.Trigger(zang.Envelope).init(),
-            .iq1 = zang.ImpulseQueue.init(),
+            .iq1 = MyNotes.ImpulseQueue.init(),
             .key1 = null,
             .osc1 = zang.Oscillator.init(.Sawtooth),
-            .osc1_trigger = zang.Trigger(zang.Oscillator).init(),
             .env1 = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             }),
-            .env1_trigger = zang.Trigger(zang.Envelope).init(),
-            .flt = zang.Filter.init(.LowPass, cutoff, 0.7),
+            .flt = zang.Filter.init(.LowPass),
         };
     }
 
-    pub fn paint(self: *MainModule) [AUDIO_CHANNELS][]const f32 {
+    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
@@ -124,9 +131,12 @@ pub const MainModule = struct {
             const impulses = self.iq0.consume();
 
             zang.zero(tmp0);
-            self.osc0_trigger.paintFromImpulses(&self.osc0, AUDIO_SAMPLE_RATE, tmp0, impulses, [3][]f32{tmp1, tmp2, tmp3});
+            self.osc0.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
             zang.zero(tmp1);
-            self.env0_trigger.paintFromImpulses(&self.env0, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
+                self.env0.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            }
             zang.multiply(out, tmp0, tmp1);
         }
 
@@ -135,14 +145,29 @@ pub const MainModule = struct {
             const impulses = self.iq1.consume();
 
             zang.zero(tmp3);
-            self.osc1_trigger.paintFromImpulses(&self.osc1, AUDIO_SAMPLE_RATE, tmp3, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
+                self.osc1.paint(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            }
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // boost sawtooth volume
             zang.zero(tmp1);
-            self.env1_trigger.paintFromImpulses(&self.env1, AUDIO_SAMPLE_RATE, tmp1, impulses, [0][]f32{});
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
+                self.env1.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp0, tmp1);
-            self.flt.paint(out, tmp2);
+            {
+                var conv = zang.ParamsConverter(MyNoteParams, zang.Filter.Params).init();
+                for (conv.getPairs(impulses)) |*pair| {
+                    pair.dest = zang.Filter.Params {
+                        .cutoff = zang.cutoffFromFrequency(note_frequencies.C5, sample_rate),
+                        .resonance = 0.7,
+                    };
+                }
+                self.flt.paint(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, conv.getImpulses());
+            }
         }
 
         return [AUDIO_CHANNELS][]const f32 {
@@ -150,45 +175,24 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool) ?common.KeyEvent {
-        const f = note_frequencies;
-
-        if (switch (key) {
-            c.SDLK_SPACE => NoteParams{ .iq = &self.iq1, .nh = &self.key1, .freq = f.C4 / 4.0 },
-            c.SDLK_a => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.C4 },
-            c.SDLK_w => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.Cs4 },
-            c.SDLK_s => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.D4 },
-            c.SDLK_e => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.Ds4 },
-            c.SDLK_d => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.E4 },
-            c.SDLK_f => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.F4 },
-            c.SDLK_t => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.Fs4 },
-            c.SDLK_g => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.G4 },
-            c.SDLK_y => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.Gs4 },
-            c.SDLK_h => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.A4 },
-            c.SDLK_u => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.As4 },
-            c.SDLK_j => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.B4 },
-            c.SDLK_k => NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = f.C5 },
-            else => null,
-        }) |params| {
-            if (down) {
-                params.nh.* = key;
-
-                return common.KeyEvent{
-                    .iq = params.iq,
-                    .freq = params.freq,
-                };
-            } else {
-                if (if (params.nh.*) |nh| nh == key else false) {
-                    params.nh.* = null;
-
-                    return common.KeyEvent{
-                        .iq = params.iq,
-                        .freq = null,
-                    };
-                }
+    // FIXME - can i change this function signature somehow to allow multiple IQ types?
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+        if (
+            if (key == c.SDLK_SPACE)
+                NoteParams{ .iq = &self.iq1, .nh = &self.key1, .freq = note_frequencies.C4 / 4.0 }
+            else if (common.freqForKey(key)) |freq|
+                NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = freq }
+            else
+                null
+        ) |params| {
+            if (down or (if (params.nh.*) |nh| nh == key else false)) {
+                params.nh.* = if (down) key else null;
+                out_iq.* = params.iq;
+                out_params.* = MyNoteParams { .freq = params.freq, .note_on = down };
+                return true;
             }
         }
 
-        return null;
+        return false;
     }
 };
