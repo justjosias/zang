@@ -11,9 +11,6 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = LaserPlayer.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
-
 const LaserPlayer = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
@@ -95,14 +92,14 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: MyNotes.ImpulseQueue,
+    iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
     laser_player: zang.Triggerable(LaserPlayer),
 
     r: std.rand.Xoroshiro128,
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = MyNotes.ImpulseQueue.init(),
+            .iq = zang.Notes(LaserPlayer.Params).ImpulseQueue.init(),
             .laser_player = zang.initTriggerable(LaserPlayer.init()),
             .r = std.rand.DefaultPrng.init(0),
         };
@@ -123,18 +120,11 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
             const base_freq = 1.0;
             const variance = 0.3;
-
-            out_iq.* = &self.iq;
-            out_params.* = MyNoteParams {
-                .freq = base_freq + self.r.random.float(f32) * variance - 0.5 * variance,
-                .carrier_mul = undefined,
-                .modulator_mul = undefined,
-                .modulator_rad = undefined,
-            };
+            const freq = base_freq + self.r.random.float(f32) * variance - 0.5 * variance;
 
             switch (key) {
                 c.SDLK_SPACE => {
@@ -142,36 +132,42 @@ pub const MainModule = struct {
                     const carrier_mul_variance = 0.0;
                     const modulator_mul_variance = 0.1;
                     const modulator_rad_variance = 0.25;
-                    out_params.carrier_mul = 2.0 + self.r.random.float(f32) * carrier_mul_variance - 0.5 * carrier_mul_variance;
-                    out_params.modulator_mul = 0.5 + self.r.random.float(f32) * modulator_mul_variance - 0.5 * modulator_mul_variance;
-                    out_params.modulator_rad = 0.5 + self.r.random.float(f32) * modulator_rad_variance - 0.5 * modulator_rad_variance;
-                    return true;
+                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                        .freq = freq,
+                        .carrier_mul = 2.0 + self.r.random.float(f32) * carrier_mul_variance - 0.5 * carrier_mul_variance,
+                        .modulator_mul = 0.5 + self.r.random.float(f32) * modulator_mul_variance - 0.5 * modulator_mul_variance,
+                        .modulator_rad = 0.5 + self.r.random.float(f32) * modulator_rad_variance - 0.5 * modulator_rad_variance,
+                    });
                 },
                 c.SDLK_a => {
                     // enemy laser
-                    out_params.carrier_mul = 4.0;
-                    out_params.modulator_mul = 0.125;
-                    out_params.modulator_rad = 1.0;
-                    return true;
+                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                        .freq = freq,
+                        .carrier_mul = 4.0,
+                        .modulator_mul = 0.125,
+                        .modulator_rad = 1.0,
+                    });
                 },
                 c.SDLK_s => {
                     // pain sound?
-                    out_params.carrier_mul = 0.5;
-                    out_params.modulator_mul = 0.125;
-                    out_params.modulator_rad = 1.0;
-                    return true;
+                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                        .freq = freq,
+                        .carrier_mul = 0.5,
+                        .modulator_mul = 0.125,
+                        .modulator_rad = 1.0,
+                    });
                 },
                 c.SDLK_d => {
                     // some web effect?
-                    out_params.carrier_mul = 1.0;
-                    out_params.modulator_mul = 9.0;
-                    out_params.modulator_rad = 1.0;
-                    return true;
+                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                        .freq = freq,
+                        .carrier_mul = 1.0,
+                        .modulator_mul = 9.0,
+                        .modulator_rad = 1.0,
+                    });
                 },
                 else => {},
             }
         }
-
-        return false;
     }
 };

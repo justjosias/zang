@@ -81,30 +81,17 @@ pub fn main() !void {
             c.SDL_QUIT => {
                 break;
             },
-            c.SDL_KEYDOWN => {
-                if (event.key.keysym.sym == c.SDLK_ESCAPE) {
+            c.SDL_KEYDOWN,
+            c.SDL_KEYUP => {
+                const down = event.type == c.SDL_KEYDOWN;
+                if (event.key.keysym.sym == c.SDLK_ESCAPE and down) {
                     break;
                 }
                 if (event.key.repeat == 0) {
-                    var iq: *example.MyNotes.ImpulseQueue = undefined;
-                    var params: example.MyNoteParams = undefined;
-                    if (main_module.keyEvent(event.key.keysym.sym, true, &iq, &params)) {
-                        c.SDL_LockAudioDevice(device);
-                        // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
-                        const impulse_frame = 0;
-                        iq.push(impulse_frame, params);
-                        c.SDL_UnlockAudioDevice(device);
-                    }
-                }
-            },
-            c.SDL_KEYUP => {
-                var iq: *example.MyNotes.ImpulseQueue = undefined;
-                var params: example.MyNoteParams = undefined;
-                if (main_module.keyEvent(event.key.keysym.sym, false, &iq, &params)) {
                     c.SDL_LockAudioDevice(device);
                     // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
                     const impulse_frame = 0;
-                    iq.push(impulse_frame, params);
+                    main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },

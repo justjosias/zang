@@ -11,8 +11,8 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = PulseModOscillator.Params; // FIXME
-pub const MyNotes = zang.Notes(MyNoteParams);
+const MyNoteParams = PulseModOscillator.Params;
+const MyNotes = zang.Notes(MyNoteParams);
 
 const Note = common.Note;
 const track1Init = []Note(MyNoteParams) {
@@ -243,7 +243,5 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
-        return false;
-    }
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {}
 };

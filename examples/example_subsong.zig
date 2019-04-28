@@ -13,8 +13,8 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = SubtrackPlayer.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
+const MyNoteParams = SubtrackPlayer.Params;
+const MyNotes = zang.Notes(MyNoteParams);
 
 // an example of a custom "module"
 const SubtrackPlayer = struct {
@@ -119,15 +119,12 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (common.freqForKey(key)) |freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                out_iq.* = &self.iq;
-                out_params.* = MyNoteParams { .freq = freq, .note_on = down };
-                return true;
+                self.iq.push(impulse_frame, MyNoteParams { .freq = freq, .note_on = down });
             }
         }
-        return false;
     }
 };

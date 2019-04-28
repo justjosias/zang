@@ -10,9 +10,6 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = CurvePlayer.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
-
 const CurvePlayer = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
@@ -76,12 +73,12 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: MyNotes.ImpulseQueue,
+    iq: zang.Notes(CurvePlayer.Params).ImpulseQueue,
     curve_player: zang.Triggerable(CurvePlayer),
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = MyNotes.ImpulseQueue.init(),
+            .iq = zang.Notes(CurvePlayer.Params).ImpulseQueue.init(),
             .curve_player = zang.initTriggerable(CurvePlayer.init()),
         };
     }
@@ -100,14 +97,11 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
             if (common.freqForKey(key)) |freq| {
-                out_iq.* = &self.iq;
-                out_params.* = MyNoteParams{ .freq = freq };
-                return true;
+                self.iq.push(impulse_frame, CurvePlayer.Params { .freq = freq });
             }
         }
-        return false;
     }
 };

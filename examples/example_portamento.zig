@@ -9,11 +9,11 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = struct {
+const MyNoteParams = struct {
     freq: f32,
     note_on: bool,
 };
-pub const MyNotes = zang.Notes(MyNoteParams);
+const MyNotes = zang.Notes(MyNoteParams);
 
 var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
@@ -31,7 +31,7 @@ pub const MainModule = struct {
     flt: zang.Filter,
 
     pub fn init() MainModule {
-        return MainModule{
+        return MainModule {
             .iq = MyNotes.ImpulseQueue.init(),
             .keys_held = 0,
             .noise = zang.Noise.init(0),
@@ -95,7 +95,7 @@ pub const MainModule = struct {
     // behaviour of analog monophonic synths with portamento:
     // - the frequency is always that of the highest key held
     // - note-off only occurs when all keys are released
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         const f = note_frequencies;
 
         const key_freqs = [18]f32 {
@@ -147,25 +147,17 @@ pub const MainModule = struct {
                 self.keys_held |= key_flag;
 
                 if (key_flag > prev_keys_held) {
-                    out_iq.* = &self.iq;
-                    out_params.* = MyNoteParams { .freq = key_freqs[key_index], .note_on = true };
-                    return true;
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[key_index], .note_on = true });
                 }
             } else {
                 self.keys_held &= ~key_flag;
 
                 if (self.keys_held == 0) {
-                    out_iq.* = &self.iq;
-                    out_params.* = MyNoteParams { .freq = key_freqs[key_index], .note_on = false };
-                    return true;
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[key_index], .note_on = false });
                 } else {
-                    out_iq.* = &self.iq;
-                    out_params.* = MyNoteParams { .freq = key_freqs[31 - @clz(self.keys_held)], .note_on = true };
-                    return true;
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[31 - @clz(self.keys_held)], .note_on = true });
                 }
             }
         }
-
-        return false;
     }
 };

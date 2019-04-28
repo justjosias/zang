@@ -34,9 +34,6 @@ const key_freqs = [NUM_NOTES]f32 {
     note_frequencies.F5,
 };
 
-pub const MyNoteParams = Polyphony.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
-
 const Polyphony = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
@@ -141,14 +138,14 @@ var g_buffers: struct {
 } = undefined;
 
 pub const MainModule = struct {
-    iq: MyNotes.ImpulseQueue,
-    current_params: MyNoteParams,
+    iq: zang.Notes(Polyphony.Params).ImpulseQueue,
+    current_params: Polyphony.Params,
     polyphony: zang.Triggerable(Polyphony),
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = MyNotes.ImpulseQueue.init(),
-            .current_params = MyNoteParams {
+            .iq = zang.Notes(Polyphony.Params).ImpulseQueue.init(),
+            .current_params = Polyphony.Params {
                 .note_held = [1]bool{false} ** NUM_NOTES,
             },
             .polyphony = zang.initTriggerable(Polyphony.init()),
@@ -171,7 +168,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         const f = note_frequencies;
 
         if (switch (key) {
@@ -196,12 +193,7 @@ pub const MainModule = struct {
             else => null,
         }) |key_index| {
             self.current_params.note_held[key_index] = down;
-
-            out_iq.* = &self.iq;
-            out_params.* = self.current_params;
-            return true;
+            self.iq.push(impulse_frame, self.current_params);
         }
-
-        return false;
     }
 };

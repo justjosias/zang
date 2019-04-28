@@ -1,5 +1,6 @@
 const std = @import("std");
 
+// TODO should/can this be parametrized by the ModuleType instead?
 pub fn Notes(comptime NoteParamsType: type) type {
     return struct {
         pub const Impulse = struct {

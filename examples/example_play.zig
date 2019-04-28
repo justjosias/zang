@@ -11,8 +11,8 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-pub const MyNoteParams = PulseModOscillator.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
+const MyNoteParams = PulseModOscillator.Params;
+const MyNotes = zang.Notes(MyNoteParams);
 
 // an example of a custom "module"
 const PulseModOscillator = struct {
@@ -68,12 +68,6 @@ var g_buffers: struct {
     buf4: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
-const NoteParams = struct {
-    iq: *MyNotes.ImpulseQueue,
-    nh: *?i32,
-    freq: f32,
-};
-
 pub const MainModule = struct {
     iq0: MyNotes.ImpulseQueue,
     key0: ?i32,
@@ -81,7 +75,6 @@ pub const MainModule = struct {
     env0: zang.Triggerable(zang.Envelope),
 
     iq1: MyNotes.ImpulseQueue,
-    key1: ?i32,
     osc1: zang.Triggerable(zang.Oscillator),
     env1: zang.Triggerable(zang.Envelope),
 
@@ -99,7 +92,6 @@ pub const MainModule = struct {
                 .release_duration = 1.0,
             })),
             .iq1 = MyNotes.ImpulseQueue.init(),
-            .key1 = null,
             .osc1 = zang.initTriggerable(zang.Oscillator.init()),
             .env1 = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
@@ -177,24 +169,20 @@ pub const MainModule = struct {
         };
     }
 
-    // FIXME - can i change this function signature somehow to allow multiple IQ types?
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
-        if (
-            if (key == c.SDLK_SPACE)
-                NoteParams{ .iq = &self.iq1, .nh = &self.key1, .freq = note_frequencies.C4 / 4.0 }
-            else if (common.freqForKey(key)) |freq|
-                NoteParams{ .iq = &self.iq0, .nh = &self.key0, .freq = freq }
-            else
-                null
-        ) |params| {
-            if (down or (if (params.nh.*) |nh| nh == key else false)) {
-                params.nh.* = if (down) key else null;
-                out_iq.* = params.iq;
-                out_params.* = MyNoteParams { .freq = params.freq, .note_on = down };
-                return true;
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+        if (key == c.SDLK_SPACE) {
+            self.iq1.push(impulse_frame, MyNoteParams {
+                .freq = note_frequencies.C4 / 4.0,
+                .note_on = down,
+            });
+        } else if (common.freqForKey(key)) |freq| {
+            if (down or (if (self.key0) |nh| nh == key else false)) {
+                self.key0 = if (down) key else null;
+                self.iq0.push(impulse_frame, MyNoteParams {
+                    .freq = freq,
+                    .note_on = down,
+                });
             }
         }
-
-        return false;
     }
 };

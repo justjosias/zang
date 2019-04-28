@@ -10,9 +10,6 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 2;
 
-pub const MyNoteParams = NoiseModule.Params;
-pub const MyNotes = zang.Notes(MyNoteParams);
-
 // take input (-1 to +1) and scale it to (min to max)
 fn scaleWave(out: []f32, in: []f32, tmp0: []f32, min: f32, max: f32) void {
     zang.zero(tmp0);
@@ -97,7 +94,7 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         return MainModule{
             .frame_index = 0,
-            .osc = zang.Oscillator.init(.Sine),
+            .osc = zang.Oscillator.init(),
             .noisem0 = NoiseModule.init(0),
             .noisem1 = NoiseModule.init(1),
         };
@@ -117,6 +114,7 @@ pub const MainModule = struct {
         // tmp0 = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(tmp0);
         self.osc.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, zang.Oscillator.Params {
+            .waveform = .Sine,
             .freq = 0.1,
             .colour = 0.5,
         });
@@ -141,7 +139,5 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
-        return false;
-    }
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {}
 };

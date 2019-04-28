@@ -19,11 +19,11 @@ var g_buffers: struct {
     buf4: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
-pub const MyNoteParams = struct {
+const MyNoteParams = struct {
     freq: f32,
     note_on: bool,
 };
-pub const MyNotes = zang.Notes(MyNoteParams);
+const MyNotes = zang.Notes(MyNoteParams);
 
 pub const MainModule = struct {
     noise: zang.Noise,
@@ -90,7 +90,7 @@ pub const MainModule = struct {
             }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
-            self.osc.paintControlledFrequency(sample_rate, tmp1, .Sine, tmp0, 0.5);
+            self.osc.paintControlledFrequency(sample_rate, tmp1, .Sawtooth, tmp0, 0.5);
             // combine with envelope
             zang.zero(tmp0);
             {
@@ -114,15 +114,12 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, out_iq: **MyNotes.ImpulseQueue, out_params: *MyNoteParams) bool {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (common.freqForKey(key)) |freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                out_iq.* = &self.iq;
-                out_params.* = MyNoteParams { .freq = freq * 0.5, .note_on = down };
-                return true;
+                self.iq.push(impulse_frame, MyNoteParams { .freq = freq * 0.5, .note_on = down });
             }
         }
-        return false;
     }
 };
