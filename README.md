@@ -22,6 +22,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build portamento`: Play a monophonic synth with portamento (gliding between notes). The instrument is composed of filtered noise, where the resonance frequency is controlled by the keyboard. (Note: you must hold down keys to get the portamento effect. When there are gaps between keypresses, the portamento is reset.)
 
+`zig build arpeggiator`: Rapid chiptune-like arpeggiator that cycles between whatever keys you have held down (limited by the wiring of your keyboard).
+
 ## Features
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
