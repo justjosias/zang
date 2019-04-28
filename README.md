@@ -24,6 +24,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build arpeggiator`: Rapid chiptune-like arpeggiator that cycles between whatever keys you have held down (limited by the wiring of your keyboard).
 
+`zig build sampler`: Loop a WAV file (drum loop from [free-loops.com](http://free-loops.com/6791-live-drums.html)). Press space to restart the loop at a randomly altered playback speed.
+
 ## Features
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions

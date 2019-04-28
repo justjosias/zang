@@ -71,6 +71,14 @@ const Arpeggiator = struct {
         const out = outputs[0];
         const note_duration = @floatToInt(usize, 0.03 * sample_rate);
 
+        // TODO - if only one key is held, try to reuse the previous impulse id
+        // to prevent the envelope from retriggering on the same note.
+        // then replace Gate with Envelope.
+
+        // also, if possible, when all keys are released, call reset on the
+        // arpeggiator, so that whenever you start pressing keys, it starts
+        // immediately
+
         while (self.next_frame < out.len) {
             const next_note_index = blk: {
                 const start = if (self.last_note) |last_note| last_note + 1 else 0;

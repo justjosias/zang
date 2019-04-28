@@ -1,6 +1,14 @@
 const std = @import("std");
 
-fn getSample(data: []const u8, index: usize) f32 {
+// FIXME - no effort at all has been made to optimize the sampler module
+// FIXME - hardcoded to support only 16-bit wav files
+// FIXME - use a better resampling filter
+// TODO - support playing backward (as it is it will probably crash)
+// TODO - more complex looping schemes
+
+fn getSample(data: []const u8, index1: usize, loop: bool) f32 {
+    const index = if (loop) index1 % (data.len / 2) else index1;
+
     if (index < data.len / 2) {
         const b0 = data[index * 2 + 0];
         const b1 = data[index * 2 + 1];
@@ -25,6 +33,7 @@ pub const Sampler = struct {
         // `sample_freq`: if null, ignore note frequencies and always play at
         // original speed
         sample_freq: ?f32,
+        loop: bool,
     };
 
     t: f32,
@@ -38,8 +47,6 @@ pub const Sampler = struct {
     pub fn reset(self: *Sampler) void {
         self.t = 0.0;
     }
-
-    // TODO - support looping
 
     pub fn paintSpan(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
@@ -66,13 +73,13 @@ pub const Sampler = struct {
                 const samples_to_render = std.math.min(out.len, samples_remaining);
 
                 while (i < samples_to_render) : (i += 1) {
-                    out[i] += getSample(params.sample_data, t + i);
+                    out[i] += getSample(params.sample_data, t + i, params.loop);
                 }
             }
 
             self.t += @intToFloat(f32, out.len);
         } else {
-            // resample (TODO - use a better filter)
+            // resample
             var i: usize = 0;
 
             while (i < out.len) : (i += 1) {
@@ -80,8 +87,8 @@ pub const Sampler = struct {
                 const t1 = t0 + 1;
                 const tfrac = @intToFloat(f32, t1) - self.t;
 
-                const s0 = getSample(params.sample_data, t0);
-                const s1 = getSample(params.sample_data, t1);
+                const s0 = getSample(params.sample_data, t0, params.loop);
+                const s1 = getSample(params.sample_data, t1, params.loop);
 
                 const s = s0 * (1.0 - tfrac) + s1 * tfrac;
 
@@ -89,6 +96,10 @@ pub const Sampler = struct {
 
                 self.t += ratio;
             }
+        }
+
+        if (self.t >= @intToFloat(f32, params.sample_data.len)) {
+            self.t -= @intToFloat(f32, params.sample_data.len);
         }
     }
 };
