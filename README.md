@@ -32,6 +32,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
 * DC: just a way to paint incoming note frequencies into a buffer
+* Decimator: imitate a lower sample rate without any interpolation
+* Distortion: overdrive and clip input sound
 * Envelope: ADSR (attack, decay, sustain, release) envelope generator
 * Filter: lowpass, highpass, notch, bandpass, including resonance
 * Gate: a simpler Envelope, just outputs 1 or 0 based on note on and off events
