@@ -8,7 +8,7 @@ const c = @import("common/sdl.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 4096;
+pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
 var g_buffers: struct {
