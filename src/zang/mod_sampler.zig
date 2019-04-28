@@ -98,7 +98,7 @@ pub const Sampler = struct {
             }
         }
 
-        if (self.t >= @intToFloat(f32, params.sample_data.len)) {
+        if (self.t >= @intToFloat(f32, params.sample_data.len) and params.loop) {
             self.t -= @intToFloat(f32, params.sample_data.len);
         }
     }
