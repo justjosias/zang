@@ -37,6 +37,13 @@ pub const InterpolationFunction = mod_curve.InterpolationFunction;
 const mod_dc = @import("zang/mod_dc.zig");
 pub const DC = mod_dc.DC;
 
+const mod_decimator = @import("zang/mod_decimator.zig");
+pub const Decimator = mod_decimator.Decimator;
+
+const mod_distortion = @import("zang/mod_distortion.zig");
+pub const Distortion = mod_distortion.Distortion;
+pub const DistortionType = mod_distortion.DistortionType;
+
 const mod_envelope = @import("zang/mod_envelope.zig");
 pub const EnvParams = mod_envelope.EnvParams;
 pub const EnvState = mod_envelope.EnvState;
