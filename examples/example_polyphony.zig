@@ -53,6 +53,7 @@ const Polyphony = struct {
         down: bool,
         iq: zang.Notes(InnerParams).ImpulseQueue,
         osc: zang.Triggerable(zang.Oscillator),
+        flt: zang.Triggerable(zang.Filter),
         envelope: zang.Triggerable(zang.Envelope),
     };
 
@@ -67,6 +68,7 @@ const Polyphony = struct {
                 .down = false,
                 .iq = zang.Notes(InnerParams).ImpulseQueue.init(),
                 .osc = zang.initTriggerable(zang.Oscillator.init(.Square)),
+                .flt = zang.initTriggerable(zang.Filter.init(.LowPass)),
                 .envelope = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                     .attack_duration = 0.01,
                     .decay_duration = 0.1,
@@ -102,14 +104,27 @@ const Polyphony = struct {
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Oscillator.Params {
                         .freq = pair.source.freq,
+                        .colour = 0.3,
                     };
                 }
                 voice.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
             }
+            zang.multiplyWithScalar(temps[0], 0.5);
             zang.zero(temps[1]);
             {
+                var conv = zang.ParamsConverter(InnerParams, zang.Filter.Params).init();
+                for (conv.getPairs(impulses)) |*pair| {
+                    pair.dest = zang.Filter.Params {
+                        .cutoff = zang.cutoffFromFrequency(pair.source.freq * 8.0, sample_rate),
+                        .resonance = 0.7,
+                    };
+                }
+                voice.flt.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [1][]f32{temps[0]}, [0][]f32{}, conv.getImpulses());
+            }
+            zang.zero(temps[0]);
+            {
                 var conv = zang.ParamsConverter(InnerParams, zang.Envelope.Params).init();
-                voice.envelope.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                voice.envelope.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, temps[0], temps[1]);
         }

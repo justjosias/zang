@@ -23,9 +23,9 @@ pub fn saw(t: f32) f32 {
     return frac;
 }
 
-pub fn square(t: f32) f32 {
+pub fn square(t: f32, colour: f32) f32 {
     const frac = t - std.math.floor(t);
-    return if (frac < 0.5) f32(1.0) else f32(-1.0);
+    return if (frac < colour) f32(1.0) else f32(-1.0);
 }
 
 pub fn sin(t: f32) f32 {
@@ -51,13 +51,14 @@ pub const Oscillator = struct {
     pub const NumTemps = 0;
     pub const Params = struct {
         freq: f32,
+        colour: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
     };
 
     waveform: Waveform,
     t: f32,
 
     pub fn init(waveform: Waveform) Oscillator {
-        return Oscillator{
+        return Oscillator {
             .waveform = waveform,
             .t = 0.0,
         };
@@ -86,7 +87,7 @@ pub const Oscillator = struct {
             },
             .Square => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += square(t);
+                    buf[i] += square(t, params.colour);
                     t += step;
                 }
             },
@@ -107,6 +108,7 @@ pub const Oscillator = struct {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
+        const colour: f32 = 0.5; // FIXME
 
         switch (self.waveform) {
             .Sine => {
@@ -126,7 +128,7 @@ pub const Oscillator = struct {
             .Square => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
-                    buf[i] += square(t);
+                    buf[i] += square(t, colour);
                     t += freq * inv;
                 }
             },
@@ -154,6 +156,7 @@ pub const Oscillator = struct {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
+        const colour: f32 = 0.5; // FIXME
 
         switch (self.waveform) {
             .Sine => {
@@ -176,7 +179,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += square(t + phase);
+                    buf[i] += square(t + phase, colour);
                     t += freq * inv;
                 }
             },

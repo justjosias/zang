@@ -117,6 +117,7 @@ pub const MainModule = struct {
         zang.zero(tmp0);
         self.osc.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, zang.Oscillator.Params {
             .freq = 0.1,
+            .colour = 0.5,
         });
 
         // paint two noise voices

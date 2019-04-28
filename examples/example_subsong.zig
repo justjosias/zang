@@ -69,6 +69,7 @@ const SubtrackPlayer = struct {
             for (conv.getPairs(impulses)) |*pair| {
                 pair.dest = zang.Oscillator.Params {
                     .freq = pair.source.freq * params.freq / BaseFrequency,
+                    .colour = 0.5,
                 };
             }
             self.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());

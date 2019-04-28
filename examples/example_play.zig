@@ -141,7 +141,13 @@ pub const MainModule = struct {
             zang.zero(tmp3);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
-                self.osc1.paintFromImpulses(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                for (conv.getPairs(impulses)) |*pair| {
+                    pair.dest = zang.Oscillator.Params {
+                        .freq = pair.source.freq,
+                        .colour = 0.5,
+                    };
+                }
+                self.osc1.paintFromImpulses(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
             }
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // boost sawtooth volume

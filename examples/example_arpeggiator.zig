@@ -74,6 +74,8 @@ const Arpeggiator = struct {
         // TODO - if only one key is held, try to reuse the previous impulse id
         // to prevent the envelope from retriggering on the same note.
         // then replace Gate with Envelope.
+        // or maybe not... this is the only example that uses Gate, don't want
+        // to lose the coverage
 
         // also, if possible, when all keys are released, call reset on the
         // arpeggiator, so that whenever you start pressing keys, it starts
@@ -113,6 +115,7 @@ const Arpeggiator = struct {
             for (conv.getPairs(impulses)) |*pair| {
                 pair.dest = zang.Oscillator.Params {
                     .freq = pair.source.freq,
+                    .colour = 0.5,
                 };
             }
             self.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
