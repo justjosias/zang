@@ -38,8 +38,8 @@ const PulseModOscillator = struct {
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = zang.Oscillator.init(.Sine),
-            .modulator = zang.Oscillator.init(.Sine),
+            .carrier = zang.Oscillator.init(),
+            .modulator = zang.Oscillator.init(),
             .ratio = ratio,
             .multiplier = multiplier,
         };
@@ -53,10 +53,10 @@ const PulseModOscillator = struct {
         zang.set(temps[0], params.freq);
         zang.set(temps[1], params.freq * self.ratio);
         zang.zero(temps[2]);
-        self.modulator.paintControlledFrequency(sample_rate, temps[2], temps[1]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[2], .Sine, temps[1], 0.5);
         zang.zero(temps[1]);
         zang.multiplyScalar(temps[1], temps[2], self.multiplier);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, .Sine, temps[1], temps[0], 0.5);
     }
 };
 
@@ -100,14 +100,14 @@ pub const MainModule = struct {
             })),
             .iq1 = MyNotes.ImpulseQueue.init(),
             .key1 = null,
-            .osc1 = zang.initTriggerable(zang.Oscillator.init(.Sawtooth)),
+            .osc1 = zang.initTriggerable(zang.Oscillator.init()),
             .env1 = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             })),
-            .flt = zang.initTriggerable(zang.Filter.init(.LowPass)),
+            .flt = zang.initTriggerable(zang.Filter.init()),
         };
     }
 
@@ -143,6 +143,7 @@ pub const MainModule = struct {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Oscillator.Params {
+                        .waveform = .Sawtooth,
                         .freq = pair.source.freq,
                         .colour = 0.5,
                     };
@@ -162,6 +163,7 @@ pub const MainModule = struct {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Filter.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Filter.Params {
+                        .filterType = .LowPass,
                         .cutoff = zang.cutoffFromFrequency(note_frequencies.C5, sample_rate),
                         .resonance = 0.7,
                     };

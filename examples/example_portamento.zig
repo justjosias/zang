@@ -41,8 +41,8 @@ pub const MainModule = struct {
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             })),
-            .porta = zang.initTriggerable(zang.Portamento.init(0.05)),
-            .flt = zang.Filter.init(.LowPass),
+            .porta = zang.initTriggerable(zang.Portamento.init()),
+            .flt = zang.Filter.init(),
         };
     }
 
@@ -66,6 +66,7 @@ pub const MainModule = struct {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Portamento.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Portamento.Params {
+                        .velocity = 0.05,
                         .value = zang.cutoffFromFrequency(pair.source.freq, sample_rate),
                         .note_on = pair.source.note_on,
                     };
@@ -74,7 +75,7 @@ pub const MainModule = struct {
             }
 
             zang.zero(tmp2);
-            self.flt.paintControlledCutoff(sample_rate, tmp2, tmp0, tmp1, 0.985);
+            self.flt.paintControlledCutoff(sample_rate, tmp2, tmp0, .LowPass, tmp1, 0.985);
 
             zang.zero(tmp0);
             {

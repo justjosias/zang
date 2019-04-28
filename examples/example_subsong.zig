@@ -43,7 +43,7 @@ const SubtrackPlayer = struct {
                 MyNotes.SongNote{ .t = 0.4, .params = MyNoteParams{ .freq = f.C3, .note_on = true }},
                 MyNotes.SongNote{ .t = 0.5, .params = MyNoteParams{ .freq = f.C3, .note_on = false }},
             }),
-            .osc = zang.initTriggerable(zang.Oscillator.init(.Sawtooth)),
+            .osc = zang.initTriggerable(zang.Oscillator.init()),
             .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
@@ -68,6 +68,7 @@ const SubtrackPlayer = struct {
             var conv = zang.ParamsConverter(MyNoteParams, zang.Oscillator.Params).init();
             for (conv.getPairs(impulses)) |*pair| {
                 pair.dest = zang.Oscillator.Params {
+                    .waveform = .Sawtooth,
                     .freq = pair.source.freq * params.freq / BaseFrequency,
                     .colour = 0.5,
                 };

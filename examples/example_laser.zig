@@ -42,13 +42,13 @@ const LaserPlayer = struct {
                 zang.CurveNode{ .t = 0.1, .value = B },
                 zang.CurveNode{ .t = 0.2, .value = C },
             }),
-            .carrier = zang.Oscillator.init(.Sine),
+            .carrier = zang.Oscillator.init(),
             .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
                 zang.CurveNode{ .t = 0.0, .value = A },
                 zang.CurveNode{ .t = 0.1, .value = B },
                 zang.CurveNode{ .t = 0.2, .value = C },
             }),
-            .modulator = zang.Oscillator.init(.Sine),
+            .modulator = zang.Oscillator.init(),
             .volume_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
                 zang.CurveNode{ .t = 0.0, .value = 0.0 },
                 zang.CurveNode{ .t = 0.004, .value = 1.0 },
@@ -71,14 +71,14 @@ const LaserPlayer = struct {
             .freq_mul = params.freq * params.modulator_mul,
         });
         zang.zero(temps[1]);
-        self.modulator.paintControlledFrequency(sample_rate, temps[1], temps[0]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[1], .Sine, temps[0], 0.5);
         zang.multiplyWithScalar(temps[1], params.modulator_rad);
         zang.zero(temps[0]);
         self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = params.freq * params.carrier_mul,
         });
         zang.zero(temps[2]);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, temps[2], temps[1], temps[0]);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, temps[2], .Sine, temps[1], temps[0], 0.5);
         zang.zero(temps[0]);
         self.volume_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = 1.0,

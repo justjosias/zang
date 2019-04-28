@@ -29,17 +29,16 @@ pub const Filter = struct {
     pub const NumInputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        filterType: FilterType,
         cutoff: f32, // 0-1
         resonance: f32, // 0-1
     };
 
-    filterType: FilterType,
     l: f32,
     b: f32,
 
-    pub fn init(filterType: FilterType) Filter {
+    pub fn init() Filter {
         return Filter{
-            .filterType = filterType,
             .l = 0.0,
             .b = 0.0,
         };
@@ -47,7 +46,7 @@ pub const Filter = struct {
 
     pub fn reset(self: *Filter) void {}
 
-    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, filterParams: Params) void {
+    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
         const input = inputs[0];
 
@@ -55,7 +54,7 @@ pub const Filter = struct {
         var b_mul: f32 = 0.0;
         var h_mul: f32 = 0.0;
 
-        switch (self.filterType) {
+        switch (params.filterType) {
             .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
@@ -82,8 +81,8 @@ pub const Filter = struct {
 
         var i: usize = 0;
 
-        const cutoff = std.math.max(0.0, std.math.min(1.0, filterParams.cutoff));
-        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, filterParams.resonance));
+        const cutoff = std.math.max(0.0, std.math.min(1.0, params.cutoff));
+        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, params.resonance));
 
         var l = self.l;
         var b = self.b;
@@ -118,6 +117,7 @@ pub const Filter = struct {
         sample_rate: f32,
         buf: []f32,
         input: []const f32,
+        filterType: FilterType,
         input_cutoff: []const f32,
         resonance: f32,
     ) void {
@@ -127,7 +127,7 @@ pub const Filter = struct {
         var b_mul: f32 = 0.0;
         var h_mul: f32 = 0.0;
 
-        switch (self.filterType) {
+        switch (filterType) {
             .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;

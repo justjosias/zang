@@ -38,18 +38,18 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         return MainModule {
             .noise = zang.Noise.init(0),
-            .noise_filter = zang.Filter.init(.LowPass),
+            .noise_filter = zang.Filter.init(),
             .iq = MyNotes.ImpulseQueue.init(),
             .key = null,
             .dc = zang.initTriggerable(zang.DC.init()),
-            .osc = zang.Oscillator.init(.Sawtooth),
+            .osc = zang.Oscillator.init(),
             .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
                 .sustain_volume = 0.5,
                 .release_duration = 1.0,
             })),
-            .main_filter = zang.Filter.init(.LowPass),
+            .main_filter = zang.Filter.init(),
         };
     }
 
@@ -69,6 +69,7 @@ pub const MainModule = struct {
         self.noise.paintSpan(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(tmp0);
         self.noise_filter.paintSpan(sample_rate, [1][]f32{tmp0}, [1][]f32{tmp1}, [0][]f32{}, zang.Filter.Params {
+            .filterType = .LowPass,
             .cutoff = zang.cutoffFromFrequency(4.0, sample_rate),
             .resonance = 0.0,
         });
@@ -89,7 +90,7 @@ pub const MainModule = struct {
             }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
-            self.osc.paintControlledFrequency(sample_rate, tmp1, tmp0);
+            self.osc.paintControlledFrequency(sample_rate, tmp1, .Sine, tmp0, 0.5);
             // combine with envelope
             zang.zero(tmp0);
             {
@@ -100,6 +101,7 @@ pub const MainModule = struct {
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
             self.main_filter.paintSpan(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, zang.Filter.Params {
+                .filterType = .LowPass,
                 .cutoff = zang.cutoffFromFrequency(880.0, sample_rate),
                 .resonance = 0.9,
             });

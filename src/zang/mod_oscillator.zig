@@ -50,16 +50,15 @@ pub const Oscillator = struct {
     pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
+        waveform: Waveform,
         freq: f32,
         colour: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
     };
 
-    waveform: Waveform,
     t: f32,
 
-    pub fn init(waveform: Waveform) Oscillator {
+    pub fn init() Oscillator {
         return Oscillator {
-            .waveform = waveform,
             .t = 0.0,
         };
     }
@@ -72,7 +71,7 @@ pub const Oscillator = struct {
         var t = self.t;
         var i: usize = 0;
 
-        switch (self.waveform) {
+        switch (params.waveform) {
             .Sine => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += sin(t);
@@ -104,13 +103,19 @@ pub const Oscillator = struct {
         self.t = t;
     }
 
-    pub fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, input_frequency: []const f32) void {
+    pub fn paintControlledFrequency(
+        self: *Oscillator,
+        sample_rate: f32,
+        buf: []f32,
+        waveform: Waveform,
+        input_frequency: []const f32,
+        colour: f32,
+    ) void {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
-        const colour: f32 = 0.5; // FIXME
 
-        switch (self.waveform) {
+        switch (waveform) {
             .Sine => {
                 while (i < buf.len) : (i += 1) {
                     const freq = input_frequency[i];
@@ -150,15 +155,16 @@ pub const Oscillator = struct {
         self: *Oscillator,
         sample_rate: f32,
         buf: []f32,
+        waveform: Waveform,
         input_phase: []const f32,
         input_frequency: []const f32,
+        colour: f32,
     ) void {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
-        const colour: f32 = 0.5; // FIXME
 
-        switch (self.waveform) {
+        switch (waveform) {
             .Sine => {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];

@@ -30,7 +30,7 @@ pub const Envelope = struct {
     state: EnvState,
 
     pub fn init(params: EnvParams) Envelope {
-        return Envelope{
+        return Envelope {
             .params = params,
             .envelope = 0.0,
             .state = .Idle,

@@ -162,8 +162,8 @@ const PulseModOscillator = struct {
 
     fn init(ratio: f32, multiplier: f32) PulseModOscillator {
         return PulseModOscillator{
-            .carrier = zang.Oscillator.init(.Sine),
-            .modulator = zang.Oscillator.init(.Sine),
+            .carrier = zang.Oscillator.init(),
+            .modulator = zang.Oscillator.init(),
             .ratio = ratio,
             .multiplier = multiplier,
         };
@@ -177,10 +177,10 @@ const PulseModOscillator = struct {
         zang.set(temps[0], params.freq);
         zang.set(temps[1], params.freq * self.ratio);
         zang.zero(temps[2]);
-        self.modulator.paintControlledFrequency(sample_rate, temps[2], temps[1]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[2], .Sine, temps[1], 0.5);
         zang.zero(temps[1]);
         zang.multiplyScalar(temps[1], temps[2], self.multiplier);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, .Sine, temps[1], temps[0], 0.5);
     }
 };
 

@@ -9,7 +9,7 @@ pub const Noise = struct {
     r: std.rand.Xoroshiro128,
 
     pub fn init(seed: u64) Noise {
-        return Noise{
+        return Noise {
             .r = std.rand.DefaultPrng.init(seed),
         };
     }

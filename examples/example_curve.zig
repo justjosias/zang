@@ -36,13 +36,13 @@ const CurvePlayer = struct {
                 zang.CurveNode{ .t = 2.0, .value = 330.0 },
                 zang.CurveNode{ .t = 3.9, .value = 20.0 },
             }),
-            .carrier = zang.Oscillator.init(.Sine),
+            .carrier = zang.Oscillator.init(),
             .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
                 zang.CurveNode{ .t = 0.0, .value = 110.0 },
                 zang.CurveNode{ .t = 1.5, .value = 55.0 },
                 zang.CurveNode{ .t = 3.0, .value = 220.0 },
             }),
-            .modulator = zang.Oscillator.init(.Sine),
+            .modulator = zang.Oscillator.init(),
         };
     }
 
@@ -60,12 +60,12 @@ const CurvePlayer = struct {
             .freq_mul = freq_mul,
         });
         zang.zero(temps[1]);
-        self.modulator.paintControlledFrequency(sample_rate, temps[1], temps[0]);
+        self.modulator.paintControlledFrequency(sample_rate, temps[1], .Sine, temps[0], 0.5);
         zang.zero(temps[0]);
         self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = freq_mul,
         });
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, temps[1], temps[0]);
+        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, .Sine, temps[1], temps[0], 0.5);
     }
 };
 

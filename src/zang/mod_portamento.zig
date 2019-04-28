@@ -6,18 +6,17 @@ pub const Portamento = struct {
     pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
+        velocity: f32,
         value: f32,
         note_on: bool,
     };
 
-    velocity: f32,
     value: f32,
     goal: f32,
     gap: bool,
 
-    pub fn init(velocity: f32) Portamento {
+    pub fn init() Portamento {
         return Portamento {
-            .velocity = velocity,
             .value = 0.0,
             .goal = 0.0,
             .gap = true,
@@ -40,13 +39,13 @@ pub const Portamento = struct {
             self.gap = true;
         }
 
-        if (self.velocity <= 0.0) {
+        if (params.velocity <= 0.0) {
             self.value = self.goal;
             std.mem.set(f32, buf, self.goal);
         } else {
             var i: u31 = 0;
 
-            if (paintLineTowards(&self.value, sample_rate, buf, &i, 1.0 / self.velocity, self.goal)) {
+            if (paintLineTowards(&self.value, sample_rate, buf, &i, 1.0 / params.velocity, self.goal)) {
                 // reached the goal
                 std.mem.set(f32, buf[i..], self.goal);
             }

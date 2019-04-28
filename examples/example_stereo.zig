@@ -44,7 +44,7 @@ const NoiseModule = struct {
     fn init(seed: u64) NoiseModule {
         return NoiseModule{
             .noise = zang.Noise.init(seed),
-            .flt = zang.Filter.init(.LowPass),
+            .flt = zang.Filter.init(),
         };
     }
 
@@ -58,6 +58,7 @@ const NoiseModule = struct {
         zang.zero(temps[1]);
         self.noise.paintSpan(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
         self.flt.paintSpan(sample_rate, [1][]f32{temps[0]}, [1][]f32{temps[1]}, [0][]f32{}, zang.Filter.Params {
+            .filterType = .LowPass,
             .cutoff = zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate),
             .resonance = 0.4,
         });

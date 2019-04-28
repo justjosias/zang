@@ -67,8 +67,8 @@ const Polyphony = struct {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(InnerParams).ImpulseQueue.init(),
-                .osc = zang.initTriggerable(zang.Oscillator.init(.Square)),
-                .flt = zang.initTriggerable(zang.Filter.init(.LowPass)),
+                .osc = zang.initTriggerable(zang.Oscillator.init()),
+                .flt = zang.initTriggerable(zang.Filter.init()),
                 .envelope = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                     .attack_duration = 0.01,
                     .decay_duration = 0.1,
@@ -103,6 +103,7 @@ const Polyphony = struct {
                 var conv = zang.ParamsConverter(InnerParams, zang.Oscillator.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Oscillator.Params {
+                        .waveform = .Square,
                         .freq = pair.source.freq,
                         .colour = 0.3,
                     };
@@ -115,6 +116,7 @@ const Polyphony = struct {
                 var conv = zang.ParamsConverter(InnerParams, zang.Filter.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Filter.Params {
+                        .filterType = .LowPass,
                         .cutoff = zang.cutoffFromFrequency(pair.source.freq * 8.0, sample_rate),
                         .resonance = 0.7,
                     };
