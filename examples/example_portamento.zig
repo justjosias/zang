@@ -1,6 +1,6 @@
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -8,6 +8,8 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
+
+const A4 = 440.0;
 
 const MyNoteParams = struct {
     freq: f32,
@@ -24,7 +26,7 @@ var g_buffers: struct {
 
 pub const MainModule = struct {
     iq: MyNotes.ImpulseQueue,
-    keys_held: u32,
+    keys_held: u64,
     noise: zang.Noise,
     env: zang.Triggerable(zang.Envelope),
     porta: zang.Triggerable(zang.Portamento),
@@ -96,66 +98,29 @@ pub const MainModule = struct {
     // - the frequency is always that of the highest key held
     // - note-off only occurs when all keys are released
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        const f = note_frequencies;
+        for (common.key_bindings) |kb, i| {
+            if (kb.key != key) {
+                continue;
+            }
 
-        const key_freqs = [18]f32 {
-            f.C4,
-            f.Cs4,
-            f.D4,
-            f.Ds4,
-            f.E4,
-            f.F4,
-            f.Fs4,
-            f.G4,
-            f.Gs4,
-            f.A4,
-            f.As4,
-            f.B4,
-            f.C5,
-            f.Cs5,
-            f.D5,
-            f.Ds5,
-            f.E5,
-            f.F5,
-        };
-
-        if (switch (key) {
-            c.SDLK_a => u5(0),
-            c.SDLK_w => u5(1),
-            c.SDLK_s => u5(2),
-            c.SDLK_e => u5(3),
-            c.SDLK_d => u5(4),
-            c.SDLK_f => u5(5),
-            c.SDLK_t => u5(6),
-            c.SDLK_g => u5(7),
-            c.SDLK_y => u5(8),
-            c.SDLK_h => u5(9),
-            c.SDLK_u => u5(10),
-            c.SDLK_j => u5(11),
-            c.SDLK_k => u5(12),
-            c.SDLK_o => u5(13),
-            c.SDLK_l => u5(14),
-            c.SDLK_p => u5(15),
-            c.SDLK_SEMICOLON => u5(16),
-            c.SDLK_QUOTE => u5(17),
-            else => null,
-        }) |key_index| {
-            const key_flag = u32(1) << key_index;
+            const key_index = @intCast(u6, i);
+            const key_flag = u64(1) << key_index;
             const prev_keys_held = self.keys_held;
 
             if (down) {
                 self.keys_held |= key_flag;
 
                 if (key_flag > prev_keys_held) {
-                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[key_index], .note_on = true });
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = A4 * kb.rel_freq, .note_on = true });
                 }
             } else {
                 self.keys_held &= ~key_flag;
 
                 if (self.keys_held == 0) {
-                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[key_index], .note_on = false });
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = A4 * kb.rel_freq, .note_on = false });
                 } else {
-                    self.iq.push(impulse_frame, MyNoteParams { .freq = key_freqs[31 - @clz(self.keys_held)], .note_on = true });
+                    const rel_freq = common.key_bindings[63 - @clz(self.keys_held)].rel_freq;
+                    self.iq.push(impulse_frame, MyNoteParams { .freq = A4 * rel_freq, .note_on = true });
                 }
             }
         }

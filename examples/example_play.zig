@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -10,6 +10,8 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
+
+const A4 = 440.0;
 
 const MyNoteParams = PulseModOscillator.Params;
 const MyNotes = zang.Notes(MyNoteParams);
@@ -156,7 +158,7 @@ pub const MainModule = struct {
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Filter.Params {
                         .filterType = .LowPass,
-                        .cutoff = zang.cutoffFromFrequency(note_frequencies.C5, sample_rate),
+                        .cutoff = zang.cutoffFromFrequency(A4 * note_frequencies.C5, sample_rate),
                         .resonance = 0.7,
                     };
                 }
@@ -172,14 +174,14 @@ pub const MainModule = struct {
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (key == c.SDLK_SPACE) {
             self.iq1.push(impulse_frame, MyNoteParams {
-                .freq = note_frequencies.C4 / 4.0,
+                .freq = A4 * note_frequencies.C4 / 4.0,
                 .note_on = down,
             });
-        } else if (common.freqForKey(key)) |freq| {
+        } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
                 self.iq0.push(impulse_frame, MyNoteParams {
-                    .freq = freq,
+                    .freq = A4 * rel_freq,
                     .note_on = down,
                 });
             }

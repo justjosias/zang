@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -12,34 +12,14 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-const NUM_NOTES: usize = 18;
-const key_freqs = [NUM_NOTES]f32 {
-    note_frequencies.C4,
-    note_frequencies.Cs4,
-    note_frequencies.D4,
-    note_frequencies.Ds4,
-    note_frequencies.E4,
-    note_frequencies.F4,
-    note_frequencies.Fs4,
-    note_frequencies.G4,
-    note_frequencies.Gs4,
-    note_frequencies.A4,
-    note_frequencies.As4,
-    note_frequencies.B4,
-    note_frequencies.C5,
-    note_frequencies.Cs5,
-    note_frequencies.D5,
-    note_frequencies.Ds5,
-    note_frequencies.E5,
-    note_frequencies.F5,
-};
+const A4 = 440.0;
 
 const Arpeggiator = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
     pub const NumTemps = 2;
     pub const Params = struct {
-        note_held: [NUM_NOTES]bool,
+        note_held: [common.key_bindings.len]bool,
     };
     pub const InnerParams = struct {
         freq: f32,
@@ -81,8 +61,8 @@ const Arpeggiator = struct {
         while (self.next_frame < out.len) {
             const next_note_index = blk: {
                 const start = if (self.last_note) |last_note| last_note + 1 else 0;
-                var i: usize = 0; while (i < NUM_NOTES) : (i += 1) {
-                    const index = (start + i) % NUM_NOTES;
+                var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
+                    const index = (start + i) % common.key_bindings.len;
                     if (params.note_held[index]) {
                         break :blk index;
                     }
@@ -91,11 +71,11 @@ const Arpeggiator = struct {
             };
 
             if (next_note_index) |index| {
-                const freq = key_freqs[index];
+                const freq = A4 * common.key_bindings[index].rel_freq;
                 self.iq.push(self.next_frame, InnerParams { .freq = freq, .note_on = true });
                 self.last_note = index;
             } else if (self.last_note) |last_note| {
-                const freq = key_freqs[last_note];
+                const freq = A4 * common.key_bindings[last_note].rel_freq;
                 self.iq.push(self.next_frame, InnerParams { .freq = freq, .note_on = false });
             }
 
@@ -143,7 +123,7 @@ pub const MainModule = struct {
         return MainModule {
             .iq = zang.Notes(Arpeggiator.Params).ImpulseQueue.init(),
             .current_params = Arpeggiator.Params {
-                .note_held = [1]bool{false} ** NUM_NOTES,
+                .note_held = [1]bool{false} ** common.key_bindings.len,
             },
             .arpeggiator = zang.initTriggerable(Arpeggiator.init()),
         };
@@ -166,31 +146,11 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        const f = note_frequencies;
-
-        if (switch (key) {
-            c.SDLK_a => u5(0),
-            c.SDLK_w => u5(1),
-            c.SDLK_s => u5(2),
-            c.SDLK_e => u5(3),
-            c.SDLK_d => u5(4),
-            c.SDLK_f => u5(5),
-            c.SDLK_t => u5(6),
-            c.SDLK_g => u5(7),
-            c.SDLK_y => u5(8),
-            c.SDLK_h => u5(9),
-            c.SDLK_u => u5(10),
-            c.SDLK_j => u5(11),
-            c.SDLK_k => u5(12),
-            c.SDLK_o => u5(13),
-            c.SDLK_l => u5(14),
-            c.SDLK_p => u5(15),
-            c.SDLK_SEMICOLON => u5(16),
-            c.SDLK_QUOTE => u5(17),
-            else => null,
-        }) |key_index| {
-            self.current_params.note_held[key_index] = down;
-            self.iq.push(impulse_frame, self.current_params);
+        for (common.key_bindings) |kb, i| {
+            if (kb.key == key) {
+                self.current_params.note_held[i] = down;
+                self.iq.push(impulse_frame, self.current_params);
+            }
         }
     }
 };

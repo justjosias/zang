@@ -15,7 +15,7 @@ const CurvePlayer = struct {
     pub const NumInputs = 0;
     pub const NumTemps = 2;
     pub const Params = struct {
-        freq: f32,
+        rel_freq: f32,
     };
 
     carrier_curve: zang.Curve,
@@ -50,7 +50,7 @@ const CurvePlayer = struct {
 
     fn paintSpan(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
-        const freq_mul = params.freq / 440.0;
+        const freq_mul = params.rel_freq;
 
         zang.zero(temps[0]);
         self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
@@ -99,8 +99,8 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
-            if (common.freqForKey(key)) |freq| {
-                self.iq.push(impulse_frame, CurvePlayer.Params { .freq = freq });
+            if (common.getKeyRelFreq(key)) |rel_freq| {
+                self.iq.push(impulse_frame, CurvePlayer.Params { .rel_freq = rel_freq });
             }
         }
     }

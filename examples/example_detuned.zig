@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -10,6 +10,8 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
+
+const A4 = 440.0;
 
 var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
@@ -115,10 +117,10 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        if (common.freqForKey(key)) |freq| {
+        if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, MyNoteParams { .freq = freq * 0.5, .note_on = down });
+                self.iq.push(impulse_frame, MyNoteParams { .freq = A4 * rel_freq * 0.5, .note_on = down });
             }
         }
     }

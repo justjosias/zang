@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(440.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -12,6 +12,8 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
+
+const A4 = 440.0;
 
 const MyNoteParams = SubtrackPlayer.Params;
 const MyNotes = zang.Notes(MyNoteParams);
@@ -25,7 +27,7 @@ const SubtrackPlayer = struct {
         freq: f32,
         note_on: bool,
     };
-    pub const BaseFrequency = note_frequencies.C4;
+    pub const BaseFrequency = A4 * note_frequencies.C4;
 
     tracker: MyNotes.NoteTracker,
     osc: zang.Triggerable(zang.Oscillator),
@@ -36,12 +38,12 @@ const SubtrackPlayer = struct {
 
         return SubtrackPlayer{
             .tracker = MyNotes.NoteTracker.init([]MyNotes.SongNote {
-                MyNotes.SongNote{ .t = 0.0, .params = MyNoteParams{ .freq = f.C4, .note_on = true }},
-                MyNotes.SongNote{ .t = 0.1, .params = MyNoteParams{ .freq = f.Ab3, .note_on = true }},
-                MyNotes.SongNote{ .t = 0.2, .params = MyNoteParams{ .freq = f.G3, .note_on = true }},
-                MyNotes.SongNote{ .t = 0.3, .params = MyNoteParams{ .freq = f.Eb3, .note_on = true }},
-                MyNotes.SongNote{ .t = 0.4, .params = MyNoteParams{ .freq = f.C3, .note_on = true }},
-                MyNotes.SongNote{ .t = 0.5, .params = MyNoteParams{ .freq = f.C3, .note_on = false }},
+                MyNotes.SongNote{ .t = 0.0, .params = MyNoteParams{ .freq = A4 * f.C4, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.1, .params = MyNoteParams{ .freq = A4 * f.Ab3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.2, .params = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.3, .params = MyNoteParams{ .freq = A4 * f.Eb3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.4, .params = MyNoteParams{ .freq = A4 * f.C3, .note_on = true }},
+                MyNotes.SongNote{ .t = 0.5, .params = MyNoteParams{ .freq = A4 * f.C3, .note_on = false }},
             }),
             .osc = zang.initTriggerable(zang.Oscillator.init()),
             .env = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
@@ -120,10 +122,10 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        if (common.freqForKey(key)) |freq| {
+        if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, MyNoteParams { .freq = freq, .note_on = down });
+                self.iq.push(impulse_frame, MyNoteParams { .freq = A4 * rel_freq, .note_on = down });
             }
         }
     }

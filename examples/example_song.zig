@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const f = @import("zang-12tet").NoteFrequencies(440.0);
+const f = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -11,76 +11,78 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 pub const AUDIO_CHANNELS = 1;
 
+const A4 = 440.0;
+
 const MyNoteParams = PulseModOscillator.Params;
 const MyNotes = zang.Notes(MyNoteParams);
 
 const Note = common.Note;
 const track1Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A4, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs4, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D4, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D4, .note_on = false }, .dur = 4 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs4, .note_on = true }, .dur = 8 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = false }, .dur = 4 },
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A3, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = false }, .dur = 4 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F3, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 4 },
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A2, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs2, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D2, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D2, .note_on = false }, .dur = 2 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs2, .note_on = true }, .dur = 8 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = false }, .dur = 2 },
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D1, .note_on = true }, .dur = 128 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D1, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = true }, .dur = 128 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = false }, .dur = 0 },
 };
 const track2Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A5, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs5, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D5, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D5, .note_on = false }, .dur = 4 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs5, .note_on = true }, .dur = 8 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = false }, .dur = 4 },
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A4, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D4, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D4, .note_on = false }, .dur = 4 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E4, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F4, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs4, .note_on = true }, .dur = 3 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = false }, .dur = 4 },
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A3, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.F3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs3, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = false }, .dur = 2 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 10 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 1 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = 8 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 12 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 2 },
 };
 const ofs = 130;
 const A = 6;
@@ -90,38 +92,38 @@ const D = 4;
 const E = 4;
 const track3Delay = ofs;
 const track3Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs2, .note_on = true }, .dur = A + B + C + D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D2, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D2, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs2, .note_on = true }, .dur = A + B + C + D + E + 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 14 + (14 + 30) },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = false }, .dur = 0 },
 };
 const track4Delay = ofs + A;
 const track4Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E2, .note_on = true }, .dur = B + C + D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E2, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = B + C + D + E + 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = false }, .dur = 0 },
 };
 const track5Delay = ofs + A + B;
 const track5Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.G2, .note_on = true }, .dur = C + D + E + 30 + (14) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E2, .note_on = true }, .dur = 14 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Fs2, .note_on = true }, .dur = 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Fs2, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = C + D + E + 30 + (14) },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = 14 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = true }, .dur = 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = false }, .dur = 0 },
 };
 const track6Delay = ofs + A + B + C;
 const track6Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Bb2, .note_on = true }, .dur = D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A2, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.A2, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Bb2, .note_on = true }, .dur = D + E + 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 14 + (14 + 30) },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = false }, .dur = 0 },
 };
 const track7Delay = ofs + A + B + C + D;
 const track7Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs3, .note_on = true }, .dur = E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.Cs3, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = E + 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = false }, .dur = 0 },
 };
 const track8Delay = ofs + A + B + C + D + E;
 const track8Init = []Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.E3, .note_on = true }, .dur = 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = f.D3, .note_on = false }, .dur = 0 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 30 },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 14 + (14 + 30) },
+    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 0 },
 };
 
 const NUM_TRACKS = 8;

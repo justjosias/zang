@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet").NoteFrequencies(220.0);
+const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
@@ -12,34 +12,14 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 pub const AUDIO_CHANNELS = 1;
 
-const NUM_NOTES: usize = 18;
-const key_freqs = [NUM_NOTES]f32 {
-    note_frequencies.C4,
-    note_frequencies.Cs4,
-    note_frequencies.D4,
-    note_frequencies.Ds4,
-    note_frequencies.E4,
-    note_frequencies.F4,
-    note_frequencies.Fs4,
-    note_frequencies.G4,
-    note_frequencies.Gs4,
-    note_frequencies.A4,
-    note_frequencies.As4,
-    note_frequencies.B4,
-    note_frequencies.C5,
-    note_frequencies.Cs5,
-    note_frequencies.D5,
-    note_frequencies.Ds5,
-    note_frequencies.E5,
-    note_frequencies.F5,
-};
+const A4 = 220.0;
 
 const Polyphony = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
     pub const NumTemps = 2;
     pub const Params = struct {
-        note_held: [NUM_NOTES]bool,
+        note_held: [common.key_bindings.len]bool,
     };
     pub const InnerParams = struct {
         freq: f32,
@@ -54,13 +34,13 @@ const Polyphony = struct {
         envelope: zang.Triggerable(zang.Envelope),
     };
 
-    voices: [NUM_NOTES]Voice,
+    voices: [common.key_bindings.len]Voice,
 
     fn init() Polyphony {
         var self = Polyphony {
             .voices = undefined,
         };
-        var i: usize = 0; while (i < NUM_NOTES) : (i += 1) {
+        var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(InnerParams).ImpulseQueue.init(),
@@ -82,10 +62,10 @@ const Polyphony = struct {
     fn paintSpan(self: *Polyphony, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
-        var i: usize = 0; while (i < NUM_NOTES) : (i += 1) {
+        var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
                 self.voices[i].iq.push(0, InnerParams {
-                    .freq = key_freqs[i],
+                    .freq = A4 * common.key_bindings[i].rel_freq,
                     .note_on = params.note_held[i],
                 });
                 self.voices[i].down = params.note_held[i];
@@ -134,7 +114,6 @@ var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
     buf1: [AUDIO_BUFFER_SIZE]f32,
     buf2: [AUDIO_BUFFER_SIZE]f32,
-    buf3: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
 
 pub const MainModule = struct {
@@ -146,7 +125,7 @@ pub const MainModule = struct {
         return MainModule{
             .iq = zang.Notes(Polyphony.Params).ImpulseQueue.init(),
             .current_params = Polyphony.Params {
-                .note_held = [1]bool{false} ** NUM_NOTES,
+                .note_held = [1]bool{false} ** common.key_bindings.len,
             },
             .polyphony = zang.initTriggerable(Polyphony.init()),
         };
@@ -169,31 +148,11 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        const f = note_frequencies;
-
-        if (switch (key) {
-            c.SDLK_a => u5(0),
-            c.SDLK_w => u5(1),
-            c.SDLK_s => u5(2),
-            c.SDLK_e => u5(3),
-            c.SDLK_d => u5(4),
-            c.SDLK_f => u5(5),
-            c.SDLK_t => u5(6),
-            c.SDLK_g => u5(7),
-            c.SDLK_y => u5(8),
-            c.SDLK_h => u5(9),
-            c.SDLK_u => u5(10),
-            c.SDLK_j => u5(11),
-            c.SDLK_k => u5(12),
-            c.SDLK_o => u5(13),
-            c.SDLK_l => u5(14),
-            c.SDLK_p => u5(15),
-            c.SDLK_SEMICOLON => u5(16),
-            c.SDLK_QUOTE => u5(17),
-            else => null,
-        }) |key_index| {
-            self.current_params.note_held[key_index] = down;
-            self.iq.push(impulse_frame, self.current_params);
+        for (common.key_bindings) |kb, i| {
+            if (kb.key == key) {
+                self.current_params.note_held[i] = down;
+                self.iq.push(impulse_frame, self.current_params);
+            }
         }
     }
 };
