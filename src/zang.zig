@@ -67,5 +67,8 @@ pub const Waveform = mod_oscillator.Waveform;
 const mod_portamento = @import("zang/mod_portamento.zig");
 pub const Portamento = mod_portamento.Portamento;
 
+const mod_pulseosc = @import("zang/mod_pulseosc.zig");
+pub const PulseOsc = mod_pulseosc.PulseOsc;
+
 const mod_sampler = @import("zang/mod_sampler.zig");
 pub const Sampler = mod_sampler.Sampler;

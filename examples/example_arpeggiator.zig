@@ -27,7 +27,7 @@ const Arpeggiator = struct {
     };
 
     iq: zang.Notes(InnerParams).ImpulseQueue,
-    osc: zang.Triggerable(zang.Oscillator),
+    osc: zang.Triggerable(zang.PulseOsc),
     gate: zang.Triggerable(zang.Gate),
     next_frame: usize,
     last_note: ?usize,
@@ -35,7 +35,7 @@ const Arpeggiator = struct {
     fn init() Arpeggiator {
         return Arpeggiator {
             .iq = zang.Notes(InnerParams).ImpulseQueue.init(),
-            .osc = zang.initTriggerable(zang.Oscillator.init()),
+            .osc = zang.initTriggerable(zang.PulseOsc.init()),
             .gate = zang.initTriggerable(zang.Gate.init()),
             .next_frame = 0,
             .last_note = null,
@@ -88,10 +88,9 @@ const Arpeggiator = struct {
 
         zang.zero(temps[0]);
         {
-            var conv = zang.ParamsConverter(InnerParams, zang.Oscillator.Params).init();
+            var conv = zang.ParamsConverter(InnerParams, zang.PulseOsc.Params).init();
             for (conv.getPairs(impulses)) |*pair| {
-                pair.dest = zang.Oscillator.Params {
-                    .waveform = .Square,
+                pair.dest = zang.PulseOsc.Params {
                     .freq = pair.source.freq,
                     .colour = 0.5,
                 };

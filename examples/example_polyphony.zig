@@ -29,7 +29,7 @@ const Polyphony = struct {
     const Voice = struct {
         down: bool,
         iq: zang.Notes(InnerParams).ImpulseQueue,
-        osc: zang.Triggerable(zang.Oscillator),
+        osc: zang.Triggerable(zang.PulseOsc),
         flt: zang.Triggerable(zang.Filter),
         envelope: zang.Triggerable(zang.Envelope),
     };
@@ -44,7 +44,7 @@ const Polyphony = struct {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(InnerParams).ImpulseQueue.init(),
-                .osc = zang.initTriggerable(zang.Oscillator.init()),
+                .osc = zang.initTriggerable(zang.PulseOsc.init()),
                 .flt = zang.initTriggerable(zang.Filter.init()),
                 .envelope = zang.initTriggerable(zang.Envelope.init(zang.EnvParams {
                     .attack_duration = 0.01,
@@ -77,10 +77,9 @@ const Polyphony = struct {
 
             zang.zero(temps[0]);
             {
-                var conv = zang.ParamsConverter(InnerParams, zang.Oscillator.Params).init();
+                var conv = zang.ParamsConverter(InnerParams, zang.PulseOsc.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
-                    pair.dest = zang.Oscillator.Params {
-                        .waveform = .Square,
+                    pair.dest = zang.PulseOsc.Params {
                         .freq = pair.source.freq,
                         .colour = 0.3,
                     };
