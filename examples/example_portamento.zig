@@ -77,7 +77,12 @@ pub const MainModule = struct {
             }
 
             zang.zero(tmp2);
-            self.flt.paintControlledCutoff(sample_rate, tmp2, tmp0, .LowPass, tmp1, 0.985);
+            self.flt.paint(sample_rate, [1][]f32{tmp2}, [0][]f32{}, zang.Filter.Params {
+                .input = tmp0,
+                .filterType = .LowPass,
+                .cutoff = zang.buffer(tmp1),
+                .resonance = 0.985,
+            });
 
             zang.zero(tmp0);
             {

@@ -3,6 +3,7 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const std = @import("std");
+const ConstantOrBuffer = @import("triggerable.zig").ConstantOrBuffer;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
@@ -28,10 +29,10 @@ pub const Filter = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
-        filterType: FilterType,
-        cutoff: f32, // 0-1
-        resonance: f32, // 0-1
         input: []const f32,
+        filterType: FilterType,
+        cutoff: ConstantOrBuffer, // 0-1
+        resonance: f32, // 0-1
     };
 
     l: f32,
@@ -47,14 +48,29 @@ pub const Filter = struct {
     pub fn reset(self: *Filter) void {}
 
     pub fn paint(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const buf = outputs[0];
-        const input = params.input;
+        // TODO make resonance a ConstantOrBuffer as well
+        switch (params.cutoff) {
+            .Constant => |cutoff|
+                self.paintSimple(sample_rate, outputs[0], params.input, params.filterType, cutoff, params.resonance),
+            .Buffer => |cutoff|
+                self.paintControlledCutoff(sample_rate, outputs[0], params.input, params.filterType, cutoff, params.resonance),
+        }
+    }
 
+    fn paintSimple(
+        self: *Filter,
+        sample_rate: f32,
+        buf: []f32,
+        input: []const f32,
+        filterType: FilterType,
+        cutoff: f32,
+        resonance: f32,
+    ) void {
         var l_mul: f32 = 0.0;
         var b_mul: f32 = 0.0;
         var h_mul: f32 = 0.0;
 
-        switch (params.filterType) {
+        switch (filterType) {
             .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
@@ -81,8 +97,8 @@ pub const Filter = struct {
 
         var i: usize = 0;
 
-        const cutoff = std.math.max(0.0, std.math.min(1.0, params.cutoff));
-        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, params.resonance));
+        const cut = std.math.max(0.0, std.math.min(1.0, cutoff));
+        const res = 1.0 - std.math.max(0.0, std.math.min(1.0, resonance));
 
         var l = self.l;
         var b = self.b;
@@ -97,13 +113,13 @@ pub const Filter = struct {
             const in = input[i] + fcdcoffset;
 
             // step 1
-            l += cutoff * b - fcdcoffset; // undo bias here (1 sample delay)
-            b += cutoff * (in - b * res - l);
+            l += cut * b - fcdcoffset; // undo bias here (1 sample delay)
+            b += cut * (in - b * res - l);
 
             // step 2
-            l += cutoff * b;
+            l += cut * b;
             h = in - b * res - l;
-            b += cutoff * h;
+            b += cut * h;
 
             buf[i] += l * l_mul + b * b_mul + h * h_mul;
         }
@@ -112,7 +128,7 @@ pub const Filter = struct {
         self.b = b;
     }
 
-    pub fn paintControlledCutoff(
+    fn paintControlledCutoff(
         self: *Filter,
         sample_rate: f32,
         buf: []f32,
@@ -185,6 +201,4 @@ pub const Filter = struct {
         self.l = l;
         self.b = b;
     }
-
-    // TODO - allow resonance to be controlled
 };

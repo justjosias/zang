@@ -55,7 +55,7 @@ const NoiseModule = struct {
         self.flt.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
             .filterType = .LowPass,
-            .cutoff = zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate),
+            .cutoff = zang.constant(zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate)),
             .resonance = 0.4,
         });
 
@@ -114,7 +114,8 @@ pub const MainModule = struct {
         zang.zero(tmp0);
         self.osc.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Oscillator.Params {
             .waveform = .Sine,
-            .freq = 0.1,
+            .freq = zang.constant(0.1),
+            .phase = zang.constant(0.0),
             .colour = 0.5,
         });
 

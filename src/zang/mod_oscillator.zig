@@ -1,4 +1,5 @@
 const std = @import("std");
+const ConstantOrBuffer = @import("triggerable.zig").ConstantOrBuffer;
 
 pub const Waveform = enum {
     Sine,
@@ -50,7 +51,8 @@ pub const Oscillator = struct {
     pub const NumTemps = 0;
     pub const Params = struct {
         waveform: Waveform,
-        freq: f32,
+        freq: ConstantOrBuffer,
+        phase: ConstantOrBuffer,
         colour: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
     };
 
@@ -65,12 +67,31 @@ pub const Oscillator = struct {
     pub fn reset(self: *Oscillator) void {}
 
     pub fn paint(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const buf = outputs[0];
-        const step = params.freq / sample_rate;
+        // TODO - make params.colour ConstantOrBuffer as well...
+        switch (params.freq) {
+            .Constant => |freq|
+                switch (params.phase) {
+                    .Constant => |phase|
+                        self.paintSimple(sample_rate, outputs[0], params.waveform, freq, params.colour),
+                    .Buffer =>
+                        @panic("TODO"), // FIXME
+                },
+            .Buffer => |freq|
+                switch (params.phase) {
+                    .Constant => |phase|
+                        self.paintControlledFrequency(sample_rate, outputs[0], params.waveform, freq, params.colour),
+                    .Buffer => |phase|
+                        self.paintControlledPhaseAndFrequency(sample_rate, outputs[0], params.waveform, phase, freq, params.colour),
+                },
+        }
+    }
+
+    fn paintSimple(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq: f32, colour: f32) void {
+        const step = freq / sample_rate;
         var t = self.t;
         var i: usize = 0;
 
-        switch (params.waveform) {
+        switch (waveform) {
             .Sine => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += sin(t);
@@ -85,7 +106,7 @@ pub const Oscillator = struct {
             },
             .Square => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += square(t, params.colour);
+                    buf[i] += square(t, colour);
                     t += step;
                 }
             },
@@ -102,14 +123,7 @@ pub const Oscillator = struct {
         self.t = t;
     }
 
-    pub fn paintControlledFrequency(
-        self: *Oscillator,
-        sample_rate: f32,
-        buf: []f32,
-        waveform: Waveform,
-        input_frequency: []const f32,
-        colour: f32,
-    ) void {
+    fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq_buf: []const f32, colour: f32) void {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
@@ -117,28 +131,28 @@ pub const Oscillator = struct {
         switch (waveform) {
             .Sine => {
                 while (i < buf.len) : (i += 1) {
-                    const freq = input_frequency[i];
+                    const freq = freq_buf[i];
                     buf[i] += sin(t);
                     t += freq * inv;
                 }
             },
             .Triangle => {
                 while (i < buf.len) : (i += 1) {
-                    const freq = input_frequency[i];
+                    const freq = freq_buf[i];
                     buf[i] += tri(t);
                     t += freq * inv;
                 }
             },
             .Square => {
                 while (i < buf.len) : (i += 1) {
-                    const freq = input_frequency[i];
+                    const freq = freq_buf[i];
                     buf[i] += square(t, colour);
                     t += freq * inv;
                 }
             },
             .Sawtooth => {
                 while (i < buf.len) : (i += 1) {
-                    const freq = input_frequency[i];
+                    const freq = freq_buf[i];
                     buf[i] += saw(t);
                     t += freq * inv;
                 }
@@ -150,7 +164,7 @@ pub const Oscillator = struct {
         self.t = t;
     }
 
-    pub fn paintControlledPhaseAndFrequency(
+    fn paintControlledPhaseAndFrequency(
         self: *Oscillator,
         sample_rate: f32,
         buf: []f32,

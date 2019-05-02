@@ -54,10 +54,20 @@ const PulseModOscillator = struct {
         zang.set(temps[0], params.freq);
         zang.set(temps[1], params.freq * self.ratio);
         zang.zero(temps[2]);
-        self.modulator.paintControlledFrequency(sample_rate, temps[2], .Sine, temps[1], 0.5);
+        self.modulator.paint(sample_rate, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+            .waveform = .Sine,
+            .freq = zang.buffer(temps[1]),
+            .phase = zang.constant(0.0),
+            .colour = 0.5,
+        });
         zang.zero(temps[1]);
         zang.multiplyScalar(temps[1], temps[2], self.multiplier);
-        self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, .Sine, temps[1], temps[0], 0.5);
+        self.carrier.paint(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Oscillator.Params {
+            .waveform = .Sine,
+            .freq = zang.buffer(temps[0]),
+            .phase = zang.buffer(temps[1]),
+            .colour = 0.5,
+        });
     }
 };
 
@@ -137,7 +147,8 @@ pub const MainModule = struct {
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Oscillator.Params {
                         .waveform = .Sawtooth,
-                        .freq = pair.source.freq,
+                        .freq = zang.constant(pair.source.freq),
+                        .phase = zang.constant(0.0),
                         .colour = 0.5,
                     };
                 }
@@ -158,7 +169,7 @@ pub const MainModule = struct {
                     pair.dest = zang.Filter.Params {
                         .input = tmp2,
                         .filterType = .LowPass,
-                        .cutoff = zang.cutoffFromFrequency(A4 * note_frequencies.C5, sample_rate),
+                        .cutoff = zang.constant(zang.cutoffFromFrequency(A4 * note_frequencies.C5, sample_rate)),
                         .resonance = 0.7,
                     };
                 }

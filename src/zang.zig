@@ -2,6 +2,9 @@ const notes = @import("zang/notes.zig");
 pub const Notes = notes.Notes;
 
 const triggerable = @import("zang/triggerable.zig");
+pub const ConstantOrBuffer = triggerable.ConstantOrBuffer;
+pub const constant = triggerable.constant;
+pub const buffer = triggerable.buffer;
 pub const initTriggerable = triggerable.initTriggerable;
 pub const Triggerable = triggerable.Triggerable;
 

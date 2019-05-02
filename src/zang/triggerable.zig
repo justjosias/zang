@@ -6,6 +6,19 @@ pub fn initTriggerable(module: var) Triggerable(@typeOf(module)) {
     return Triggerable(@typeOf(module)).init(module);
 }
 
+pub const ConstantOrBuffer = union(enum) {
+    Constant: f32,
+    Buffer: []const f32,
+};
+
+pub fn constant(x: f32) ConstantOrBuffer {
+    return ConstantOrBuffer { .Constant = x };
+}
+
+pub fn buffer(buf: []const f32) ConstantOrBuffer {
+    return ConstantOrBuffer { .Buffer = buf };
+}
+
 // TODO - reset method could be replaced by an argument to the paint method,
 // should i do this?
 
@@ -107,7 +120,8 @@ pub fn Triggerable(comptime ModuleType: type) type {
 
                     var params = note.params;
 
-                    // for any param that is a []f32, pass along only the subslice for this note span
+                    // for any param that is a []f32, pass along only the subslice for this note span.
+                    // ditto for ConstantOrBuffer params that are Buffers
                     inline for (@typeInfo(ModuleType.Params).Struct.fields) |field| {
                         if (@typeId(field.field_type) == .Pointer and
                             @typeInfo(field.field_type).Pointer.size == .Slice and
@@ -115,6 +129,16 @@ pub fn Triggerable(comptime ModuleType: type) type {
                             const slice = @field(params, field.name);
                             std.debug.assert(slice.len == buf_len);
                             @field(params, field.name) = slice[note_span.start .. note_span.end];
+                        } else if (field.field_type == ConstantOrBuffer) {
+                            switch (@field(params, field.name)) {
+                                .Constant => {},
+                                .Buffer => |slice| {
+                                    std.debug.assert(slice.len == buf_len);
+                                    @field(params, field.name) = ConstantOrBuffer {
+                                        .Buffer = slice[note_span.start .. note_span.end],
+                                    };
+                                },
+                            }
                         }
                     }
 

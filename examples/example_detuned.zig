@@ -73,7 +73,7 @@ pub const MainModule = struct {
         self.noise_filter.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Filter.Params {
             .input = tmp1,
             .filterType = .LowPass,
-            .cutoff = zang.cutoffFromFrequency(4.0, sample_rate),
+            .cutoff = zang.constant(zang.cutoffFromFrequency(4.0, sample_rate)),
             .resonance = 0.0,
         });
         zang.multiplyWithScalar(tmp0, 200.0); // intensity of warble effect
@@ -93,7 +93,12 @@ pub const MainModule = struct {
             }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
-            self.osc.paintControlledFrequency(sample_rate, tmp1, .Sawtooth, tmp0, 0.5);
+            self.osc.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, zang.Oscillator.Params {
+                .waveform = .Sawtooth,
+                .freq = zang.buffer(tmp0),
+                .phase = zang.constant(0.0),
+                .colour = 0.5,
+            });
             // combine with envelope
             zang.zero(tmp0);
             {
@@ -106,7 +111,7 @@ pub const MainModule = struct {
             self.main_filter.paint(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Filter.Params {
                 .input = tmp2,
                 .filterType = .LowPass,
-                .cutoff = zang.cutoffFromFrequency(880.0, sample_rate),
+                .cutoff = zang.constant(zang.cutoffFromFrequency(880.0, sample_rate)),
                 .resonance = 0.9,
             });
             // volume boost

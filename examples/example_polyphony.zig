@@ -94,7 +94,7 @@ const Polyphony = struct {
                     pair.dest = zang.Filter.Params {
                         .input = temps[0],
                         .filterType = .LowPass,
-                        .cutoff = zang.cutoffFromFrequency(pair.source.freq * 8.0, sample_rate),
+                        .cutoff = zang.constant(zang.cutoffFromFrequency(pair.source.freq * 8.0, sample_rate)),
                         .resonance = 0.7,
                     };
                 }

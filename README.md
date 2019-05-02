@@ -49,10 +49,9 @@ My goals for the core library:
 * Small set of standard generators and filters
 * Decent audio quality (deal with oscillator aliasing, wav resampling...)
 * Total modularity (single-purpose modules with controllable inputs)
-* Clean API (somehow get rid of stuff like `paintControlledFrequencyAndPhase`)
 * Ability to play music
 * Ability to provide sound effects for a game
-* Idiomatic Zig API
+* Clean (as possible), idiomatic Zig API
 * Lean inner loops
 * Overall small and simple codebase
 * Documentation

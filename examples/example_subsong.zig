@@ -70,7 +70,8 @@ const SubtrackPlayer = struct {
             for (conv.getPairs(impulses)) |*pair| {
                 pair.dest = zang.Oscillator.Params {
                     .waveform = .Sawtooth,
-                    .freq = pair.source.freq * params.freq / BaseFrequency,
+                    .freq = zang.constant(pair.source.freq * params.freq / BaseFrequency),
+                    .phase = zang.constant(0.0),
                     .colour = 0.5,
                 };
             }
