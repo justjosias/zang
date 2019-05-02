@@ -4,62 +4,61 @@
 
 const std = @import("std");
 
-const fc32bit: f32 = 2147483648.0;
+const fc32bit = f32(1 << 32);
 
-fn bits2float(u: u32) f32 {
-    return @bitCast(f32, u);
+inline fn clamp01(v: f32) f32 {
+    return if (v < 0.0) 0.0 else if (v > 1.0) 1.0 else v;
 }
 
 // 32-bit value into float with 23 bits precision
-fn utof23(x: u32) f32 {
-    const f = bits2float((x >> 9) | 0x3f800000); // 1 + x/(2^32)
-    return f - 1.0;
+inline fn utof23(x: u32) f32 {
+    return @bitCast(f32, (x >> 9) | 0x3f800000) - 1;
 }
 
 // float from [0,1) into 0.32 unsigned fixed-point
-// this loses a bit, but that's what V2 does.
-fn ftou32(v: f32) u32 {
-    return u32(2) * @floatToInt(u32, v * fc32bit); // FIXME this overflows when v is 1.0...
+inline fn ftou32(v: f32) u32 {
+    return @floatToInt(u32, v * fc32bit * 0.99995);
 }
 
+// this is a higher quality version of the square wave oscillator in
+// mod_oscillator.zig. it deals with aliasing by computing an average value for
+// each sample. however it doesn't support sweeping the input params (frequency
+// etc.)
 pub const PulseOsc = struct {
     pub const NumOutputs = 1;
     pub const NumInputs = 0;
     pub const NumTemps = 0;
-    pub const Params = struct {
-        freq: f32,
-        colour: f32,
-    };
+    pub const Params = struct { freq: f32, colour: f32 };
 
     cnt: u32,
 
     pub fn init() PulseOsc {
-        return PulseOsc {
-            .cnt = 0,
-        };
+        return PulseOsc { .cnt = 0 };
     }
 
     pub fn reset(self: *PulseOsc) void {}
 
     pub fn paintSpan(self: *PulseOsc, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        if (params.freq < 0 or params.freq > sample_rate / 8.0) {
+            return;
+        }
+        // note: farbrausch code includes some explanatory comments. i've
+        // preserved the variable names they used, but condensed the code
         const buf = outputs[0];
         var cnt = self.cnt;
-        const SRfcobasefrq = (2.0 * fc32bit) / sample_rate;
+        const SRfcobasefrq = fc32bit / sample_rate;
         const freq = @floatToInt(u32, SRfcobasefrq * params.freq);
-        const brpt = ftou32(params.colour);
-        const gain = 1.0;
+        const brpt = ftou32(clamp01(params.colour));
+        const gain = 0.7;
         const gdf = gain / utof23(freq);
         const col = utof23(brpt);
         const cc121 = gdf * 2.0 * (col - 1.0) + gain;
         const cc212 = gdf * 2.0 * col - gain;
         var state = if ((cnt -% freq) < brpt) u32(3) else u32(0);
-
         var i: usize = 0; while (i < buf.len) : (i += 1) {
             const p = utof23(cnt);
-            state = ((state << 1) | (if (cnt < brpt) u32(1) else u32(0))) & 3;
-            const transition_code = state | (if (cnt < freq) u32(4) else u32(0));
-            cnt +%= freq;
-            buf[i] += switch (transition_code) {
+            state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
+            buf[i] += switch (state | (u32(@boolToInt(cnt < freq)) << 2)) {
                 0b011 => gain, // up
                 0b000 => -gain, // down
                 0b010 => gdf * 2.0 * (col - p) + gain, // up down
@@ -68,8 +67,8 @@ pub const PulseOsc = struct {
                 0b100 => cc212, // down up down
                 else => unreachable,
             };
+            cnt +%= freq;
         }
-
         self.cnt = cnt;
     }
 };
