@@ -1,5 +1,6 @@
 // this a "brute force" approach to polyphony... every possible note gets its
 // own voice that is always running. well, it works
+// also you can press spacebar to cycle through various levels of decimation
 
 const std = @import("std");
 const zang = @import("zang");
@@ -113,12 +114,19 @@ var g_buffers: struct {
     buf0: [AUDIO_BUFFER_SIZE]f32,
     buf1: [AUDIO_BUFFER_SIZE]f32,
     buf2: [AUDIO_BUFFER_SIZE]f32,
+    buf3: [AUDIO_BUFFER_SIZE]f32,
 } = undefined;
+
+const MyDecimatorParams = struct {
+    bypass: bool,
+};
 
 pub const MainModule = struct {
     iq: zang.Notes(Polyphony.Params).ImpulseQueue,
     current_params: Polyphony.Params,
     polyphony: zang.Triggerable(Polyphony),
+    dec: zang.Decimator,
+    dec_mode: u32,
 
     pub fn init() MainModule {
         return MainModule{
@@ -127,6 +135,8 @@ pub const MainModule = struct {
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
             .polyphony = zang.initTriggerable(Polyphony.init()),
+            .dec = zang.Decimator.init(),
+            .dec_mode = 0,
         };
     }
 
@@ -134,12 +144,30 @@ pub const MainModule = struct {
         const out = g_buffers.buf0[0..];
         const tmp0 = g_buffers.buf1[0..];
         const tmp1 = g_buffers.buf2[0..];
+        const tmp2 = g_buffers.buf3[0..];
 
         zang.zero(out);
 
         const impulses = self.iq.consume();
 
-        self.polyphony.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
+        zang.zero(tmp2);
+        self.polyphony.paintFromImpulses(sample_rate, [1][]f32{tmp2}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
+
+        if (self.dec_mode > 0) {
+            self.dec.paintSpan(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, zang.Decimator.Params {
+                .fake_sample_rate = switch (self.dec_mode) {
+                    1 => f32(6000.0),
+                    2 => f32(5000.0),
+                    3 => f32(4000.0),
+                    4 => f32(3000.0),
+                    5 => f32(2000.0),
+                    6 => f32(1000.0),
+                    else => unreachable,
+                },
+            });
+        } else {
+            zang.addInto(out, tmp2);
+        }
 
         return [AUDIO_CHANNELS][]const f32 {
             out,
@@ -147,6 +175,10 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+        if (key == c.SDLK_SPACE and down) {
+            self.dec_mode = (self.dec_mode + 1) % 7;
+            return;
+        }
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
