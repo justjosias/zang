@@ -47,12 +47,12 @@ const NoiseModule = struct {
 
     fn reset(self: *NoiseModule) void {}
 
-    fn paintSpan(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // temps[0] = filtered noise
         zang.zero(temps[0]);
         zang.zero(temps[1]);
-        self.noise.paintSpan(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
-        self.flt.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
+        self.noise.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
+        self.flt.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
             .filterType = .LowPass,
             .cutoff = zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate),
@@ -112,20 +112,20 @@ pub const MainModule = struct {
 
         // tmp0 = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(tmp0);
-        self.osc.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Oscillator.Params {
             .waveform = .Sine,
             .freq = 0.1,
             .colour = 0.5,
         });
 
         // paint two noise voices
-        self.noisem0.paintSpan(sample_rate, [2][]f32{out0, out1}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
+        self.noisem0.paint(sample_rate, [2][]f32{out0, out1}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
             .pan = tmp0,
             .min = 0.0,
             .max = 0.5,
             .cutoff_frequency = 320.0,
         });
-        self.noisem1.paintSpan(sample_rate, [2][]f32{out0, out1}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
+        self.noisem1.paint(sample_rate, [2][]f32{out0, out1}, [3][]f32{tmp1, tmp2, tmp3}, NoiseModule.Params {
             .pan = tmp0,
             .min = 0.5,
             .max = 1.0,

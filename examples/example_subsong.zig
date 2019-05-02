@@ -60,7 +60,7 @@ const SubtrackPlayer = struct {
         self.env.reset();
     }
 
-    fn paintSpan(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const impulses = self.tracker.getImpulses(sample_rate, out.len);
 

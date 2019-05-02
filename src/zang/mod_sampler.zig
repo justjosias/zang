@@ -47,7 +47,7 @@ pub const Sampler = struct {
         self.t = 0.0;
     }
 
-    pub fn paintSpan(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         const ratio = blk: {

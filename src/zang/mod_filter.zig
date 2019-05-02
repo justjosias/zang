@@ -46,7 +46,7 @@ pub const Filter = struct {
 
     pub fn reset(self: *Filter) void {}
 
-    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
         const input = params.input;
 

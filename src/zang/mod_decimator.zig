@@ -24,7 +24,7 @@ pub const Decimator = struct {
         self.dcount = 1.0;
     }
 
-    pub fn paintSpan(self: *Decimator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Decimator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const output = outputs[0];
 
         if (params.fake_sample_rate >= sample_rate) {

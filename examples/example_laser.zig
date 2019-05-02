@@ -59,24 +59,24 @@ const LaserPlayer = struct {
         self.volume_curve.reset();
     }
 
-    fn paintSpan(self: *LaserPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *LaserPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         zang.zero(temps[0]);
-        self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.modulator_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = params.freq * params.modulator_mul,
         });
         zang.zero(temps[1]);
         self.modulator.paintControlledFrequency(sample_rate, temps[1], .Sine, temps[0], 0.5);
         zang.multiplyWithScalar(temps[1], params.modulator_rad);
         zang.zero(temps[0]);
-        self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.carrier_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = params.freq * params.carrier_mul,
         });
         zang.zero(temps[2]);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, temps[2], .Sine, temps[1], temps[0], 0.5);
         zang.zero(temps[0]);
-        self.volume_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.volume_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = 1.0,
         });
         zang.multiply(out, temps[0], temps[2]);

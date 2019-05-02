@@ -64,7 +64,7 @@ pub const Oscillator = struct {
 
     pub fn reset(self: *Oscillator) void {}
 
-    pub fn paintSpan(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
         const step = params.freq / sample_rate;
         var t = self.t;

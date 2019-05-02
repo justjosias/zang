@@ -26,7 +26,7 @@ pub const Distortion = struct {
 
     pub fn reset(self: *Distortion) void {}
 
-    pub fn paintSpan(self: *Distortion, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Distortion, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const output = outputs[0];
 
         const gain1 = std.math.pow(f32, 2.0, params.ingain * 8.0 - 2.0);

@@ -93,7 +93,7 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paintSpan(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.note_on) {
             self.paintOn(sample_rate, outputs[0]);
         } else {

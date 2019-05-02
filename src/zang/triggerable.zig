@@ -10,7 +10,7 @@ pub fn initTriggerable(module: var) Triggerable(@typeOf(module)) {
 // should i do this?
 
 // Triggerable: encapsulates a module, allowing it to be played from impulses.
-// exposes the paintFromImpulses method (the module's paintSpan method should
+// exposes the paintFromImpulses method (the module's paint method should
 // not be used when using Triggerable).
 // this tracks the last playing note in order to be able to detect
 // a transition to a new note (upon which the module needs to be
@@ -118,7 +118,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                         }
                     }
 
-                    self.module.paintSpan(sample_rate, output_spans, temp_spans, params);
+                    self.module.paint(sample_rate, output_spans, temp_spans, params);
                 }
 
                 start = note_span.end;

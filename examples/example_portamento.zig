@@ -61,7 +61,7 @@ pub const MainModule = struct {
             var i: usize = undefined;
 
             zang.zero(tmp0);
-            self.noise.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Noise.Params {});
+            self.noise.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Noise.Params {});
 
             zang.zero(tmp1);
             {

@@ -59,7 +59,7 @@ const Polyphony = struct {
 
     fn reset(self: *Polyphony) void {}
 
-    fn paintSpan(self: *Polyphony, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *Polyphony, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
@@ -154,7 +154,7 @@ pub const MainModule = struct {
         self.polyphony.paintFromImpulses(sample_rate, [1][]f32{tmp2}, [2][]f32{tmp0, tmp1}, impulses);
 
         if (self.dec_mode > 0) {
-            self.dec.paintSpan(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Decimator.Params {
+            self.dec.paint(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Decimator.Params {
                 .input = tmp2,
                 .fake_sample_rate = switch (self.dec_mode) {
                     1 => f32(6000.0),

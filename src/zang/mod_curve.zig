@@ -62,7 +62,7 @@ pub const Curve = struct {
         self.t = 0.0;
     }
 
-    pub fn paintSpan(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len);
 

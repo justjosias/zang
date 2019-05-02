@@ -47,18 +47,18 @@ const CurvePlayer = struct {
         self.modulator_curve.reset();
     }
 
-    fn paintSpan(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const freq_mul = params.rel_freq;
 
         zang.zero(temps[0]);
-        self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.modulator_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = freq_mul,
         });
         zang.zero(temps[1]);
         self.modulator.paintControlledFrequency(sample_rate, temps[1], .Sine, temps[0], 0.5);
         zang.zero(temps[0]);
-        self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.carrier_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = freq_mul,
         });
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, out, .Sine, temps[1], temps[0], 0.5);

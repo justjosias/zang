@@ -172,7 +172,7 @@ const PulseModOscillator = struct {
 
     fn reset(self: *PulseModOscillator) void {}
 
-    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         zang.set(temps[0], params.freq);

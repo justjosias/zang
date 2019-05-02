@@ -68,9 +68,9 @@ pub const MainModule = struct {
         // unfortunately at below 4, the filter degrades and the output
         // frequency slowly sinks to zero
         zang.zero(tmp1);
-        self.noise.paintSpan(sample_rate, [1][]f32{tmp1}, [0][]f32{}, zang.Noise.Params {});
+        self.noise.paint(sample_rate, [1][]f32{tmp1}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(tmp0);
-        self.noise_filter.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Filter.Params {
+        self.noise_filter.paint(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Filter.Params {
             .input = tmp1,
             .filterType = .LowPass,
             .cutoff = zang.cutoffFromFrequency(4.0, sample_rate),
@@ -103,7 +103,7 @@ pub const MainModule = struct {
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
-            self.main_filter.paintSpan(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Filter.Params {
+            self.main_filter.paint(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Filter.Params {
                 .input = tmp2,
                 .filterType = .LowPass,
                 .cutoff = zang.cutoffFromFrequency(880.0, sample_rate),

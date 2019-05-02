@@ -43,7 +43,7 @@ const Arpeggiator = struct {
 
     fn reset(self: *Arpeggiator) void {}
 
-    fn paintSpan(self: *Arpeggiator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *Arpeggiator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const note_duration = @floatToInt(usize, 0.03 * sample_rate);
 
