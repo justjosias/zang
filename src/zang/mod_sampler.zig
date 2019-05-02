@@ -24,7 +24,6 @@ fn getSample(data: []const u8, index1: usize, loop: bool) f32 {
 
 pub const Sampler = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
         freq: f32,
@@ -48,7 +47,7 @@ pub const Sampler = struct {
         self.t = 0.0;
     }
 
-    pub fn paintSpan(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         const ratio = blk: {

@@ -45,7 +45,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.sampler.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [0][]f32{}, self.iq.consume());
+        self.sampler.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, self.iq.consume());
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

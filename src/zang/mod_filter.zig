@@ -26,12 +26,12 @@ pub fn cutoffFromFrequency(frequency: f32, sample_rate: f32) f32 {
 
 pub const Filter = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
         filterType: FilterType,
         cutoff: f32, // 0-1
         resonance: f32, // 0-1
+        input: []const f32,
     };
 
     l: f32,
@@ -46,9 +46,9 @@ pub const Filter = struct {
 
     pub fn reset(self: *Filter) void {}
 
-    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
-        const input = inputs[0];
+        const input = params.input;
 
         var l_mul: f32 = 0.0;
         var b_mul: f32 = 0.0;

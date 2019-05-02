@@ -68,9 +68,10 @@ pub const MainModule = struct {
         // unfortunately at below 4, the filter degrades and the output
         // frequency slowly sinks to zero
         zang.zero(tmp1);
-        self.noise.paintSpan(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
+        self.noise.paintSpan(sample_rate, [1][]f32{tmp1}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(tmp0);
-        self.noise_filter.paintSpan(sample_rate, [1][]f32{tmp0}, [1][]f32{tmp1}, [0][]f32{}, zang.Filter.Params {
+        self.noise_filter.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Filter.Params {
+            .input = tmp1,
             .filterType = .LowPass,
             .cutoff = zang.cutoffFromFrequency(4.0, sample_rate),
             .resonance = 0.0,
@@ -88,7 +89,7 @@ pub const MainModule = struct {
                         .value = pair.source.freq,
                     };
                 }
-                self.dc.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                self.dc.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, conv.getImpulses());
             }
             // paint with oscillator into tmp1
             zang.zero(tmp1);
@@ -97,12 +98,13 @@ pub const MainModule = struct {
             zang.zero(tmp0);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp1, tmp0);
             // add main filter
-            self.main_filter.paintSpan(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, zang.Filter.Params {
+            self.main_filter.paintSpan(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Filter.Params {
+                .input = tmp2,
                 .filterType = .LowPass,
                 .cutoff = zang.cutoffFromFrequency(880.0, sample_rate),
                 .resonance = 0.9,

@@ -26,7 +26,6 @@ inline fn ftou32(v: f32) u32 {
 // etc.)
 pub const PulseOsc = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct { freq: f32, colour: f32 };
 
@@ -38,7 +37,7 @@ pub const PulseOsc = struct {
 
     pub fn reset(self: *PulseOsc) void {}
 
-    pub fn paintSpan(self: *PulseOsc, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *PulseOsc, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.freq < 0 or params.freq > sample_rate / 8.0) {
             return;
         }

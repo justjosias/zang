@@ -13,7 +13,6 @@ pub const AUDIO_CHANNELS = 1;
 
 const LaserPlayer = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 3;
     pub const Params = struct {
         freq: f32, // TODO rename to freq_mul
@@ -60,24 +59,24 @@ const LaserPlayer = struct {
         self.volume_curve.reset();
     }
 
-    fn paintSpan(self: *LaserPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paintSpan(self: *LaserPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         zang.zero(temps[0]);
-        self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
+        self.modulator_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = params.freq * params.modulator_mul,
         });
         zang.zero(temps[1]);
         self.modulator.paintControlledFrequency(sample_rate, temps[1], .Sine, temps[0], 0.5);
         zang.multiplyWithScalar(temps[1], params.modulator_rad);
         zang.zero(temps[0]);
-        self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
+        self.carrier_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = params.freq * params.carrier_mul,
         });
         zang.zero(temps[2]);
         self.carrier.paintControlledPhaseAndFrequency(sample_rate, temps[2], .Sine, temps[1], temps[0], 0.5);
         zang.zero(temps[0]);
-        self.volume_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, zang.Curve.Params {
+        self.volume_curve.paintSpan(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
             .freq_mul = 1.0,
         });
         zang.multiply(out, temps[0], temps[2]);
@@ -113,7 +112,7 @@ pub const MainModule = struct {
 
         zang.zero(out);
 
-        self.laser_player.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [3][]f32{tmp0, tmp1, tmp2}, self.iq.consume());
+        self.laser_player.paintFromImpulses(sample_rate, [1][]f32{out}, [3][]f32{tmp0, tmp1, tmp2}, self.iq.consume());
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

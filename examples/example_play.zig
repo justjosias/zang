@@ -19,7 +19,6 @@ const MyNotes = zang.Notes(MyNoteParams);
 // an example of a custom "module"
 const PulseModOscillator = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 3;
     pub const Params = struct {
         freq: f32,
@@ -49,7 +48,7 @@ const PulseModOscillator = struct {
 
     fn reset(self: *PulseModOscillator) void {}
 
-    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: MyNoteParams) void {
+    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: MyNoteParams) void {
         const out = outputs[0];
 
         zang.set(temps[0], params.freq);
@@ -119,11 +118,11 @@ pub const MainModule = struct {
             const impulses = self.iq0.consume();
 
             zang.zero(tmp0);
-            self.osc0.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
+            self.osc0.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env0.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env0.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, tmp0, tmp1);
         }
@@ -142,14 +141,14 @@ pub const MainModule = struct {
                         .colour = 0.5,
                     };
                 }
-                self.osc1.paintFromImpulses(sample_rate, [1][]f32{tmp3}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                self.osc1.paintFromImpulses(sample_rate, [1][]f32{tmp3}, [0][]f32{}, conv.getImpulses());
             }
             zang.zero(tmp0);
             zang.multiplyScalar(tmp0, tmp3, 2.5); // boost sawtooth volume
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env1.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env1.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.zero(tmp2);
             zang.multiply(tmp2, tmp0, tmp1);
@@ -157,12 +156,13 @@ pub const MainModule = struct {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Filter.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Filter.Params {
+                        .input = tmp2,
                         .filterType = .LowPass,
                         .cutoff = zang.cutoffFromFrequency(A4 * note_frequencies.C5, sample_rate),
                         .resonance = 0.7,
                     };
                 }
-                self.flt.paintFromImpulses(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, conv.getImpulses());
+                self.flt.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, conv.getImpulses());
             }
         }
 

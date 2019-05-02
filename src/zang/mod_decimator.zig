@@ -3,9 +3,9 @@ const basics = @import("basics.zig");
 
 pub const Decimator = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        input: []const f32,
         fake_sample_rate: f32,
     };
 
@@ -24,12 +24,11 @@ pub const Decimator = struct {
         self.dcount = 1.0;
     }
 
-    pub fn paintSpan(self: *Decimator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Decimator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const output = outputs[0];
-        const input = inputs[0];
 
         if (params.fake_sample_rate >= sample_rate) {
-            basics.addInto(output, input);
+            basics.addInto(output, params.input);
 
             self.dval = 0.0;
             self.dcount = 0;
@@ -41,7 +40,7 @@ pub const Decimator = struct {
             var i: usize = 0; while (i < output.len) : (i += 1) {
                 dcount += ratio;
                 if (dcount >= 1.0) {
-                    dval = input[i];
+                    dval = params.input[i];
                     dcount -= 1.0;
                 }
                 output[i] += dval;

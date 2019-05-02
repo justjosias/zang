@@ -19,7 +19,6 @@ pub const EnvState = enum {
 
 pub const Envelope = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
         note_on: bool,
@@ -94,7 +93,7 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paintSpan(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.note_on) {
             self.paintOn(sample_rate, outputs[0]);
         } else {

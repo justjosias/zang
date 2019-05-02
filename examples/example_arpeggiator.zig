@@ -16,7 +16,6 @@ const A4 = 440.0;
 
 const Arpeggiator = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 2;
     pub const Params = struct {
         note_held: [common.key_bindings.len]bool,
@@ -44,7 +43,7 @@ const Arpeggiator = struct {
 
     fn reset(self: *Arpeggiator) void {}
 
-    fn paintSpan(self: *Arpeggiator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paintSpan(self: *Arpeggiator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const note_duration = @floatToInt(usize, 0.03 * sample_rate);
 
@@ -95,12 +94,12 @@ const Arpeggiator = struct {
                     .colour = 0.5,
                 };
             }
-            self.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+            self.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, conv.getImpulses());
         }
         zang.zero(temps[1]);
         {
             var conv = zang.ParamsConverter(InnerParams, zang.Gate.Params).init();
-            self.gate.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+            self.gate.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, conv.autoStructural(impulses));
         }
         zang.multiply(out, temps[0], temps[1]);
     }
@@ -137,7 +136,7 @@ pub const MainModule = struct {
 
         const impulses = self.iq.consume();
 
-        self.arpeggiator.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
+        self.arpeggiator.paintFromImpulses(sample_rate, [1][]f32{out}, [2][]f32{tmp0, tmp1}, impulses);
 
         return [AUDIO_CHANNELS][]const f32 {
             out,

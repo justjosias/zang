@@ -17,7 +17,6 @@ const A4 = 220.0;
 
 const Polyphony = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 2;
     pub const Params = struct {
         note_held: [common.key_bindings.len]bool,
@@ -60,7 +59,7 @@ const Polyphony = struct {
 
     fn reset(self: *Polyphony) void {}
 
-    fn paintSpan(self: *Polyphony, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paintSpan(self: *Polyphony, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
@@ -85,7 +84,7 @@ const Polyphony = struct {
                         .colour = 0.3,
                     };
                 }
-                voice.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                voice.osc.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, conv.getImpulses());
             }
             zang.multiplyWithScalar(temps[0], 0.5);
             zang.zero(temps[1]);
@@ -93,17 +92,18 @@ const Polyphony = struct {
                 var conv = zang.ParamsConverter(InnerParams, zang.Filter.Params).init();
                 for (conv.getPairs(impulses)) |*pair| {
                     pair.dest = zang.Filter.Params {
+                        .input = temps[0],
                         .filterType = .LowPass,
                         .cutoff = zang.cutoffFromFrequency(pair.source.freq * 8.0, sample_rate),
                         .resonance = 0.7,
                     };
                 }
-                voice.flt.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [1][]f32{temps[0]}, [0][]f32{}, conv.getImpulses());
+                voice.flt.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, conv.getImpulses());
             }
             zang.zero(temps[0]);
             {
                 var conv = zang.ParamsConverter(InnerParams, zang.Envelope.Params).init();
-                voice.envelope.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                voice.envelope.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, temps[0], temps[1]);
         }
@@ -151,10 +151,11 @@ pub const MainModule = struct {
         const impulses = self.iq.consume();
 
         zang.zero(tmp2);
-        self.polyphony.paintFromImpulses(sample_rate, [1][]f32{tmp2}, [0][]f32{}, [2][]f32{tmp0, tmp1}, impulses);
+        self.polyphony.paintFromImpulses(sample_rate, [1][]f32{tmp2}, [2][]f32{tmp0, tmp1}, impulses);
 
         if (self.dec_mode > 0) {
-            self.dec.paintSpan(sample_rate, [1][]f32{out}, [1][]f32{tmp2}, [0][]f32{}, zang.Decimator.Params {
+            self.dec.paintSpan(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Decimator.Params {
+                .input = tmp2,
                 .fake_sample_rate = switch (self.dec_mode) {
                     1 => f32(6000.0),
                     2 => f32(5000.0),

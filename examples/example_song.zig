@@ -143,7 +143,6 @@ const tracks = [NUM_TRACKS][]const MyNotes.SongNote {
 // an example of a custom "module"
 const PulseModOscillator = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 3;
     pub const Params = struct {
         freq: f32,
@@ -173,7 +172,7 @@ const PulseModOscillator = struct {
 
     fn reset(self: *PulseModOscillator) void {}
 
-    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paintSpan(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         zang.set(temps[0], params.freq);
@@ -231,11 +230,11 @@ pub const MainModule = struct {
             const impulses = self.trackers[i].getImpulses(sample_rate, out.len);
 
             zang.zero(tmp0);
-            self.osc[i].paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
+            self.osc[i].paintFromImpulses(sample_rate, [1][]f32{tmp0}, [3][]f32{tmp1, tmp2, tmp3}, impulses);
             zang.zero(tmp1);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env[i].paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env[i].paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, conv.autoStructural(impulses));
             }
             zang.multiply(out, tmp0, tmp1);
         }

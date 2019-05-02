@@ -3,7 +3,6 @@ const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 
 pub const Portamento = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
         velocity: f32,
@@ -25,7 +24,7 @@ pub const Portamento = struct {
 
     pub fn reset(self: *Portamento) void {}
 
-    pub fn paintSpan(self: *Portamento, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Portamento, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
 
         if (params.note_on) {

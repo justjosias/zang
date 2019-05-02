@@ -30,7 +30,6 @@ const CurveSpan = struct {
 
 pub const Curve = struct {
     pub const NumOutputs = 1;
-    pub const NumInputs = 0;
     pub const NumTemps = 0;
     pub const Params = struct {
         freq_mul: f32, // TODO - remove this, not general enough
@@ -63,7 +62,7 @@ pub const Curve = struct {
         self.t = 0.0;
     }
 
-    pub fn paintSpan(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, inputs: [NumInputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paintSpan(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
         const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len);
 

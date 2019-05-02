@@ -61,7 +61,7 @@ pub const MainModule = struct {
             var i: usize = undefined;
 
             zang.zero(tmp0);
-            self.noise.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, zang.Noise.Params {});
+            self.noise.paintSpan(sample_rate, [1][]f32{tmp0}, [0][]f32{}, zang.Noise.Params {});
 
             zang.zero(tmp1);
             {
@@ -73,7 +73,7 @@ pub const MainModule = struct {
                         .note_on = pair.source.note_on,
                     };
                 }
-                self.porta.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, [0][]f32{}, conv.getImpulses());
+                self.porta.paintFromImpulses(sample_rate, [1][]f32{tmp1}, [0][]f32{}, conv.getImpulses());
             }
 
             zang.zero(tmp2);
@@ -82,7 +82,7 @@ pub const MainModule = struct {
             zang.zero(tmp0);
             {
                 var conv = zang.ParamsConverter(MyNoteParams, zang.Envelope.Params).init();
-                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, [0][]f32{}, conv.autoStructural(impulses));
+                self.env.paintFromImpulses(sample_rate, [1][]f32{tmp0}, [0][]f32{}, conv.autoStructural(impulses));
             }
 
             zang.multiply(out, tmp2, tmp0);

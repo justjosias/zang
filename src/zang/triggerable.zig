@@ -51,16 +51,12 @@ pub fn Triggerable(comptime ModuleType: type) type {
             self: *@This(),
             sample_rate: f32,
             output_bufs: [ModuleType.NumOutputs][]f32,
-            input_bufs: [ModuleType.NumInputs][]f32,
             temp_bufs: [ModuleType.NumTemps][]f32,
             impulses: ?*const Impulse,
         ) void {
             std.debug.assert(ModuleType.NumOutputs > 0);
             const buf_len = output_bufs[0].len;
             for (output_bufs) |buf| {
-                std.debug.assert(buf.len == buf_len);
-            }
-            for (input_bufs) |buf| {
                 std.debug.assert(buf.len == buf_len);
             }
             for (temp_bufs) |buf| {
@@ -80,11 +76,6 @@ pub fn Triggerable(comptime ModuleType: type) type {
                 comptime var ci: usize = 0;
                 comptime while (ci < ModuleType.NumOutputs) : (ci += 1) {
                     output_spans[ci] = output_bufs[ci][note_span.start .. note_span.end];
-                };
-                var input_spans: [ModuleType.NumInputs][]f32 = undefined;
-                ci = 0;
-                comptime while (ci < ModuleType.NumInputs) : (ci += 1) {
-                    input_spans[ci] = input_bufs[ci][note_span.start .. note_span.end];
                 };
                 var temp_spans: [ModuleType.NumTemps][]f32 = undefined;
                 ci = 0;
@@ -114,7 +105,20 @@ pub fn Triggerable(comptime ModuleType: type) type {
                         }
                     }
 
-                    self.module.paintSpan(sample_rate, output_spans, input_spans, temp_spans, note.params);
+                    var params = note.params;
+
+                    // for any param that is a []f32, pass along only the subslice for this note span
+                    inline for (@typeInfo(ModuleType.Params).Struct.fields) |field| {
+                        if (@typeId(field.field_type) == .Pointer and
+                            @typeInfo(field.field_type).Pointer.size == .Slice and
+                            @typeInfo(field.field_type).Pointer.child == f32) {
+                            const slice = @field(params, field.name);
+                            std.debug.assert(slice.len == buf_len);
+                            @field(params, field.name) = slice[note_span.start .. note_span.end];
+                        }
+                    }
+
+                    self.module.paintSpan(sample_rate, output_spans, temp_spans, params);
                 }
 
                 start = note_span.end;
