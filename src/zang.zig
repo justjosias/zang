@@ -8,9 +8,6 @@ pub const buffer = triggerable.buffer;
 pub const initTriggerable = triggerable.initTriggerable;
 pub const Triggerable = triggerable.Triggerable;
 
-const params_converter = @import("zang/params_converter.zig");
-pub const ParamsConverter = params_converter.ParamsConverter;
-
 const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;
 pub const mixDown = mixdown.mixDown;

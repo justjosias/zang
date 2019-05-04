@@ -9,7 +9,6 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
-pub const AUDIO_CHANNELS = 1;
 
 const LaserPlayer = struct {
     pub const NumOutputs = 1;
@@ -93,14 +92,10 @@ const LaserPlayer = struct {
     }
 };
 
-var g_buffers: struct {
-    buf0: [AUDIO_BUFFER_SIZE]f32,
-    buf1: [AUDIO_BUFFER_SIZE]f32,
-    buf2: [AUDIO_BUFFER_SIZE]f32,
-    buf3: [AUDIO_BUFFER_SIZE]f32,
-} = undefined;
-
 pub const MainModule = struct {
+    pub const NumOutputs = 1;
+    pub const NumTemps = 3;
+
     iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
     laser_player: zang.Triggerable(LaserPlayer),
 
@@ -114,19 +109,8 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
-        const out = g_buffers.buf0[0..];
-        const tmp0 = g_buffers.buf1[0..];
-        const tmp1 = g_buffers.buf2[0..];
-        const tmp2 = g_buffers.buf3[0..];
-
-        zang.zero(out);
-
-        self.laser_player.paintFromImpulses(sample_rate, [1][]f32{out}, [3][]f32{tmp0, tmp1, tmp2}, self.iq.consume());
-
-        return [AUDIO_CHANNELS][]const f32 {
-            out,
-        };
+    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        self.laser_player.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

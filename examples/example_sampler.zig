@@ -6,13 +6,11 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
-pub const AUDIO_CHANNELS = 1;
-
-var g_buffers: struct {
-    buf0: [AUDIO_BUFFER_SIZE]f32,
-} = undefined;
 
 pub const MainModule = struct {
+    pub const NumOutputs = 1;
+    pub const NumTemps = 0;
+
     iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
     wav: zang.WavContents,
     sampler: zang.Triggerable(zang.Sampler),
@@ -29,9 +27,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32) [AUDIO_CHANNELS][]const f32 {
-        const out = g_buffers.buf0[0..];
-
+    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         if (self.first) {
             self.first = false;
             self.iq.push(0, zang.Sampler.Params {
@@ -43,13 +39,7 @@ pub const MainModule = struct {
             });
         }
 
-        zang.zero(out);
-
-        self.sampler.paintFromImpulses(sample_rate, [1][]f32{out}, [0][]f32{}, self.iq.consume());
-
-        return [AUDIO_CHANNELS][]const f32 {
-            out,
-        };
+        self.sampler.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

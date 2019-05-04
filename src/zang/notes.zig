@@ -26,7 +26,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             dyn_tracker: DynamicNoteTracker,
 
             pub fn init() ImpulseQueue {
-                return ImpulseQueue{
+                return ImpulseQueue {
                     .array = undefined,
                     .length = 0,
                     .next_id = 1,
@@ -95,6 +95,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             next_song_note: usize,
             t: f32,
             impulse_array: [32]Impulse, // internal storage (TODO - should it be passed in instead?)
+            count: usize,
             dyn_tracker: DynamicNoteTracker,
 
             pub fn init(song: []const SongNote) NoteTracker {
@@ -103,6 +104,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     .next_song_note = 0,
                     .t = 0.0,
                     .impulse_array = undefined,
+                    .count = undefined,
                     .dyn_tracker = DynamicNoteTracker.init(),
                 };
             }
@@ -114,7 +116,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             }
 
             // return impulses for notes that fall within the upcoming buffer frame
-            pub fn getImpulses(self: *NoteTracker, sample_rate: f32, out_len: usize) ?*const Impulse {
+            pub fn begin(self: *NoteTracker, sample_rate: f32, out_len: usize) []Impulse {
                 var count: usize = 0;
 
                 const buf_time = @intToFloat(f32, out_len) / sample_rate;
@@ -145,8 +147,15 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 }
 
                 self.t += buf_time;
+                self.count = count;
 
-                const head = if (count > 0) &self.impulse_array[0] else null;
+                return self.impulse_array[0..count];
+            }
+
+            // these methods were split so the caller has an opportunity to
+            // alter the impulses (e.g. change the note frequencies)
+            pub fn finish(self: *NoteTracker) ?*const Impulse {
+                const head = if (self.count > 0) &self.impulse_array[0] else null;
 
                 return self.dyn_tracker.getImpulses(head);
             }

@@ -9,16 +9,30 @@ const example = @import(@import("build_options").example);
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;
 const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
-const AUDIO_CHANNELS = example.AUDIO_CHANNELS;
+
+var g_outputs: [example.MainModule.NumOutputs][AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_temps: [example.MainModule.NumTemps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
 extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
-    const buffers = main_module.paint(f32(AUDIO_SAMPLE_RATE));
+    var outputs: [example.MainModule.NumOutputs][]f32 = undefined;
+    var temps: [example.MainModule.NumTemps][]f32 = undefined;
+    var i: usize = undefined;
 
-    for (buffers) |buf, i| {
-        zang.mixDown(stream, buf, AUDIO_FORMAT, AUDIO_CHANNELS, i, 0.25);
+    i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+        outputs[i] = g_outputs[i][0..];
+        zang.zero(outputs[i]);
+    }
+    i = 0; while (i < example.MainModule.NumTemps) : (i += 1) {
+        temps[i] = g_temps[i][0..];
+    }
+
+    main_module.paint(AUDIO_SAMPLE_RATE, outputs, temps);
+
+    i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, 0.25);
     }
 }
 
@@ -50,7 +64,7 @@ pub fn main() !void {
         zang.AudioFormat.S8 => u16(c.AUDIO_S8),
         zang.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
     };
-    want.channels = AUDIO_CHANNELS;
+    want.channels = example.MainModule.NumOutputs;
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
     want.userdata = &main_module;
