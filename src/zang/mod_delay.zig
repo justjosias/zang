@@ -68,12 +68,13 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
                     }
                 }
             } else {
-                // the delay buffer is smaller than the input buffer.
-                // we're going to have to loop or recurse
+                // the delay buffer is smaller than the input buffer. we'll
+                // to do this in pieces
                 self.paint(sample_rate, [1][]f32{out[0..DELAY_SAMPLES]}, [0][]f32{}, Params {
                     .input = params.input[0..DELAY_SAMPLES],
                     .feedback_level = params.feedback_level,
                 });
+                // (this will recurse further if necessary)
                 self.paint(sample_rate, [1][]f32{out[DELAY_SAMPLES..]}, [0][]f32{}, Params {
                     .input = params.input[DELAY_SAMPLES..],
                     .feedback_level = params.feedback_level,
