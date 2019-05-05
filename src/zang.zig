@@ -40,6 +40,9 @@ pub const DC = mod_dc.DC;
 const mod_decimator = @import("zang/mod_decimator.zig");
 pub const Decimator = mod_decimator.Decimator;
 
+const mod_delay = @import("zang/mod_delay.zig");
+pub const Delay = mod_delay.Delay;
+
 const mod_distortion = @import("zang/mod_distortion.zig");
 pub const Distortion = mod_distortion.Distortion;
 pub const DistortionType = mod_distortion.DistortionType;

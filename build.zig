@@ -21,6 +21,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "arpeggiator", "examples/example_arpeggiator.zig");
     example(b, mode, windows, "sampler", "examples/example_sampler.zig");
     example(b, mode, windows, "polyphony", "examples/example_polyphony.zig");
+    example(b, mode, windows, "delay", "examples/example_delay.zig");
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {
