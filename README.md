@@ -58,5 +58,3 @@ My goals for the core library:
 * Overall small and simple codebase
 * Documentation
 * There was another one but I forgot
-
-What needs the most work (other than the API surface in general) is how to make tracks or songs. Currently, songs contain notes that set a frequency. That's it. The notes should be able to set other parameters. This applies also to curves, and to notes created on the fly in interactive applications.
