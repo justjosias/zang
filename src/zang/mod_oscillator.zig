@@ -26,7 +26,7 @@ pub fn saw(t: f32) f32 {
 
 pub fn square(t: f32, colour: f32) f32 {
     const frac = t - std.math.floor(t);
-    return if (frac < colour) f32(1.0) else f32(-1.0);
+    return if (frac < colour) f32(0.7) else f32(-0.7);
 }
 
 pub fn sin(t: f32) f32 {

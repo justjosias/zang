@@ -18,7 +18,7 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build curve`: Like `subsong`, but plays a sound defined by smooth curves instead of discrete notes.
 
-`zig build detuned`: Like `play`, but the instrument warbles randomly.
+`zig build detuned`: Like `play`, but the instrument warbles randomly. Press spacebar to cycle through a few modes and effects.
 
 `zig build portamento`: Play a monophonic synth with portamento (gliding between notes). The instrument is composed of filtered noise, where the resonance frequency is controlled by the keyboard. (Note: you must hold down keys to get the portamento effect. When there are gaps between keypresses, the portamento is reset.)
 
