@@ -28,6 +28,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build polyphony`: Each key is an individual voice so you can hold down as many keys as your keyboard wiring lets you. Press space to cycle through various levels of decimation (artificial sample rate reduction).
 
+`zig build delay`: Play the keyboard with a stereo filtered echo effect.
+
 ## Features
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
