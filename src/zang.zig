@@ -29,6 +29,9 @@ pub const multiplyWith = basics.multiplyWith;
 pub const multiplyScalar = basics.multiplyScalar;
 pub const multiplyWithScalar = basics.multiplyWithScalar;
 
+const delay = @import("zang/delay.zig");
+pub const Delay = delay.Delay;
+
 const mod_curve = @import("zang/mod_curve.zig");
 pub const Curve = mod_curve.Curve;
 pub const CurveNode = mod_curve.CurveNode;
@@ -39,9 +42,6 @@ pub const DC = mod_dc.DC;
 
 const mod_decimator = @import("zang/mod_decimator.zig");
 pub const Decimator = mod_decimator.Decimator;
-
-const mod_delay = @import("zang/mod_delay.zig");
-pub const Delay = mod_delay.Delay;
 
 const mod_distortion = @import("zang/mod_distortion.zig");
 pub const Distortion = mod_distortion.Distortion;
