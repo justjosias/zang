@@ -8,6 +8,18 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
+pub const DESCRIPTION =
+    c\\example_portamento
+    c\\
+    c\\Play an "instrument" with the keyboard.
+    c\\(The tone is created using noise and a
+    c\\resonant low-pass filter.)
+    c\\
+    c\\If you press multiple keys, the
+    c\\frequency will slide toward the highest
+    c\\held key.
+;
+
 const A4 = 440.0;
 
 pub const Instrument = struct {

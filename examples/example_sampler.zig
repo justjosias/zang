@@ -7,6 +7,16 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
+pub const DESCRIPTION =
+    c\\example_sampler
+    c\\
+    c\\Loop a WAV file.
+    c\\
+    c\\Press spacebar to reset the sampler
+    c\\with a randomly selected speed between
+    c\\50% and 150%.
+;
+
 pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;

@@ -34,6 +34,8 @@ fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []cons
 
     exe.addPackagePath("zang", "src/zang.zig");
     exe.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+    exe.addIncludeDir(".");
+    exe.addCSourceFile("example_draw.c", [][]const u8 {});
     exe.addBuildOption([]const u8, "example", "\"" ++ source_file ++ "\"");
 
     exe.linkSystemLibrary("SDL2");

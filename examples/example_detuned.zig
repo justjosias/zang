@@ -1,14 +1,3 @@
-// in this example you can play a simple monophonic synth with the keyboard.
-// there is a random warble added to the note frequencies, which was created
-// using white noise and a low pass filter.
-// also, you can press spacebar to cycle through a few modes (doesn't take
-// effect until you press a new key):
-//   0. wide warble, no echo
-//   1. narrow warble, no echo
-//   2. wide warble, echo
-//   3. narrow warble, echo (here the warble does a good job of avoiding
-//      constructive interference from the echo)
-
 const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
@@ -18,6 +7,27 @@ const StereoEchoes = @import("modules.zig").StereoEchoes;
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_detuned
+    c\\
+    c\\Play an instrument with the keyboard.
+    c\\There is a random warble added to the
+    c\\note frequencies, which was created
+    c\\using white noise and a low-pass
+    c\\filter.
+    c\\
+    c\\Press spacebar to cycle through a few
+    c\\modes:
+    c\\
+    c\\  1. wide warble, no echo
+    c\\  2. narrow warble, no echo
+    c\\  3. wide warble, echo
+    c\\  4. narrow warble, echo (here the
+    c\\     warble does a good job of avoiding
+    c\\     constructive interference from the
+    c\\     echo)
+;
 
 const A4 = 440.0;
 
@@ -111,6 +121,8 @@ pub const OuterInstrument = struct {
         // note: filter frequency is set to 4hz. i wanted to go slower but
         // unfortunately at below 4, the filter degrades and the output
         // frequency slowly sinks to zero
+        // (the number is relative to sample rate, so at 96khz it should be at
+        // least 8hz)
         zang.zero(temps[1]);
         self.noise.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(temps[0]);

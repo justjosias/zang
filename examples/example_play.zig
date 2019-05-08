@@ -1,5 +1,3 @@
-// in this example you can play a simple monophonic synth with the keyboard
-
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
@@ -10,6 +8,16 @@ const FilteredSawtoothInstrument = @import("modules.zig").FilteredSawtoothInstru
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_play
+    c\\
+    c\\Play a simple monophonic synthesizer
+    c\\with the keyboard.
+    c\\
+    c\\Press spacebar to create a low drone
+    c\\in another voice.
+;
 
 const A4 = 440.0;
 

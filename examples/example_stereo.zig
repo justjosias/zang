@@ -9,6 +9,16 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 
+pub const DESCRIPTION =
+    c\\example_stereo
+    c\\
+    c\\A wind-like noise effect slowly
+    c\\oscillates between the left and right
+    c\\speakers.
+    c\\
+    c\\This example is not interactive.
+;
+
 // take input (-1 to +1) and scale it to (min to max)
 fn scaleWave(out: []f32, in: []const f32, tmp0: []f32, min: f32, max: f32) void {
     zang.zero(tmp0);

@@ -1,5 +1,3 @@
-// in this example a canned melody is played
-
 const std = @import("std");
 const zang = @import("zang");
 const f = @import("zang-12tet");
@@ -10,6 +8,15 @@ const PMOscInstrument = @import("modules.zig").PMOscInstrument;
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
+
+pub const DESCRIPTION =
+    c\\example_song
+    c\\
+    c\\Plays a canned melody (the first few
+    c\\bars of Bach's Toccata in D Minor).
+    c\\
+    c\\This example is not interactive.
+;
 
 const A4 = 440.0;
 

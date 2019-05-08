@@ -1,11 +1,16 @@
-// in this example you can play the keyboard and there is a ping-pong stereo
-// echo effect
-
 const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
 const StereoEchoes = @import("modules.zig").StereoEchoes;
+
+pub const DESCRIPTION =
+    c\\example_delay
+    c\\
+    c\\Play a square-wave instrument with the
+    c\\keyboard.
+    c\\There is a stereo echo effect.
+;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;

@@ -1,6 +1,3 @@
-// in this example you can trigger a laser sound effect by hitting the space bar.
-// there are some alternate sound effects on the a, s, and d keys
-
 const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
@@ -9,6 +6,18 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_laser
+    c\\
+    c\\Trigger a "laser" sound effect by
+    c\\pressing the spacebar. Some parameters
+    c\\of the sound are randomly perturbed.
+    c\\
+    c\\Press "a", "s", or "d" for some
+    c\\alternate sound effects based on the
+    c\\same module.
+;
 
 const LaserPlayer = struct {
     pub const NumOutputs = 1;

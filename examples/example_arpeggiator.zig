@@ -12,6 +12,15 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
+pub const DESCRIPTION =
+    c\\example_arpeggiator
+    c\\
+    c\\Play an instrument with the keyboard.
+    c\\You can hold down multiple notes. The
+    c\\arpeggiator will cycle through them
+    c\\lowest to highest.
+;
+
 const A4 = 440.0;
 
 const Arpeggiator = struct {

@@ -1,6 +1,5 @@
 // this a "brute force" approach to polyphony... every possible note gets its
 // own voice that is always running. well, it works
-// also you can press spacebar to cycle through various levels of decimation
 
 const std = @import("std");
 const zang = @import("zang");
@@ -12,6 +11,17 @@ const Instrument = @import("modules.zig").NiceInstrument;
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_polyphony
+    c\\
+    c\\Play an instrument with the keyboard.
+    c\\You can hold down multiple notes.
+    c\\
+    c\\Press spacebar to cycle through various
+    c\\amounts of decimation (artificial
+    c\\sample rate reduction).
+;
 
 const A4 = 220.0;
 

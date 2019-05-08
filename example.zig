@@ -58,6 +58,8 @@ pub fn main() !void {
     };
     errdefer c.SDL_DestroyWindow(window);
 
+    const screen = c.SDL_GetWindowSurface(window);
+
     var want: c.SDL_AudioSpec = undefined;
     want.freq = AUDIO_SAMPLE_RATE;
     want.format = switch (AUDIO_FORMAT) {
@@ -87,6 +89,8 @@ pub fn main() !void {
     const start_time = @intToFloat(f32, c.SDL_GetTicks()) / 1000.0;
 
     c.SDL_PauseAudioDevice(device, 0); // unpause
+
+    c.drawstring(window, screen, example.DESCRIPTION);
 
     var event: c.SDL_Event = undefined;
 

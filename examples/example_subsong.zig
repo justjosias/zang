@@ -1,4 +1,3 @@
-// in this example a little melody plays every time you hit a key
 // TODO - maybe add an envelope effect at the outer level, to demonstrate that
 // the note events are nesting correctly
 
@@ -11,6 +10,14 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_subsong
+    c\\
+    c\\Play with the keyboard - a little
+    c\\melody is played with each keypress.
+    c\\This demonstrates "notes within notes".
+;
 
 const A4 = 440.0;
 

@@ -1,5 +1,3 @@
-// in this example a weird sound plays when you hit a key
-
 const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
@@ -8,6 +6,15 @@ const c = @import("common/sdl.zig");
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
+
+pub const DESCRIPTION =
+    c\\example_curve
+    c\\
+    c\\Trigger a weird sound effect with the
+    c\\keyboard. The sound is defined using a
+    c\\curve, and scales with the frequency of
+    c\\the key you press.
+;
 
 const CurvePlayer = struct {
     pub const NumOutputs = 1;
