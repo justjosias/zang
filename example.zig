@@ -13,6 +13,8 @@ const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
 var g_outputs: [example.MainModule.NumOutputs][AUDIO_BUFFER_SIZE]f32 = undefined;
 var g_temps: [example.MainModule.NumTemps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
+var g_redraw_event: c.Uint32 = undefined;
+
 extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
@@ -34,6 +36,23 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
         zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, 0.25);
     }
+
+    // i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+    i = 0; {
+        var j: usize = 0; while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
+            var min: f32 = 0.0;
+            var max: f32 = 0.0;
+            for (outputs[i][j * 1024 .. j * 1024 + 1024]) |sample| {
+                if (sample < min) min = sample;
+                if (sample > max) max = sample;
+            }
+            c.plot(min, max);
+        }
+    }
+
+    var event: c.SDL_Event = undefined;
+    event.type = g_redraw_event;
+    _ = c.SDL_PushEvent(&event);
 }
 
 pub fn main() !void {
@@ -44,6 +63,8 @@ pub fn main() !void {
         return error.SDLInitializationFailed;
     }
     errdefer c.SDL_Quit();
+
+    g_redraw_event = c.SDL_RegisterEvents(1);
 
     const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
     const window = c.SDL_CreateWindow(
@@ -90,7 +111,7 @@ pub fn main() !void {
 
     c.SDL_PauseAudioDevice(device, 0); // unpause
 
-    c.drawstring(window, screen, example.DESCRIPTION);
+    c.draw(window, screen, example.DESCRIPTION);
 
     var event: c.SDL_Event = undefined;
 
@@ -114,6 +135,12 @@ pub fn main() !void {
                 }
             },
             else => {},
+        }
+
+        if (event.type == g_redraw_event) {
+            c.SDL_LockAudioDevice(device);
+            c.draw(window, screen, example.DESCRIPTION);
+            c.SDL_UnlockAudioDevice(device);
         }
     }
 

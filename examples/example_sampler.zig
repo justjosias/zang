@@ -50,6 +50,7 @@ pub const MainModule = struct {
         }
 
         self.sampler.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+        zang.multiplyWithScalar(outputs[0], 3.0);
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

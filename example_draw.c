@@ -1,6 +1,17 @@
 #include <SDL2/SDL.h>
 
-void drawstring(SDL_Window *window, SDL_Surface *screen, const char *s) {
+static float drawbuf[640][2];
+static int drawindex;
+
+void plot(float min, float max) {
+    drawbuf[drawindex][0] = min;
+    drawbuf[drawindex][1] = max;
+    if (++drawindex == 640) {
+        drawindex = 0;
+    }
+}
+
+void draw(SDL_Window *window, SDL_Surface *screen, const char *s) {
     static const char *font =
         "0000000044444040::000000::O:O::04N5>D?403C842IH02552E9F084200000"
         "84222480248884204E>4>E40044O440000000442000O00000000066000@84210"
@@ -19,20 +30,57 @@ void drawstring(SDL_Window *window, SDL_Surface *screen, const char *s) {
     {
         int pitch = screen->pitch >> 2;
         unsigned int *pixels = screen->pixels;
-        int x = 8, y = 8, ix = x;
-        for (; *s; s++) {
-            if (*s == '\n') {
-                x = ix; y += 20;
-            } else if (*s >= 32) {
-                int index = (*s - 32) << 3, sx, sy;
-                for (sy = 0; sy < 16; sy++) {
-                    for (sx = 0; sx < 16; sx++) {
-                        if ((font[index + (sy >> 1)] - '0') & (1 << (sx >> 1))) {
-                            pixels[(y + sy) * (screen->pitch >> 2) + x + sx] = 0x88888888;
+        {
+            int h = 80;
+            int i;
+            for (i = 0; i < 640; i++) {
+                float y0sample = -drawbuf[i][1] * 0.25f;
+                float y1sample = -drawbuf[i][0] * 0.25f;
+                int cy = 480 - h / 2 - 10;
+                int y0limit = y0sample < -1.0f;
+                int y1limit = y1sample > 1.0f;
+                if (y0limit) y0sample = -1.0f;
+                if (y1limit) y1sample = 1.0f;
+                int y0 = cy + (int)(y0sample * h / 2);
+                int y1 = cy + (int)(y1sample * h / 2);
+                int y;
+                int x = (i - drawindex + 640) % 640;
+                for (y = cy - h / 2; y < y0; y++) {
+                    pixels[y * pitch + x] = 0x18181818;
+                }
+                for (y = y0; y <= y1; y++) {
+                    pixels[y * pitch + x] = 0x44444444;
+                }
+                for (y = y1 + 1; y < 480 - 10; y++) {
+                    pixels[y * pitch + x] = 0x18181818;
+                }
+                if (y0limit) {
+                    y = cy - h / 2;
+                    pixels[y * pitch + x] = 0xFFFF0000;
+                }
+                if (y1limit) {
+                    y = cy + h / 2;
+                    pixels[y * pitch + x] = 0xFFFF0000;
+                }
+                pixels[cy * pitch + x] = 0x66666666;
+            }
+        }
+        {
+            int x = 8, y = 8, ix = x;
+            for (; *s; s++) {
+                if (*s == '\n') {
+                    x = ix; y += 20;
+                } else if (*s >= 32) {
+                    int index = (*s - 32) << 3, sx, sy;
+                    for (sy = 0; sy < 16; sy++) {
+                        for (sx = 0; sx < 16; sx++) {
+                            if ((font[index + (sy >> 1)] - '0') & (1 << (sx >> 1))) {
+                                pixels[(y + sy) * pitch + x + sx] = 0x88888888;
+                            }
                         }
                     }
+                    x += 16;
                 }
-                x += 16;
             }
         }
     }
