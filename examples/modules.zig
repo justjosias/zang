@@ -96,7 +96,7 @@ pub const PMOscInstrument = struct {
 
 pub const FilteredSawtoothInstrument = struct {
     pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const NumTemps = 3;
     pub const Params = struct { freq: f32, note_on: bool };
 
     osc: zang.Oscillator,
@@ -123,15 +123,14 @@ pub const FilteredSawtoothInstrument = struct {
     }
 
     pub fn paint(self: *FilteredSawtoothInstrument, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[3]);
-        self.osc.paint(sample_rate, [1][]f32{temps[3]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(temps[0]);
+        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
             .waveform = .Sawtooth,
             .freq = zang.constant(params.freq),
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
-        zang.zero(temps[0]);
-        zang.multiplyScalar(temps[0], temps[3], 2.5); // boost sawtooth volume
+        zang.multiplyWithScalar(temps[0], 1.5); // boost sawtooth volume
         zang.zero(temps[1]);
         self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
             .note_on = params.note_on,

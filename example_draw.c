@@ -51,7 +51,7 @@ void draw(SDL_Window *window, SDL_Surface *screen, const char *s) {
                 for (y = y0; y <= y1; y++) {
                     pixels[y * pitch + x] = 0x44444444;
                 }
-                for (y = y1 + 1; y < 480 - 10; y++) {
+                for (y = y1 + 1; y <= 480 - 10; y++) {
                     pixels[y * pitch + x] = 0x18181818;
                 }
                 if (y0limit) {

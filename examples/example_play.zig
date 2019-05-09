@@ -43,7 +43,7 @@ pub const MainModule = struct {
 
     pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         self.instr0.paintFromImpulses(sample_rate, outputs, temps, self.iq0.consume());
-        self.instr1.paintFromImpulses(sample_rate, outputs, temps, self.iq1.consume());
+        self.instr1.paintFromImpulses(sample_rate, outputs, [3][]f32{temps[0], temps[1], temps[2]}, self.iq1.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

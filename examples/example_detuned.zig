@@ -75,6 +75,8 @@ pub const Instrument = struct {
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
+        // slight volume reduction
+        zang.multiplyWithScalar(temps[1], 0.75);
         // combine with envelope
         zang.zero(temps[0]);
         self.env.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
@@ -90,8 +92,6 @@ pub const Instrument = struct {
             // .cutoff = zang.constant(zang.cutoffFromFrequency(params.freq + 400.0, sample_rate)),
             .resonance = 0.8,
         });
-        // volume boost
-        zang.multiplyWithScalar(outputs[0], 1.5);
     }
 };
 

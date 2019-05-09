@@ -20,7 +20,7 @@ pub fn tri(t: f32) f32 {
 }
 
 pub fn saw(t: f32) f32 {
-    const frac = t - std.math.floor(t);
+    const frac = (t - std.math.floor(t)) * 2.0 - 1.0;
     return frac;
 }
 
