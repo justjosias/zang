@@ -10,22 +10,22 @@ pub fn build(b: *Builder) void {
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&t.step);
 
-    example(b, mode, windows, "play", "examples/example_play.zig");
-    example(b, mode, windows, "song", "examples/example_song.zig");
-    example(b, mode, windows, "subsong", "examples/example_subsong.zig");
-    example(b, mode, windows, "stereo", "examples/example_stereo.zig");
-    example(b, mode, windows, "curve", "examples/example_curve.zig");
-    example(b, mode, windows, "detuned", "examples/example_detuned.zig");
-    example(b, mode, windows, "laser", "examples/example_laser.zig");
-    example(b, mode, windows, "portamento", "examples/example_portamento.zig");
-    example(b, mode, windows, "arpeggiator", "examples/example_arpeggiator.zig");
-    example(b, mode, windows, "sampler", "examples/example_sampler.zig");
-    example(b, mode, windows, "polyphony", "examples/example_polyphony.zig");
-    example(b, mode, windows, "delay", "examples/example_delay.zig");
+    example(b, mode, windows, "play", "example_play.zig");
+    example(b, mode, windows, "song", "example_song.zig");
+    example(b, mode, windows, "subsong", "example_subsong.zig");
+    example(b, mode, windows, "stereo", "example_stereo.zig");
+    example(b, mode, windows, "curve", "example_curve.zig");
+    example(b, mode, windows, "detuned", "example_detuned.zig");
+    example(b, mode, windows, "laser", "example_laser.zig");
+    example(b, mode, windows, "portamento", "example_portamento.zig");
+    example(b, mode, windows, "arpeggiator", "example_arpeggiator.zig");
+    example(b, mode, windows, "sampler", "example_sampler.zig");
+    example(b, mode, windows, "polyphony", "example_polyphony.zig");
+    example(b, mode, windows, "delay", "example_delay.zig");
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {
-    var exe = b.addExecutable(name, "example.zig");
+    var exe = b.addExecutable(name, "examples/example.zig");
     exe.setBuildMode(mode);
 
     if (windows) {
@@ -35,7 +35,7 @@ fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []cons
     exe.addPackagePath("zang", "src/zang.zig");
     exe.addPackagePath("zang-12tet", "src/zang-12tet.zig");
     exe.addIncludeDir(".");
-    exe.addCSourceFile("example_draw.c", [][]const u8 {});
+    exe.addCSourceFile("examples/example_draw.c", [][]const u8 {});
     exe.addBuildOption([]const u8, "example", "\"" ++ source_file ++ "\"");
 
     exe.linkSystemLibrary("SDL2");

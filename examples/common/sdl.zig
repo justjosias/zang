@@ -1,4 +1,4 @@
 pub use @cImport({
     @cInclude("SDL2/SDL.h");
-    @cInclude("example_draw.h");
+    @cInclude("examples/example_draw.h");
 });

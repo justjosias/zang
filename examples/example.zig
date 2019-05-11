@@ -2,8 +2,8 @@
 
 const std = @import("std");
 const zang = @import("zang");
-const common = @import("examples/common.zig");
-const c = @import("examples/common/sdl.zig");
+const common = @import("common.zig");
+const c = @import("common/sdl.zig");
 const example = @import(@import("build_options").example);
 
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
