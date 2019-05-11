@@ -31,18 +31,20 @@ static void drawwaveform(unsigned int *pixels, int pitch) {
         int y0 = (int)(y_mid - sample_max_clipped * height / 2 + 0.5f);
         int y1 = (int)(y_mid - sample_min_clipped * height / 2 + 0.5f);
         int sx = (i - drawindex + width) % width;
-        int sy = y_mid - height / 2;
+        int sy = y;
         if (sample_max_clipped != sample_max)
             pixels[sy++ * pitch + sx] = clipped_color;
         for (; sy < y0; sy++)
             pixels[sy * pitch + sx] = background_color;
+        for (; sy < y_mid; sy++)
+            pixels[sy * pitch + sx] = waveform_color;
+        pixels[sy++ * pitch + sx] = center_line_color;
         for (; sy <= y1; sy++)
             pixels[sy * pitch + sx] = waveform_color;
         for (; sy <= y + height; sy++)
             pixels[sy * pitch + sx] = background_color;
         if (sample_min_clipped != sample_min)
             pixels[--sy * pitch + sx] = clipped_color;
-        pixels[y_mid * pitch + sx] = center_line_color;
     }
 }
 
