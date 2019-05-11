@@ -1,3 +1,4 @@
+#include <math.h>
 #include <SDL2/SDL.h>
 
 static float drawbuf[640][2];
@@ -48,6 +49,38 @@ static void drawwaveform(unsigned int *pixels, int pitch) {
     }
 }
 
+static void drawfft(unsigned int *pixels, int pitch, size_t bufsize, const float *values) {
+    const int height = 100;
+    const int y = 480 - 10 - 80 - height;
+    const unsigned int background_color = 0x00000000;
+    const unsigned int color = 0x44444444;
+    const float inv_buffer_size = 1.0f / bufsize;
+
+    int i;
+    // assume bufsize is a power of two. if it's greater than 1024, halve
+    // it until it reaches 1024.
+    int step = 0, b = bufsize;
+    while (b > 1024) {
+        b >>= 1;
+        step++;
+    }
+    // draw only half (so 512 pixels), because the other half is just a mirror
+    // image
+    for (i = 0; i < (b >> 1); i++) {
+        const float v = fabs(values[i << step]) * inv_buffer_size;
+        const float v2 = sqrt(v); // sqrt to make things more visible
+        const int value = (int)(v2 * (float)height + 0.5f);
+        const int value_clipped = value > height - 1 ? height - 1 : value;
+        int sy = y;
+        for (; sy < y + height - value_clipped; sy++) {
+            pixels[sy * pitch + i] = background_color;
+        }
+        for (; sy < y + height; sy++) {
+            pixels[sy * pitch + i] = color;
+        }
+    }
+}
+
 static void drawstring(unsigned int *pixels, int pitch, const char *s) {
     static const char *font =
         "0000000044444040::000000::O:O::04N5>D?403C842IH02552E9F084200000"
@@ -86,10 +119,11 @@ static void drawstring(unsigned int *pixels, int pitch, const char *s) {
     }
 }
 
-void draw(SDL_Window *window, SDL_Surface *screen, const char *s) {
+void draw(SDL_Window *window, SDL_Surface *screen, const char *s, size_t bufsize, const float *fft) {
     SDL_LockSurface(screen);
 
     drawwaveform(screen->pixels, screen->pitch >> 2);
+    drawfft(screen->pixels, screen->pitch >> 2, bufsize, fft);
     drawstring(screen->pixels, screen->pitch >> 2, s);
 
     SDL_UnlockSurface(screen);

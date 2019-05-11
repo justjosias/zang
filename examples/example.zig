@@ -4,6 +4,7 @@ const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
+const fft = @import("common/fft.zig").fft;
 const example = @import(@import("build_options").example);
 
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
@@ -14,6 +15,15 @@ var g_outputs: [example.MainModule.NumOutputs][AUDIO_BUFFER_SIZE]f32 = undefined
 var g_temps: [example.MainModule.NumTemps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
 var g_redraw_event: c.Uint32 = undefined;
+
+var g_fft_real = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
+var g_fft_imag = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
+
+fn pushRedrawEvent() void {
+    var event: c.SDL_Event = undefined;
+    event.type = g_redraw_event;
+    _ = c.SDL_PushEvent(&event);
+}
 
 extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
@@ -52,9 +62,11 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
         }
     }
 
-    var event: c.SDL_Event = undefined;
-    event.type = g_redraw_event;
-    _ = c.SDL_PushEvent(&event);
+    zang.copy(g_fft_real[0..], outputs[0][0..]);
+    zang.zero(g_fft_imag[0..]);
+    fft(example.AUDIO_BUFFER_SIZE, g_fft_real[0..], g_fft_imag[0..]);
+
+    pushRedrawEvent();
 }
 
 fn hasDef(comptime T: type, comptime name: []const u8) bool {
@@ -122,7 +134,7 @@ pub fn main() !void {
 
     c.SDL_PauseAudioDevice(device, 0); // unpause
 
-    c.draw(window, screen, example.DESCRIPTION);
+    pushRedrawEvent();
 
     var event: c.SDL_Event = undefined;
 
@@ -163,7 +175,7 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(window, screen, example.DESCRIPTION);
+            c.draw(window, screen, example.DESCRIPTION, example.AUDIO_BUFFER_SIZE, g_fft_real[0..].ptr);
             c.SDL_UnlockAudioDevice(device);
         }
     }
