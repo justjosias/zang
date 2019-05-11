@@ -1,9 +1,9 @@
 # zang
-[Zig](https://ziglang.org/) audio library.
+Audio library written in [Zig](https://ziglang.org/).
 
 This library provides functions to "paint" audio (generators and effects) into buffers. (How the buffers get sent to the audio device is out of the scope of the library, but can be seen in the provided examples.)
 
-The library is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, such as a declarative graph of audio modules, or a parsed text format representing arrangements or songs, they will be separate libraries that build off of this one.
+The library is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, they will be in separate libraries.
 
 ## Examples
 All the examples use [SDL2](https://www.libsdl.org/), so make sure that's installed. The library is built on the latest (master) version of Zig.
@@ -34,8 +34,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
 * DC: just a way to paint incoming note frequencies into a buffer
-* Decimator: imitate a lower sample rate without any interpolation
-* Distortion: overdrive and clip input sound
+* Decimator: imitate a lower sample rate
+* Distortion: overdrive/clip the input sound
 * Envelope: ADSR (attack, decay, sustain, release) envelope generator
 * Filter: lowpass, highpass, notch, bandpass, including resonance
 * Gate: a simpler Envelope, just outputs 1 or 0 based on note on and off events
@@ -43,8 +43,6 @@ Modules:
 * Oscillator: generate a sine, triangle, sawtooth, or triangle wave
 * Portamento: interpolate the frequency of an incoming stream of notes
 * Sampler: play an audio file (wav loader provided), resampling according to the note frequencies
-
-The APIs of various modules aren't consistent. For example, some support parameters to be controlled by an input buffer (for example, the oscillator's frequency). Others only support being controlled by discrete notes. Some support both. This should be improved.
 
 ## Goals
 My goals for the core library:
@@ -57,4 +55,3 @@ My goals for the core library:
 * Lean inner loops
 * Overall small and simple codebase
 * Documentation
-* There was another one but I forgot
