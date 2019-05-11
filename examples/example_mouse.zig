@@ -2,7 +2,7 @@ const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
-const PulseModOscillator = @import("modules.zig").PulseModOscillator;
+const PhaseModOscillator = @import("modules.zig").PhaseModOscillator;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -11,7 +11,7 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_mouse
     c\\
-    c\\Play a pulse-modulation instrument with
+    c\\Play a phase-modulation instrument with
     c\\the keyboard, while controlling the
     c\\sound parameters with the mouse
     c\\position.
@@ -29,12 +29,12 @@ const PMOscInstrument = struct {
         multiplier: []const f32,
     };
 
-    osc: PulseModOscillator,
+    osc: PhaseModOscillator,
     env: zang.Envelope,
 
     pub fn init() PMOscInstrument {
         return PMOscInstrument {
-            .osc = PulseModOscillator.init(),
+            .osc = PhaseModOscillator.init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
@@ -51,7 +51,7 @@ const PMOscInstrument = struct {
 
     pub fn paint(self: *PMOscInstrument, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         zang.zero(temps[0]);
-        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PulseModOscillator.Params {
+        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .freq = params.freq,
             .ratio = zang.buffer(params.ratio),
             .multiplier = zang.buffer(params.multiplier),

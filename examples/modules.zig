@@ -1,13 +1,13 @@
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 
-pub const PulseModOscillator = struct {
+pub const PhaseModOscillator = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
     pub const Params = struct {
         freq: f32,
         // ratio: the carrier oscillator will use whatever frequency you give the
-        // PulseModOscillator. the modulator oscillator will multiply the frequency
+        // PhaseModOscillator. the modulator oscillator will multiply the frequency
         // by this ratio. for example, a ratio of 0.5 means that the modulator
         // oscillator will always play at half the frequency of the carrier
         // oscillator
@@ -20,19 +20,19 @@ pub const PulseModOscillator = struct {
     carrier: zang.Oscillator,
     modulator: zang.Oscillator,
 
-    pub fn init() PulseModOscillator {
-        return PulseModOscillator {
+    pub fn init() PhaseModOscillator {
+        return PhaseModOscillator {
             .carrier = zang.Oscillator.init(),
             .modulator = zang.Oscillator.init(),
         };
     }
 
-    pub fn reset(self: *PulseModOscillator) void {
+    pub fn reset(self: *PhaseModOscillator) void {
         self.carrier.reset();
         self.modulator.reset();
     }
 
-    pub fn paint(self: *PulseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *PhaseModOscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
         zang.set(temps[0], params.freq);
@@ -61,18 +61,18 @@ pub const PulseModOscillator = struct {
     }
 };
 
-// PulseModOscillator packaged with an envelope
+// PhaseModOscillator packaged with an envelope
 pub const PMOscInstrument = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 4;
     pub const Params = struct { freq: f32, note_on: bool };
 
-    osc: PulseModOscillator,
+    osc: PhaseModOscillator,
     env: zang.Envelope,
 
     pub fn init(release_duration: f32) PMOscInstrument {
         return PMOscInstrument {
-            .osc = PulseModOscillator.init(),
+            .osc = PhaseModOscillator.init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
@@ -89,7 +89,7 @@ pub const PMOscInstrument = struct {
 
     pub fn paint(self: *PMOscInstrument, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         zang.zero(temps[0]);
-        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PulseModOscillator.Params {
+        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .freq = params.freq,
             .ratio = zang.constant(1.0),
             .multiplier = zang.constant(1.5),
