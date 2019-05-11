@@ -33,8 +33,10 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
 
     main_module.paint(AUDIO_SAMPLE_RATE, outputs, temps);
 
+    const mul = 0.25;
+
     i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
-        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, 0.25);
+        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, mul);
     }
 
     // i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
@@ -46,7 +48,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
                 if (sample < min) min = sample;
                 if (sample > max) max = sample;
             }
-            c.plot(min, max);
+            c.plot(min * mul, max * mul);
         }
     }
 
