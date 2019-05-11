@@ -15,6 +15,10 @@ pub const DESCRIPTION =
     c\\the keyboard, while controlling the
     c\\sound parameters with the mouse
     c\\position.
+    c\\
+    c\\Press spacebar to toggle between
+    c\\relative (the default) and absolute
+    c\\modulator frequency.
 ;
 
 const A4 = 440.0;
@@ -25,6 +29,7 @@ const PMOscInstrument = struct {
     pub const Params = struct {
         freq: f32,
         note_on: bool,
+        relative: bool,
         ratio: []const f32,
         multiplier: []const f32,
     };
@@ -53,6 +58,7 @@ const PMOscInstrument = struct {
         zang.zero(temps[0]);
         self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .freq = params.freq,
+            .relative = params.relative,
             .ratio = zang.buffer(params.ratio),
             .multiplier = zang.buffer(params.multiplier),
         });
@@ -80,6 +86,7 @@ pub const MainModule = struct {
     multiplier_iq: zang.Notes(zang.Portamento.Params).ImpulseQueue,
     ratio_portamento: zang.Triggerable(zang.Portamento),
     multiplier_portamento: zang.Triggerable(zang.Portamento),
+    mode: u32,
 
     pub fn init() MainModule {
         return MainModule {
@@ -90,6 +97,7 @@ pub const MainModule = struct {
             .multiplier_iq = zang.Notes(zang.Portamento.Params).ImpulseQueue.init(),
             .ratio_portamento = zang.initTriggerable(zang.Portamento.init()),
             .multiplier_portamento = zang.initTriggerable(zang.Portamento.init()),
+            .mode = 0,
         };
     }
 
@@ -112,6 +120,7 @@ pub const MainModule = struct {
                     .params = PMOscInstrument.Params {
                         .freq = impulse.note.params.freq,
                         .note_on = impulse.note.params.note_on,
+                        .relative = self.mode == 0,
                         .ratio = temps[0],
                         .multiplier = temps[1],
                     },
@@ -133,7 +142,10 @@ pub const MainModule = struct {
         self.ratio_iq.push(impulse_frame, zang.Portamento.Params {
             .mode = .CatchUp,
             .velocity = 8.0,
-            .value = x * 4.0,
+            .value = switch (self.mode) {
+                0 => x * 4.0,
+                else => x * 880.0,
+            },
             .note_on = true,
         });
         self.multiplier_iq.push(impulse_frame, zang.Portamento.Params {
@@ -145,6 +157,9 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+        if (key == c.SDLK_SPACE and down) {
+            self.mode = (self.mode + 1) % 2;
+        }
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;

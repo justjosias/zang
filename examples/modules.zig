@@ -6,6 +6,7 @@ pub const PhaseModOscillator = struct {
     pub const NumTemps = 3;
     pub const Params = struct {
         freq: f32,
+        relative: bool,
         // ratio: the carrier oscillator will use whatever frequency you give the
         // PhaseModOscillator. the modulator oscillator will multiply the frequency
         // by this ratio. for example, a ratio of 0.5 means that the modulator
@@ -37,8 +38,20 @@ pub const PhaseModOscillator = struct {
 
         zang.set(temps[0], params.freq);
         switch (params.ratio) {
-            .Constant => |ratio| zang.set(temps[1], params.freq * ratio),
-            .Buffer => |ratio| zang.multiplyScalar(temps[1], ratio, params.freq),
+            .Constant => |ratio| {
+                if (params.relative) {
+                    zang.set(temps[1], params.freq * ratio);
+                } else {
+                    zang.set(temps[1], ratio);
+                }
+            },
+            .Buffer => |ratio| {
+                if (params.relative) {
+                    zang.multiplyScalar(temps[1], ratio, params.freq);
+                } else {
+                    zang.copy(temps[1], ratio);
+                }
+            },
         }
         zang.zero(temps[2]);
         self.modulator.paint(sample_rate, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
@@ -91,6 +104,7 @@ pub const PMOscInstrument = struct {
         zang.zero(temps[0]);
         self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .freq = params.freq,
+            .relative = true,
             .ratio = zang.constant(1.0),
             .multiplier = zang.constant(1.5),
         });
