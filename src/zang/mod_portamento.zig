@@ -5,9 +5,14 @@ pub const Portamento = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
-        velocity: f32,
+        mode: Mode,
+        velocity: f32, // this has different meanings depending on the mode
         value: f32,
         note_on: bool,
+    };
+    pub const Mode = enum {
+        Linear,
+        CatchUp, // does this method have an actual name?
     };
 
     value: f32,
@@ -42,11 +47,20 @@ pub const Portamento = struct {
             self.value = self.goal;
             std.mem.set(f32, buf, self.goal);
         } else {
-            var i: u31 = 0;
-
-            if (paintLineTowards(&self.value, sample_rate, buf, &i, 1.0 / params.velocity, self.goal)) {
-                // reached the goal
-                std.mem.set(f32, buf[i..], self.goal);
+            switch (params.mode) {
+                .Linear => {
+                    var i: u31 = 0;
+                    if (paintLineTowards(&self.value, sample_rate, buf, &i, 1.0 / params.velocity, self.goal)) {
+                        // reached the goal
+                        std.mem.set(f32, buf[i..], self.goal);
+                    }
+                },
+                .CatchUp => {
+                    var i: usize = 0; while (i < buf.len) : (i += 1) {
+                        self.value += (self.goal - self.value) * (params.velocity / sample_rate);
+                        buf[i] = self.value;
+                    }
+                },
             }
         }
     }

@@ -53,7 +53,8 @@ pub const Instrument = struct {
         self.noise.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(temps[1]);
         self.porta.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
-            .velocity = 0.05,
+            .mode = .CatchUp,
+            .velocity = 8.0,
             .value = zang.cutoffFromFrequency(params.freq, sample_rate),
             .note_on = params.note_on,
         });
