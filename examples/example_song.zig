@@ -172,6 +172,4 @@ pub const MainModule = struct {
             self.instruments[i].paintFromImpulses(sample_rate, outputs, temps, impulses);
         }
     }
-
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {}
 };

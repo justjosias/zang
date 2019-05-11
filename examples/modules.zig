@@ -4,26 +4,26 @@ const note_frequencies = @import("zang-12tet");
 pub const PulseModOscillator = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
-    pub const Params = struct { freq: f32 };
+    pub const Params = struct {
+        freq: f32,
+        // ratio: the carrier oscillator will use whatever frequency you give the
+        // PulseModOscillator. the modulator oscillator will multiply the frequency
+        // by this ratio. for example, a ratio of 0.5 means that the modulator
+        // oscillator will always play at half the frequency of the carrier
+        // oscillator
+        ratio: zang.ConstantOrBuffer,
+        // multiplier: the modulator oscillator's output is multiplied by this
+        // before it is fed in to the phase input of the carrier oscillator.
+        multiplier: zang.ConstantOrBuffer,
+    };
 
     carrier: zang.Oscillator,
     modulator: zang.Oscillator,
-    // ratio: the carrier oscillator will use whatever frequency you give the
-    // PulseModOscillator. the modulator oscillator will multiply the frequency
-    // by this ratio. for example, a ratio of 0.5 means that the modulator
-    // oscillator will always play at half the frequency of the carrier
-    // oscillator
-    ratio: f32,
-    // multiplier: the modulator oscillator's output is multiplied by this
-    // before it is fed in to the phase input of the carrier oscillator.
-    multiplier: f32,
 
-    pub fn init(ratio: f32, multiplier: f32) PulseModOscillator {
+    pub fn init() PulseModOscillator {
         return PulseModOscillator {
             .carrier = zang.Oscillator.init(),
             .modulator = zang.Oscillator.init(),
-            .ratio = ratio,
-            .multiplier = multiplier,
         };
     }
 
@@ -36,7 +36,10 @@ pub const PulseModOscillator = struct {
         const out = outputs[0];
 
         zang.set(temps[0], params.freq);
-        zang.set(temps[1], params.freq * self.ratio);
+        switch (params.ratio) {
+            .Constant => |ratio| zang.set(temps[1], params.freq * ratio),
+            .Buffer => |ratio| zang.multiplyScalar(temps[1], ratio, params.freq),
+        }
         zang.zero(temps[2]);
         self.modulator.paint(sample_rate, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
             .waveform = .Sine,
@@ -45,7 +48,10 @@ pub const PulseModOscillator = struct {
             .colour = 0.5,
         });
         zang.zero(temps[1]);
-        zang.multiplyScalar(temps[1], temps[2], self.multiplier);
+        switch (params.multiplier) {
+            .Constant => |multiplier| zang.multiplyScalar(temps[1], temps[2], multiplier),
+            .Buffer => |multiplier| zang.multiply(temps[1], temps[2], multiplier),
+        }
         self.carrier.paint(sample_rate, [1][]f32{out}, [0][]f32{}, zang.Oscillator.Params {
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
@@ -66,7 +72,7 @@ pub const PMOscInstrument = struct {
 
     pub fn init(release_duration: f32) PMOscInstrument {
         return PMOscInstrument {
-            .osc = PulseModOscillator.init(1.0, 1.5),
+            .osc = PulseModOscillator.init(),
             .env = zang.Envelope.init(zang.EnvParams {
                 .attack_duration = 0.025,
                 .decay_duration = 0.1,
@@ -85,6 +91,8 @@ pub const PMOscInstrument = struct {
         zang.zero(temps[0]);
         self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PulseModOscillator.Params {
             .freq = params.freq,
+            .ratio = zang.constant(1.0),
+            .multiplier = zang.constant(1.5),
         });
         zang.zero(temps[1]);
         self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {

@@ -123,6 +123,4 @@ pub const MainModule = struct {
             .cutoff_frequency = 380.0,
         });
     }
-
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {}
 };

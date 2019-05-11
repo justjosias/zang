@@ -30,6 +30,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build delay`: Play the keyboard with a stereo filtered echo effect.
 
+`zig build mouse`: Play the keyboard while changing sound parameters by moving the mouse.
+
 ## Features
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions

@@ -57,6 +57,15 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     _ = c.SDL_PushEvent(&event);
 }
 
+fn hasDef(comptime T: type, comptime name: []const u8) bool {
+    inline for (@typeInfo(T).Struct.defs) |def| {
+        if (std.mem.eql(u8, def.name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn main() !void {
     var main_module = example.MainModule.init();
 
@@ -128,11 +137,24 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_ESCAPE and down) {
                     break;
                 }
-                if (event.key.repeat == 0) {
-                    c.SDL_LockAudioDevice(device);
-                    // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
+                if (comptime hasDef(example.MainModule, "keyEvent")) {
+                    if (event.key.repeat == 0) {
+                        c.SDL_LockAudioDevice(device);
+                        // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
+                        const impulse_frame = 0;
+                        main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
+                        c.SDL_UnlockAudioDevice(device);
+                    }
+                }
+            },
+            c.SDL_MOUSEMOTION => {
+                if (comptime hasDef(example.MainModule, "mouseEvent")) {
+                    const x = @intToFloat(f32, event.motion.x) / @intToFloat(f32, 640 - 1);
+                    const y = @intToFloat(f32, event.motion.y) / @intToFloat(f32, 480 - 1);
                     const impulse_frame = 0;
-                    main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
+
+                    c.SDL_LockAudioDevice(device);
+                    main_module.mouseEvent(x, y, impulse_frame);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },
