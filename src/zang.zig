@@ -48,8 +48,6 @@ pub const Distortion = mod_distortion.Distortion;
 pub const DistortionType = mod_distortion.DistortionType;
 
 const mod_envelope = @import("zang/mod_envelope.zig");
-pub const EnvParams = mod_envelope.EnvParams;
-pub const EnvState = mod_envelope.EnvState;
 pub const Envelope = mod_envelope.Envelope;
 
 const mod_filter = @import("zang/mod_filter.zig");

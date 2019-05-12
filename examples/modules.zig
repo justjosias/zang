@@ -80,18 +80,15 @@ pub const PMOscInstrument = struct {
     pub const NumTemps = 4;
     pub const Params = struct { freq: f32, note_on: bool };
 
+    release_duration: f32,
     osc: PhaseModOscillator,
     env: zang.Envelope,
 
     pub fn init(release_duration: f32) PMOscInstrument {
         return PMOscInstrument {
+            .release_duration = release_duration,
             .osc = PhaseModOscillator.init(),
-            .env = zang.Envelope.init(zang.EnvParams {
-                .attack_duration = 0.025,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.5,
-                .release_duration = release_duration,
-            }),
+            .env = zang.Envelope.init(),
         };
     }
 
@@ -110,6 +107,10 @@ pub const PMOscInstrument = struct {
         });
         zang.zero(temps[1]);
         self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+            .attack_duration = 0.025,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.5,
+            .release_duration = self.release_duration,
             .note_on = params.note_on,
         });
         zang.multiply(outputs[0], temps[0], temps[1]);
@@ -128,12 +129,7 @@ pub const FilteredSawtoothInstrument = struct {
     pub fn init() FilteredSawtoothInstrument {
         return FilteredSawtoothInstrument {
             .osc = zang.Oscillator.init(),
-            .env = zang.Envelope.init(zang.EnvParams {
-                .attack_duration = 0.025,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.5,
-                .release_duration = 1.0,
-            }),
+            .env = zang.Envelope.init(),
             .flt = zang.Filter.init(),
         };
     }
@@ -155,6 +151,10 @@ pub const FilteredSawtoothInstrument = struct {
         zang.multiplyWithScalar(temps[0], 1.5); // boost sawtooth volume
         zang.zero(temps[1]);
         self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+            .attack_duration = 0.025,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.5,
+            .release_duration = 1.0,
             .note_on = params.note_on,
         });
         zang.zero(temps[2]);
@@ -181,12 +181,7 @@ pub const NiceInstrument = struct {
         return NiceInstrument {
             .osc = zang.PulseOsc.init(),
             .flt = zang.Filter.init(),
-            .env = zang.Envelope.init(zang.EnvParams {
-                .attack_duration = 0.01,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.8,
-                .release_duration = 0.5,
-            }),
+            .env = zang.Envelope.init(),
         };
     }
 
@@ -212,6 +207,10 @@ pub const NiceInstrument = struct {
         });
         zang.zero(temps[0]);
         self.env.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+            .attack_duration = 0.01,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.8,
+            .release_duration = 0.5,
             .note_on = params.note_on,
         });
         zang.multiply(outputs[0], temps[0], temps[1]);

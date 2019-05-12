@@ -43,7 +43,7 @@ Modules:
 * Gate: a simpler Envelope, just outputs 1 or 0 based on note on and off events
 * Noise: basic white noise
 * Oscillator: generate a sine, triangle, sawtooth, or triangle wave
-* Portamento: interpolate the frequency of an incoming stream of notes
+* Portamento: interpolate incoming stream of values (e.g. note frequencies)
 * Sampler: play an audio file (wav loader provided), resampling according to the note frequencies
 
 ## Goals

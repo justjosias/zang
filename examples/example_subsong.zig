@@ -32,12 +32,7 @@ const InnerInstrument = struct {
     fn init() InnerInstrument {
         return InnerInstrument {
             .osc = zang.Oscillator.init(),
-            .env = zang.Envelope.init(zang.EnvParams {
-                .attack_duration = 0.025,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.5,
-                .release_duration = 0.15,
-            }),
+            .env = zang.Envelope.init(),
         };
     }
 
@@ -56,6 +51,10 @@ const InnerInstrument = struct {
         });
         zang.zero(temps[1]);
         self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+            .attack_duration = 0.025,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.5,
+            .release_duration = 0.15,
             .note_on = params.note_on,
         });
         zang.multiply(outputs[0], temps[0], temps[1]);

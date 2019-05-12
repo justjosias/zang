@@ -35,12 +35,7 @@ pub const Instrument = struct {
     pub fn init() Instrument {
         return Instrument {
             .noise = zang.Noise.init(0),
-            .env = zang.Envelope.init(zang.EnvParams {
-                .attack_duration = 0.025,
-                .decay_duration = 0.1,
-                .sustain_volume = 0.5,
-                .release_duration = 1.0,
-            }),
+            .env = zang.Envelope.init(),
             .porta = zang.Portamento.init(),
             .flt = zang.Filter.init(),
         };
@@ -67,6 +62,10 @@ pub const Instrument = struct {
         });
         zang.zero(temps[0]);
         self.env.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+            .attack_duration = 0.025,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.5,
+            .release_duration = 1.0,
             .note_on = params.note_on,
         });
         zang.multiply(outputs[0], temps[2], temps[0]);
