@@ -19,11 +19,29 @@ pub const DESCRIPTION =
     c\\same module.
 ;
 
+const carrier_curve = []zang.CurveNode {
+    zang.CurveNode { .t = 0.0, .value = 1000.0 },
+    zang.CurveNode { .t = 0.1, .value = 200.0 },
+    zang.CurveNode { .t = 0.2, .value = 100.0 },
+};
+
+const modulator_curve = []zang.CurveNode {
+    zang.CurveNode { .t = 0.0, .value = 1000.0 },
+    zang.CurveNode { .t = 0.1, .value = 200.0 },
+    zang.CurveNode { .t = 0.2, .value = 100.0 },
+};
+
+const volume_curve = []zang.CurveNode {
+    zang.CurveNode { .t = 0.0, .value = 0.0 },
+    zang.CurveNode { .t = 0.004, .value = 1.0 },
+    zang.CurveNode { .t = 0.2, .value = 0.0 },
+};
+
 const LaserPlayer = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
     pub const Params = struct {
-        freq: f32, // TODO rename to freq_mul
+        freq_mul: f32,
         carrier_mul: f32,
         modulator_mul: f32,
         modulator_rad: f32,
@@ -36,28 +54,12 @@ const LaserPlayer = struct {
     volume_curve: zang.Curve,
 
     fn init() LaserPlayer {
-        const A = 1000.0;
-        const B = 200.0;
-        const C = 100.0;
-
         return LaserPlayer {
-            .carrier_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
-                zang.CurveNode{ .t = 0.0, .value = A },
-                zang.CurveNode{ .t = 0.1, .value = B },
-                zang.CurveNode{ .t = 0.2, .value = C },
-            }),
+            .carrier_curve = zang.Curve.init(),
             .carrier = zang.Oscillator.init(),
-            .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
-                zang.CurveNode{ .t = 0.0, .value = A },
-                zang.CurveNode{ .t = 0.1, .value = B },
-                zang.CurveNode{ .t = 0.2, .value = C },
-            }),
+            .modulator_curve = zang.Curve.init(),
             .modulator = zang.Oscillator.init(),
-            .volume_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
-                zang.CurveNode{ .t = 0.0, .value = 0.0 },
-                zang.CurveNode{ .t = 0.004, .value = 1.0 },
-                zang.CurveNode{ .t = 0.2, .value = 0.0 },
-            }),
+            .volume_curve = zang.Curve.init(),
         };
     }
 
@@ -72,7 +74,9 @@ const LaserPlayer = struct {
 
         zang.zero(temps[0]);
         self.modulator_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
-            .freq_mul = params.freq * params.modulator_mul,
+            .function = .SmoothStep,
+            .curve = modulator_curve,
+            .freq_mul = params.freq_mul * params.modulator_mul,
         });
         zang.zero(temps[1]);
         self.modulator.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
@@ -84,7 +88,9 @@ const LaserPlayer = struct {
         zang.multiplyWithScalar(temps[1], params.modulator_rad);
         zang.zero(temps[0]);
         self.carrier_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
-            .freq_mul = params.freq * params.carrier_mul,
+            .function = .SmoothStep,
+            .curve = carrier_curve,
+            .freq_mul = params.freq_mul * params.carrier_mul,
         });
         zang.zero(temps[2]);
         self.carrier.paint(sample_rate, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
@@ -95,6 +101,8 @@ const LaserPlayer = struct {
         });
         zang.zero(temps[0]);
         self.volume_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+            .function = .SmoothStep,
+            .curve = volume_curve,
             .freq_mul = 1.0,
         });
         zang.multiply(out, temps[0], temps[2]);
@@ -124,9 +132,8 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
-            const base_freq = 1.0;
             const variance = 0.3;
-            const freq = base_freq + self.r.random.float(f32) * variance - 0.5 * variance;
+            const freq_mul = 1.0 + self.r.random.float(f32) * variance - 0.5 * variance;
 
             switch (key) {
                 c.SDLK_SPACE => {
@@ -135,7 +142,7 @@ pub const MainModule = struct {
                     const modulator_mul_variance = 0.1;
                     const modulator_rad_variance = 0.25;
                     self.iq.push(impulse_frame, LaserPlayer.Params {
-                        .freq = freq,
+                        .freq_mul = freq_mul,
                         .carrier_mul = 2.0 + self.r.random.float(f32) * carrier_mul_variance - 0.5 * carrier_mul_variance,
                         .modulator_mul = 0.5 + self.r.random.float(f32) * modulator_mul_variance - 0.5 * modulator_mul_variance,
                         .modulator_rad = 0.5 + self.r.random.float(f32) * modulator_rad_variance - 0.5 * modulator_rad_variance,
@@ -144,7 +151,7 @@ pub const MainModule = struct {
                 c.SDLK_a => {
                     // enemy laser
                     self.iq.push(impulse_frame, LaserPlayer.Params {
-                        .freq = freq,
+                        .freq_mul = freq_mul,
                         .carrier_mul = 4.0,
                         .modulator_mul = 0.125,
                         .modulator_rad = 1.0,
@@ -153,7 +160,7 @@ pub const MainModule = struct {
                 c.SDLK_s => {
                     // pain sound?
                     self.iq.push(impulse_frame, LaserPlayer.Params {
-                        .freq = freq,
+                        .freq_mul = freq_mul,
                         .carrier_mul = 0.5,
                         .modulator_mul = 0.125,
                         .modulator_rad = 1.0,
@@ -162,7 +169,7 @@ pub const MainModule = struct {
                 c.SDLK_d => {
                     // some web effect?
                     self.iq.push(impulse_frame, LaserPlayer.Params {
-                        .freq = freq,
+                        .freq_mul = freq_mul,
                         .carrier_mul = 1.0,
                         .modulator_mul = 9.0,
                         .modulator_rad = 1.0,

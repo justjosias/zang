@@ -16,6 +16,21 @@ pub const DESCRIPTION =
     c\\the key you press.
 ;
 
+const carrier_curve = []zang.CurveNode {
+    zang.CurveNode { .t = 0.0, .value = 440.0 },
+    zang.CurveNode { .t = 0.5, .value = 880.0 },
+    zang.CurveNode { .t = 1.0, .value = 110.0 },
+    zang.CurveNode { .t = 1.5, .value = 660.0 },
+    zang.CurveNode { .t = 2.0, .value = 330.0 },
+    zang.CurveNode { .t = 3.9, .value = 20.0 },
+};
+
+const modulator_curve = []zang.CurveNode {
+    zang.CurveNode { .t = 0.0, .value = 110.0 },
+    zang.CurveNode { .t = 1.5, .value = 55.0 },
+    zang.CurveNode { .t = 3.0, .value = 220.0 },
+};
+
 const CurvePlayer = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 2;
@@ -28,20 +43,9 @@ const CurvePlayer = struct {
 
     fn init() CurvePlayer {
         return CurvePlayer {
-            .carrier_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
-                zang.CurveNode { .t = 0.0, .value = 440.0 },
-                zang.CurveNode { .t = 0.5, .value = 880.0 },
-                zang.CurveNode { .t = 1.0, .value = 110.0 },
-                zang.CurveNode { .t = 1.5, .value = 660.0 },
-                zang.CurveNode { .t = 2.0, .value = 330.0 },
-                zang.CurveNode { .t = 3.9, .value = 20.0 },
-            }),
+            .carrier_curve = zang.Curve.init(),
             .carrier = zang.Oscillator.init(),
-            .modulator_curve = zang.Curve.init(.SmoothStep, []zang.CurveNode {
-                zang.CurveNode { .t = 0.0, .value = 110.0 },
-                zang.CurveNode { .t = 1.5, .value = 55.0 },
-                zang.CurveNode { .t = 3.0, .value = 220.0 },
-            }),
+            .modulator_curve = zang.Curve.init(),
             .modulator = zang.Oscillator.init(),
         };
     }
@@ -56,6 +60,8 @@ const CurvePlayer = struct {
 
         zang.zero(temps[0]);
         self.modulator_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+            .function = .SmoothStep,
+            .curve = modulator_curve,
             .freq_mul = freq_mul,
         });
         zang.zero(temps[1]);
@@ -67,6 +73,8 @@ const CurvePlayer = struct {
         });
         zang.zero(temps[0]);
         self.carrier_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+            .function = .SmoothStep,
+            .curve = carrier_curve,
             .freq_mul = freq_mul,
         });
         self.carrier.paint(sample_rate, outputs, [0][]f32{}, zang.Oscillator.Params {

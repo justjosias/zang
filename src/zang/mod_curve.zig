@@ -1,5 +1,9 @@
 const std = @import("std");
 
+// FIXME - this will probably crash if you change the curve node array on the
+// fly, because the module has some state derived from the curve. need to
+// detect if this becomes "stale" and reset/recalculate it
+
 pub const InterpolationFunction = enum {
     Linear,
     SmoothStep,
@@ -32,21 +36,19 @@ pub const Curve = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        function: InterpolationFunction,
+        curve: []const CurveNode,
         freq_mul: f32, // TODO - remove this, not general enough
     };
 
-    function: InterpolationFunction,
-    song: []const CurveNode,
     current_song_note: usize,
     current_song_note_offset: i32,
     next_song_note: usize,
     t: f32,
     curve_nodes: [32]CurveSpanNode,
 
-    pub fn init(function: InterpolationFunction, song: []const CurveNode) Curve {
+    pub fn init() Curve {
         return Curve {
-            .function = function,
-            .song = song,
             .current_song_note = 0,
             .current_song_note_offset = 0,
             .next_song_note = 0,
@@ -64,7 +66,7 @@ pub const Curve = struct {
 
     pub fn paint(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
-        const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len);
+        const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len, params.curve);
 
         var start: usize = 0;
 
@@ -94,7 +96,7 @@ pub const Curve = struct {
 
                 var i: usize = curve_span.start;
 
-                switch (self.function) {
+                switch (params.function) {
                     .Linear => {
                         var y = start_value + start_x * value_delta;
                         var y_step = x_step * value_delta;
@@ -119,7 +121,7 @@ pub const Curve = struct {
         }
     }
 
-    fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize) []CurveSpanNode {
+    fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize, curve_nodes: []const CurveNode) []CurveSpanNode {
         var count: usize = 0;
 
         // note: playback speed is factored into sample_rate
@@ -130,13 +132,13 @@ pub const Curve = struct {
         if (self.current_song_note < self.next_song_note) {
             self.curve_nodes[count] = CurveSpanNode {
                 .frame = self.current_song_note_offset,
-                .value = self.song[self.current_song_note].value,
+                .value = curve_nodes[self.current_song_note].value,
             };
             count += 1;
         }
 
         var one_past = false;
-        for (self.song[self.next_song_note..]) |song_note| {
+        for (curve_nodes[self.next_song_note..]) |song_note| {
             const note_t = song_note.t;
             if (note_t >= end_t) {
                 // keep one note past the end
