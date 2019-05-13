@@ -1,9 +1,5 @@
 const std = @import("std");
 
-// FIXME - this will probably crash if you change the curve node array on the
-// fly, because the module has some state derived from the curve. need to
-// detect if this becomes "stale" and reset/recalculate it
-
 pub const InterpolationFunction = enum {
     Linear,
     SmoothStep,
@@ -41,10 +37,15 @@ pub const Curve = struct {
         freq_mul: f32, // TODO - remove this, not general enough
     };
 
+    // progress through the curve, in seconds
+    t: f32,
+    // some state to make it faster to continue painting. note: this relies on
+    // the curve param not being mutated by the caller
     current_song_note: usize,
     current_song_note_offset: i32,
     next_song_note: usize,
-    t: f32,
+    // this is just some memory set aside for temporary use during a paint
+    // call. it could just as easily be a stack local
     curve_nodes: [32]CurveSpanNode,
 
     pub fn init() Curve {
@@ -124,7 +125,6 @@ pub const Curve = struct {
     fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize, curve_nodes: []const CurveNode) []CurveSpanNode {
         var count: usize = 0;
 
-        // note: playback speed is factored into sample_rate
         const buf_time = @intToFloat(f32, out_len) / sample_rate;
         const end_t = self.t + buf_time;
 
