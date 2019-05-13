@@ -27,6 +27,7 @@ const Arpeggiator = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = Instrument.NumTemps;
     pub const Params = struct {
+        sample_rate: f32,
         note_held: [common.key_bindings.len]bool,
     };
 
@@ -46,8 +47,8 @@ const Arpeggiator = struct {
 
     fn reset(self: *Arpeggiator) void {}
 
-    fn paint(self: *Arpeggiator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const note_duration = @floatToInt(usize, 0.03 * sample_rate);
+    fn paint(self: *Arpeggiator, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const note_duration = @floatToInt(usize, 0.03 * params.sample_rate);
 
         // TODO - if only one key is held, try to reuse the previous impulse id
         // to prevent the envelope from retriggering on the same note.
@@ -73,11 +74,19 @@ const Arpeggiator = struct {
 
             if (next_note_index) |index| {
                 const freq = A4 * common.key_bindings[index].rel_freq;
-                self.iq.push(self.next_frame, Instrument.Params { .freq = freq, .note_on = true });
+                self.iq.push(self.next_frame, Instrument.Params {
+                    .sample_rate = params.sample_rate,
+                    .freq = freq,
+                    .note_on = true,
+                });
                 self.last_note = index;
             } else if (self.last_note) |last_note| {
                 const freq = A4 * common.key_bindings[last_note].rel_freq;
-                self.iq.push(self.next_frame, Instrument.Params { .freq = freq, .note_on = false });
+                self.iq.push(self.next_frame, Instrument.Params {
+                    .sample_rate = params.sample_rate,
+                    .freq = freq,
+                    .note_on = false,
+                });
             }
 
             self.next_frame += note_duration;
@@ -85,7 +94,7 @@ const Arpeggiator = struct {
 
         self.next_frame -= outputs[0].len;
 
-        self.instr.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+        self.instr.paintFromImpulses(outputs, temps, self.iq.consume());
     }
 };
 
@@ -101,14 +110,15 @@ pub const MainModule = struct {
         return MainModule {
             .iq = zang.Notes(Arpeggiator.Params).ImpulseQueue.init(),
             .current_params = Arpeggiator.Params {
+                .sample_rate = AUDIO_SAMPLE_RATE,
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
             .arpeggiator = zang.initTriggerable(Arpeggiator.init()),
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.arpeggiator.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        self.arpeggiator.paintFromImpulses(outputs, temps, self.iq.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

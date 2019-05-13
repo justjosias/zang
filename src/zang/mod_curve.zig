@@ -32,6 +32,7 @@ pub const Curve = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        sample_rate: f32,
         function: InterpolationFunction,
         curve: []const CurveNode,
         freq_mul: f32, // TODO - remove this, not general enough
@@ -65,9 +66,9 @@ pub const Curve = struct {
         self.t = 0.0;
     }
 
-    pub fn paint(self: *Curve, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Curve, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
-        const curve_nodes = self.getCurveSpanNodes(sample_rate, out.len, params.curve);
+        const curve_nodes = self.getCurveSpanNodes(params.sample_rate, out.len, params.curve);
 
         var start: usize = 0;
 

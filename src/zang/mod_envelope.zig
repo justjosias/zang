@@ -5,6 +5,7 @@ pub const Envelope = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        sample_rate: f32,
         // durations: these are how long it would take to go from zero.
         // it will actually be shorter if pm.envelope is already starting
         // somewhere (from a previous note)
@@ -36,7 +37,7 @@ pub const Envelope = struct {
         self.state = .Idle;
     }
 
-    fn paintOn(self: *Envelope, sample_rate: f32, buf: []f32, params: Params) void {
+    fn paintOn(self: *Envelope, buf: []f32, params: Params) void {
         const buf_len = @intCast(u31, buf.len);
         var i: u31 = 0;
 
@@ -50,7 +51,7 @@ pub const Envelope = struct {
             if (self.envelope >= goal) {
                 self.state = .Decay;
             } else {
-                if (paintLineTowards(&self.envelope, sample_rate, buf, &i, params.attack_duration, goal)) {
+                if (paintLineTowards(&self.envelope, params.sample_rate, buf, &i, params.attack_duration, goal)) {
                     self.state = .Decay;
                 }
             }
@@ -63,7 +64,7 @@ pub const Envelope = struct {
         if (self.state == .Decay) {
             const goal = params.sustain_volume;
 
-            if (paintLineTowards(&self.envelope, sample_rate, buf, &i, params.decay_duration, goal)) {
+            if (paintLineTowards(&self.envelope, params.sample_rate, buf, &i, params.decay_duration, goal)) {
                 self.state = .Sustain;
             }
 
@@ -79,21 +80,21 @@ pub const Envelope = struct {
         }
     }
 
-    fn paintOff(self: *Envelope, sample_rate: f32, buf: []f32, params: Params) void {
+    fn paintOff(self: *Envelope, buf: []f32, params: Params) void {
         self.state = .Idle;
 
         if (self.envelope > 0.0) {
             var i: u31 = 0;
 
-            _ = paintLineTowards(&self.envelope, sample_rate, buf, &i, params.release_duration, 0.0);
+            _ = paintLineTowards(&self.envelope, params.sample_rate, buf, &i, params.release_duration, 0.0);
         }
     }
 
-    pub fn paint(self: *Envelope, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Envelope, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.note_on) {
-            self.paintOn(sample_rate, outputs[0], params);
+            self.paintOn(outputs[0], params);
         } else {
-            self.paintOff(sample_rate, outputs[0], params);
+            self.paintOff(outputs[0], params);
         }
     }
 };

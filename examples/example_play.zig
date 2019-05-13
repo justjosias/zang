@@ -41,14 +41,15 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.instr0.paintFromImpulses(sample_rate, outputs, temps, self.iq0.consume());
-        self.instr1.paintFromImpulses(sample_rate, outputs, [3][]f32{temps[0], temps[1], temps[2]}, self.iq1.consume());
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        self.instr0.paintFromImpulses(outputs, temps, self.iq0.consume());
+        self.instr1.paintFromImpulses(outputs, [3][]f32{temps[0], temps[1], temps[2]}, self.iq1.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (key == c.SDLK_SPACE) {
             self.iq1.push(impulse_frame, FilteredSawtoothInstrument.Params {
+                .sample_rate = AUDIO_SAMPLE_RATE,
                 .freq = A4 * note_frequencies.C4 / 4.0,
                 .note_on = down,
             });
@@ -56,6 +57,7 @@ pub const MainModule = struct {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
                 self.iq0.push(impulse_frame, PMOscInstrument.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = A4 * rel_freq,
                     .note_on = down,
                 });

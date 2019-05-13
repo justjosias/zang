@@ -1,4 +1,5 @@
 const std = @import("std");
+const WavContents = @import("read_wav.zig").WavContents;
 
 // FIXME - no effort at all has been made to optimize the sampler module
 // FIXME - hardcoded to support only 16-bit wav files
@@ -26,12 +27,8 @@ pub const Sampler = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
-        freq: f32,
-        sample_data: []const u8,
         sample_rate: f32,
-        // `sample_freq`: if null, ignore note frequencies and always play at
-        // original speed
-        sample_freq: ?f32,
+        wav: WavContents,
         loop: bool,
     };
 
@@ -47,47 +44,30 @@ pub const Sampler = struct {
         self.t = 0.0;
     }
 
-    pub fn paint(self: *Sampler, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Sampler, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const out = outputs[0];
 
-        const ratio = blk: {
-            const note_ratio =
-                if (params.sample_freq) |sample_freq|
-                    params.freq / sample_freq
-                else
-                    1.0;
-
-            break :blk params.sample_rate / sample_rate * note_ratio;
-        };
+        const ratio = @intToFloat(f32, params.wav.sample_rate) / params.sample_rate;
 
         // FIXME - pulled these epsilon values out of my ass
         if (ratio > 0.9999 and ratio < 1.0001) {
             // no resampling needed
-            const num_samples = params.sample_data.len / 2;
-            var t = @floatToInt(usize, std.math.round(self.t));
-            var i: usize = 0;
+            const t = @floatToInt(usize, std.math.round(self.t));
 
-            if (t < num_samples) {
-                const samples_remaining = num_samples - t;
-                const samples_to_render = std.math.min(out.len, samples_remaining);
-
-                while (i < samples_to_render) : (i += 1) {
-                    out[i] += getSample(params.sample_data, t + i, params.loop);
-                }
+            var i: usize = 0; while (i < out.len) : (i += 1) {
+                out[i] += getSample(params.wav.data, t + i, params.loop);
             }
 
             self.t += @intToFloat(f32, out.len);
         } else {
             // resample
-            var i: usize = 0;
-
-            while (i < out.len) : (i += 1) {
+            var i: usize = 0; while (i < out.len) : (i += 1) {
                 const t0 = @floatToInt(usize, std.math.floor(self.t));
                 const t1 = t0 + 1;
                 const tfrac = @intToFloat(f32, t1) - self.t;
 
-                const s0 = getSample(params.sample_data, t0, params.loop);
-                const s1 = getSample(params.sample_data, t1, params.loop);
+                const s0 = getSample(params.wav.data, t0, params.loop);
+                const s1 = getSample(params.wav.data, t1, params.loop);
 
                 const s = s0 * (1.0 - tfrac) + s1 * tfrac;
 
@@ -97,8 +77,8 @@ pub const Sampler = struct {
             }
         }
 
-        if (self.t >= @intToFloat(f32, params.sample_data.len) and params.loop) {
-            self.t -= @intToFloat(f32, params.sample_data.len);
+        if (self.t >= @intToFloat(f32, params.wav.data.len) and params.loop) {
+            self.t -= @intToFloat(f32, params.wav.data.len);
         }
     }
 };

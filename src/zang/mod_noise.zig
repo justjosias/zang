@@ -15,7 +15,7 @@ pub const Noise = struct {
 
     pub fn reset(self: *Noise) void {}
 
-    pub fn paint(self: *Noise, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Noise, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const buf = outputs[0];
         var r = self.r;
         var i: usize = 0;

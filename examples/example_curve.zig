@@ -34,7 +34,10 @@ const modulator_curve = []zang.CurveNode {
 const CurvePlayer = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 2;
-    pub const Params = struct { rel_freq: f32 };
+    pub const Params = struct {
+        sample_rate: f32,
+        rel_freq: f32,
+    };
 
     carrier_curve: zang.Curve,
     carrier: zang.Oscillator,
@@ -55,29 +58,33 @@ const CurvePlayer = struct {
         self.modulator_curve.reset();
     }
 
-    fn paint(self: *CurvePlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *CurvePlayer, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const freq_mul = params.rel_freq;
 
         zang.zero(temps[0]);
-        self.modulator_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.modulator_curve.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+            .sample_rate = params.sample_rate,
             .function = .SmoothStep,
             .curve = modulator_curve,
             .freq_mul = freq_mul,
         });
         zang.zero(temps[1]);
-        self.modulator.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+        self.modulator.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+            .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
         zang.zero(temps[0]);
-        self.carrier_curve.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        self.carrier_curve.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+            .sample_rate = params.sample_rate,
             .function = .SmoothStep,
             .curve = carrier_curve,
             .freq_mul = freq_mul,
         });
-        self.carrier.paint(sample_rate, outputs, [0][]f32{}, zang.Oscillator.Params {
+        self.carrier.paint(outputs, [0][]f32{}, zang.Oscillator.Params {
+            .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
@@ -100,14 +107,17 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.curve_player.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        self.curve_player.paintFromImpulses(outputs, temps, self.iq.consume());
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
             if (common.getKeyRelFreq(key)) |rel_freq| {
-                self.iq.push(impulse_frame, CurvePlayer.Params { .rel_freq = rel_freq });
+                self.iq.push(impulse_frame, CurvePlayer.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
+                    .rel_freq = rel_freq,
+                });
             }
         }
     }

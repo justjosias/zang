@@ -14,7 +14,7 @@ pub const Gate = struct {
 
     pub fn reset(self: *Gate) void {}
 
-    pub fn paint(self: *Gate, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Gate, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.note_on) {
             basics.addScalarInto(outputs[0], 1.0);
         }

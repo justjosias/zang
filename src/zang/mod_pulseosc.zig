@@ -27,7 +27,11 @@ inline fn ftou32(v: f32) u32 {
 pub const PulseOsc = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
-    pub const Params = struct { freq: f32, colour: f32 };
+    pub const Params = struct {
+        sample_rate: f32,
+        freq: f32,
+        colour: f32,
+    };
 
     cnt: u32,
 
@@ -37,15 +41,15 @@ pub const PulseOsc = struct {
 
     pub fn reset(self: *PulseOsc) void {}
 
-    pub fn paint(self: *PulseOsc, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        if (params.freq < 0 or params.freq > sample_rate / 8.0) {
+    pub fn paint(self: *PulseOsc, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        if (params.freq < 0 or params.freq > params.sample_rate / 8.0) {
             return;
         }
         // note: farbrausch code includes some explanatory comments. i've
         // preserved the variable names they used, but condensed the code
         const buf = outputs[0];
         var cnt = self.cnt;
-        const SRfcobasefrq = fc32bit / sample_rate;
+        const SRfcobasefrq = fc32bit / params.sample_rate;
         const freq = @floatToInt(u32, SRfcobasefrq * params.freq);
         const brpt = ftou32(clamp01(params.colour));
         const gain = 0.7;

@@ -47,19 +47,18 @@ pub const Filter = struct {
 
     pub fn reset(self: *Filter) void {}
 
-    pub fn paint(self: *Filter, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Filter, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // TODO make resonance a ConstantOrBuffer as well
         switch (params.cutoff) {
             .Constant => |cutoff|
-                self.paintSimple(sample_rate, outputs[0], params.input, params.filterType, cutoff, params.resonance),
+                self.paintSimple(outputs[0], params.input, params.filterType, cutoff, params.resonance),
             .Buffer => |cutoff|
-                self.paintControlledCutoff(sample_rate, outputs[0], params.input, params.filterType, cutoff, params.resonance),
+                self.paintControlledCutoff(outputs[0], params.input, params.filterType, cutoff, params.resonance),
         }
     }
 
     fn paintSimple(
         self: *Filter,
-        sample_rate: f32,
         buf: []f32,
         input: []const f32,
         filterType: FilterType,
@@ -130,7 +129,6 @@ pub const Filter = struct {
 
     fn paintControlledCutoff(
         self: *Filter,
-        sample_rate: f32,
         buf: []f32,
         input: []const f32,
         filterType: FilterType,

@@ -62,7 +62,6 @@ pub fn Triggerable(comptime ModuleType: type) type {
 
         pub fn paintFromImpulses(
             self: *@This(),
-            sample_rate: f32,
             output_bufs: [ModuleType.NumOutputs][]f32,
             temp_bufs: [ModuleType.NumTemps][]f32,
             impulses: []const Impulse,
@@ -142,7 +141,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                         }
                     }
 
-                    self.module.paint(sample_rate, output_spans, temp_spans, params);
+                    self.module.paint(output_spans, temp_spans, params);
                 }
 
                 start = note_span.end;

@@ -4,7 +4,7 @@ const common = @import("common.zig");
 const c = @import("common/sdl.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
-pub const AUDIO_SAMPLE_RATE = 48000;
+pub const AUDIO_SAMPLE_RATE = 44100;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
@@ -37,29 +37,25 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         if (self.first) {
             self.first = false;
             self.iq.push(0, zang.Sampler.Params {
-                .freq = 1.0,
-                .sample_data = self.wav.data,
-                .sample_rate = @intToFloat(f32, self.wav.sample_rate),
-                .sample_freq = null,
+                .sample_rate = AUDIO_SAMPLE_RATE,
+                .wav = self.wav,
                 .loop = true,
             });
         }
 
-        self.sampler.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+        self.sampler.paintFromImpulses(outputs, temps, self.iq.consume());
         zang.multiplyWithScalar(outputs[0], 2.5);
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down and key == c.SDLK_SPACE) {
             self.iq.push(impulse_frame, zang.Sampler.Params {
-                .freq = 1.0,
-                .sample_data = self.wav.data,
-                .sample_rate = @intToFloat(f32, self.wav.sample_rate),
-                .sample_freq = 0.5 + 1.0 * self.r.random.float(f32),
+                .sample_rate = AUDIO_SAMPLE_RATE * (0.5 + 1.0 * self.r.random.float(f32)),
+                .wav = self.wav,
                 .loop = true,
             });
         }

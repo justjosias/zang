@@ -36,15 +36,15 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         zang.zero(temps[0]);
         var instr_temps: [Instrument.NumTemps][]f32 = undefined;
         var i: usize = 0; while (i < Instrument.NumTemps) : (i += 1) {
             instr_temps[i] = temps[3 + i];
         }
-        self.instr.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, instr_temps, self.iq.consume());
+        self.instr.paintFromImpulses([1][]f32{temps[0]}, instr_temps, self.iq.consume());
 
-        self.echoes.paint(sample_rate, outputs, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, StereoEchoes.Params {
+        self.echoes.paint(outputs, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, StereoEchoes.Params {
             .input = temps[0],
             .feedback_volume = 0.6,
             .cutoff = 0.1,
@@ -56,6 +56,7 @@ pub const MainModule = struct {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, Instrument.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = A4 * rel_freq,
                     .note_on = down,
                 });

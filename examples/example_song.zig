@@ -20,7 +20,10 @@ pub const DESCRIPTION =
 
 const A4 = 440.0;
 
-const MyNoteParams = PMOscInstrument.Params;
+const MyNoteParams = struct {
+    freq: f32,
+    note_on: bool,
+};
 const MyNotes = zang.Notes(MyNoteParams);
 
 const Note = common.Note;
@@ -165,10 +168,27 @@ pub const MainModule = struct {
         return mod;
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
-            const impulses = self.trackers[i].consume(sample_rate, outputs[0].len);
-            self.instruments[i].paintFromImpulses(sample_rate, outputs, temps, impulses);
+            // create a new list of impulses combining multiple sources
+            // FIXME - see https://github.com/dbandstra/zang/issues/18
+            var impulses: [32]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
+            var num_impulses: usize = 0;
+            for (self.trackers[i].consume(AUDIO_SAMPLE_RATE, outputs[0].len)) |impulse| {
+                impulses[num_impulses] = zang.Notes(PMOscInstrument.Params).Impulse {
+                    .frame = impulse.frame,
+                    .note = zang.Notes(PMOscInstrument.Params).NoteSpanNote {
+                        .id = impulse.note.id,
+                        .params = PMOscInstrument.Params {
+                            .sample_rate = AUDIO_SAMPLE_RATE,
+                            .freq = impulse.note.params.freq,
+                            .note_on = impulse.note.params.note_on,
+                        },
+                    },
+                };
+                num_impulses += 1;
+            }
+            self.instruments[i].paintFromImpulses(outputs, temps, impulses);
         }
     }
 };

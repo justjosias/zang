@@ -50,6 +50,7 @@ pub const Oscillator = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        sample_rate: f32,
         waveform: Waveform,
         freq: ConstantOrBuffer,
         phase: ConstantOrBuffer,
@@ -66,22 +67,22 @@ pub const Oscillator = struct {
 
     pub fn reset(self: *Oscillator) void {}
 
-    pub fn paint(self: *Oscillator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Oscillator, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // TODO - make params.colour ConstantOrBuffer as well...
         switch (params.freq) {
             .Constant => |freq|
                 switch (params.phase) {
                     .Constant => |phase|
-                        self.paintSimple(sample_rate, outputs[0], params.waveform, freq, params.colour),
+                        self.paintSimple(params.sample_rate, outputs[0], params.waveform, freq, params.colour),
                     .Buffer =>
                         @panic("TODO"), // FIXME
                 },
             .Buffer => |freq|
                 switch (params.phase) {
                     .Constant => |phase|
-                        self.paintControlledFrequency(sample_rate, outputs[0], params.waveform, freq, params.colour),
+                        self.paintControlledFrequency(params.sample_rate, outputs[0], params.waveform, freq, params.colour),
                     .Buffer => |phase|
-                        self.paintControlledPhaseAndFrequency(sample_rate, outputs[0], params.waveform, phase, freq, params.colour),
+                        self.paintControlledPhaseAndFrequency(params.sample_rate, outputs[0], params.waveform, phase, freq, params.colour),
                 },
         }
     }

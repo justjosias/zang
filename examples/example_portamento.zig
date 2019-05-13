@@ -25,7 +25,11 @@ const A4 = 440.0;
 pub const Instrument = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
-    pub const Params = struct { freq: f32, note_on: bool };
+    pub const Params = struct {
+        sample_rate: f32,
+        freq: f32,
+        note_on: bool,
+    };
 
     noise: zang.Noise,
     env: zang.Envelope,
@@ -43,25 +47,27 @@ pub const Instrument = struct {
 
     pub fn reset(self: *Instrument) void {}
 
-    pub fn paint(self: *Instrument, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Instrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         zang.zero(temps[0]);
-        self.noise.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
+        self.noise.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(temps[1]);
-        self.porta.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+        self.porta.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+            .sample_rate = params.sample_rate,
             .mode = .CatchUp,
             .velocity = 8.0,
-            .value = zang.cutoffFromFrequency(params.freq, sample_rate),
+            .value = zang.cutoffFromFrequency(params.freq, params.sample_rate),
             .note_on = params.note_on,
         });
         zang.zero(temps[2]);
-        self.flt.paint(sample_rate, [1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
+        self.flt.paint([1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[0],
             .filterType = .LowPass,
             .cutoff = zang.buffer(temps[1]),
             .resonance = 0.985,
         });
         zang.zero(temps[0]);
-        self.env.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+        self.env.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+            .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
             .sustain_volume = 0.5,
@@ -88,8 +94,8 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.instr.paintFromImpulses(sample_rate, outputs, temps, self.iq.consume());
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        self.instr.paintFromImpulses(outputs, temps, self.iq.consume());
     }
 
     // this is a bit different from the other examples. i'm mimicking the
@@ -110,16 +116,28 @@ pub const MainModule = struct {
                 self.keys_held |= key_flag;
 
                 if (key_flag > prev_keys_held) {
-                    self.iq.push(impulse_frame, Instrument.Params { .freq = A4 * kb.rel_freq, .note_on = true });
+                    self.iq.push(impulse_frame, Instrument.Params {
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .freq = A4 * kb.rel_freq,
+                        .note_on = true,
+                    });
                 }
             } else {
                 self.keys_held &= ~key_flag;
 
                 if (self.keys_held == 0) {
-                    self.iq.push(impulse_frame, Instrument.Params { .freq = A4 * kb.rel_freq, .note_on = false });
+                    self.iq.push(impulse_frame, Instrument.Params {
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .freq = A4 * kb.rel_freq,
+                        .note_on = false,
+                    });
                 } else {
                     const rel_freq = common.key_bindings[63 - @clz(self.keys_held)].rel_freq;
-                    self.iq.push(impulse_frame, Instrument.Params { .freq = A4 * rel_freq, .note_on = true });
+                    self.iq.push(impulse_frame, Instrument.Params {
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .freq = A4 * rel_freq,
+                        .note_on = true,
+                    });
                 }
             }
         }

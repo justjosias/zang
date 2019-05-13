@@ -38,6 +38,7 @@ const NoiseModule = struct {
     pub const NumOutputs = 2;
     pub const NumTemps = 3;
     pub const Params = struct {
+        sample_rate: f32,
         pan: []const f32,
         min: f32,
         max: f32,
@@ -48,7 +49,7 @@ const NoiseModule = struct {
     flt: zang.Filter,
 
     fn init(seed: u64) NoiseModule {
-        return NoiseModule{
+        return NoiseModule {
             .noise = zang.Noise.init(seed),
             .flt = zang.Filter.init(),
         };
@@ -56,15 +57,15 @@ const NoiseModule = struct {
 
     fn reset(self: *NoiseModule) void {}
 
-    fn paint(self: *NoiseModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *NoiseModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // temps[0] = filtered noise
         zang.zero(temps[0]);
         zang.zero(temps[1]);
-        self.noise.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
-        self.flt.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
+        self.noise.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
+        self.flt.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
             .filterType = .LowPass,
-            .cutoff = zang.constant(zang.cutoffFromFrequency(params.cutoff_frequency, sample_rate)),
+            .cutoff = zang.constant(zang.cutoffFromFrequency(params.cutoff_frequency, params.sample_rate)),
             .resonance = 0.4,
         });
 
@@ -92,17 +93,20 @@ pub const MainModule = struct {
     noisem1: NoiseModule,
 
     pub fn init() MainModule {
-        return MainModule{
+        return MainModule {
             .osc = zang.Oscillator.init(),
             .noisem0 = NoiseModule.init(0),
             .noisem1 = NoiseModule.init(1),
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        const sample_rate = AUDIO_SAMPLE_RATE;
+
         // temps[0] = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(temps[0]);
-        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+            .sample_rate = sample_rate,
             .waveform = .Sine,
             .freq = zang.constant(0.1),
             .phase = zang.constant(0.0),
@@ -110,13 +114,15 @@ pub const MainModule = struct {
         });
 
         // paint two noise voices
-        self.noisem0.paint(sample_rate, outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+        self.noisem0.paint(outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+            .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.0,
             .max = 0.5,
             .cutoff_frequency = 320.0,
         });
-        self.noisem1.paint(sample_rate, outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+        self.noisem1.paint(outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+            .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.5,
             .max = 1.0,

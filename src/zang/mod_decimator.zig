@@ -5,6 +5,7 @@ pub const Decimator = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
     pub const Params = struct {
+        sample_rate: f32,
         input: []const f32,
         fake_sample_rate: f32,
     };
@@ -24,16 +25,16 @@ pub const Decimator = struct {
         self.dcount = 1.0;
     }
 
-    pub fn paint(self: *Decimator, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Decimator, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const output = outputs[0];
 
-        if (params.fake_sample_rate >= sample_rate) {
+        if (params.fake_sample_rate >= params.sample_rate) {
             basics.addInto(output, params.input);
 
             self.dval = 0.0;
             self.dcount = 0;
         } else if (params.fake_sample_rate > 0.0) {
-            const ratio = params.fake_sample_rate / sample_rate;
+            const ratio = params.fake_sample_rate / params.sample_rate;
             var dcount = self.dcount;
             var dval = self.dval;
 

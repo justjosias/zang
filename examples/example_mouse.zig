@@ -27,6 +27,7 @@ const PMOscInstrument = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 4;
     pub const Params = struct {
+        sample_rate: f32,
         freq: f32,
         note_on: bool,
         relative: bool,
@@ -49,16 +50,18 @@ const PMOscInstrument = struct {
         self.env.reset();
     }
 
-    pub fn paint(self: *PMOscInstrument, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *PMOscInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         zang.zero(temps[0]);
-        self.osc.paint(sample_rate, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
+        self.osc.paint([1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
+            .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,
             .ratio = zang.buffer(params.ratio),
             .multiplier = zang.buffer(params.multiplier),
         });
         zang.zero(temps[1]);
-        self.env.paint(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+        self.env.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+            .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
             .sustain_volume = 0.5,
@@ -100,12 +103,12 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         zang.zero(temps[0]);
-        self.ratio_portamento.paintFromImpulses(sample_rate, [1][]f32{temps[0]}, [0][]f32{}, self.ratio_iq.consume());
+        self.ratio_portamento.paintFromImpulses([1][]f32{temps[0]}, [0][]f32{}, self.ratio_iq.consume());
 
         zang.zero(temps[1]);
-        self.multiplier_portamento.paintFromImpulses(sample_rate, [1][]f32{temps[1]}, [0][]f32{}, self.multiplier_iq.consume());
+        self.multiplier_portamento.paintFromImpulses([1][]f32{temps[1]}, [0][]f32{}, self.multiplier_iq.consume());
 
         // create a new list of impulses combining multiple sources
         // FIXME - see https://github.com/dbandstra/zang/issues/18
@@ -117,6 +120,7 @@ pub const MainModule = struct {
                 .note = zang.Notes(PMOscInstrument.Params).NoteSpanNote {
                     .id = impulse.note.id,
                     .params = PMOscInstrument.Params {
+                        .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = impulse.note.params.freq,
                         .note_on = impulse.note.params.note_on,
                         .relative = self.mode == 0,
@@ -127,12 +131,13 @@ pub const MainModule = struct {
             };
             num_impulses += 1;
         }
-        self.instr.paintFromImpulses(sample_rate, outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, impulses[0..num_impulses]);
+        self.instr.paintFromImpulses(outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, impulses[0..num_impulses]);
     }
 
     pub fn mouseEvent(self: *MainModule, x: f32, y: f32, impulse_frame: usize) void {
         // use portamentos to smooth out the mouse motion
         self.ratio_iq.push(impulse_frame, zang.Portamento.Params {
+            .sample_rate = AUDIO_SAMPLE_RATE,
             .mode = .CatchUp,
             .velocity = 8.0,
             .value = switch (self.mode) {
@@ -142,6 +147,7 @@ pub const MainModule = struct {
             .note_on = true,
         });
         self.multiplier_iq.push(impulse_frame, zang.Portamento.Params {
+            .sample_rate = AUDIO_SAMPLE_RATE,
             .mode = .CatchUp,
             .velocity = 8.0,
             .value = y * 2.0,

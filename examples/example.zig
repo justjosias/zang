@@ -41,7 +41,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
         temps[i] = g_temps[i][0..];
     }
 
-    main_module.paint(AUDIO_SAMPLE_RATE, outputs, temps);
+    main_module.paint(outputs, temps);
 
     const mul = 0.25;
 
