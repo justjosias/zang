@@ -4,7 +4,7 @@ const std = @import("std");
 pub fn Notes(comptime NoteParamsType: type) type {
     return struct {
         pub const Impulse = struct {
-            frame: i32, // frames (e.g. 44100 for one second in)
+            frame: i32, // frames (e.g. 44100 for one second in) FIXME - why is this signed
             note: NoteSpanNote,
             next: ?*const Impulse,
         };
@@ -23,22 +23,19 @@ pub fn Notes(comptime NoteParamsType: type) type {
             array: [32]Impulse,
             length: usize,
             next_id: usize,
-            dyn_tracker: DynamicNoteTracker,
 
             pub fn init() ImpulseQueue {
                 return ImpulseQueue {
                     .array = undefined,
                     .length = 0,
                     .next_id = 1,
-                    .dyn_tracker = DynamicNoteTracker.init(),
                 };
             }
 
             // return impulses and advance state.
             // make sure to use the returned impulse list before pushing more stuff
             pub fn consume(self: *ImpulseQueue) ?*const Impulse {
-                // the dyn_tracker will carry over an impulse that was started previously
-                const impulses = self.dyn_tracker.getImpulses(if (self.length > 0) &self.array[0] else null);
+                const impulses = if (self.length > 0) &self.array[0] else null;
 
                 self.length = 0;
 
@@ -77,7 +74,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     std.debug.warn("ImpulseQueue: no more slots\n");
                     return;
                 }
-                self.array[self.length] = Impulse{
+                self.array[self.length] = Impulse {
                     .frame = impulse_frame,
                     .note = note,
                     .next = null,

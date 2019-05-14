@@ -79,7 +79,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
             var start: usize = 0;
 
             while (start < buf_len) {
-                const note_span = getNextNoteSpan(impulses, start, buf_len);
+                const note_span = getNextNoteSpan(self.note, impulses, start, buf_len);
 
                 std.debug.assert(note_span.start == start);
                 std.debug.assert(note_span.end > start);
@@ -149,11 +149,37 @@ pub fn Triggerable(comptime ModuleType: type) type {
             }
         }
 
-        fn getNextNoteSpan(impulses: ?*const Impulse, dest_start_: usize, dest_end_: usize) NoteSpan {
+        fn getNextNoteSpan(current_note: ?NoteSpanNote, impulses: ?*const Impulse, dest_start_: usize, dest_end_: usize) NoteSpan {
             std.debug.assert(dest_start_ < dest_end_);
 
             const dest_start = @intCast(i32, dest_start_);
             const dest_end = @intCast(i32, dest_end_);
+
+            if (dest_start_ == 0) {
+                // check for currently playing note
+                if (current_note) |note| {
+                    if (impulses) |first_impulse| {
+                        // play up until first impulse
+                        if (first_impulse.frame == 0) {
+                            // new impulse will override this from the beginning - continue
+                        } else {
+                            std.debug.assert(first_impulse.frame >= 0); // FIXME - remove.. frame should be unsigned
+                            return NoteSpan {
+                                .start = 0,
+                                .end = @intCast(usize, min(i32, dest_end, first_impulse.frame)),
+                                .note = note,
+                            };
+                        }
+                    } else {
+                        // no new impulses - play current note for the whole buffer
+                        return NoteSpan {
+                            .start = 0,
+                            .end = dest_end_,
+                            .note = note,
+                        };
+                    }
+                }
+            }
 
             var maybe_impulse = impulses;
             while (maybe_impulse) |impulse| : (maybe_impulse = impulse.next) {
@@ -196,7 +222,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
 
                 const note_end = end_pos;
                 const note_end_clipped =
-                    if (note_end > dest_end)
+                    if (note_end > dest_end) // FIXME - didn't i already clip this with dest_end...?
                         dest_end
                     else
                         note_end;
