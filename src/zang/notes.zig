@@ -93,7 +93,6 @@ pub fn Notes(comptime NoteParamsType: type) type {
             t: f32,
             impulse_array: [32]Impulse, // internal storage (TODO - should it be passed in instead?)
             count: usize,
-            dyn_tracker: DynamicNoteTracker,
 
             pub fn init(song: []const SongNote) NoteTracker {
                 return NoteTracker {
@@ -102,14 +101,12 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     .t = 0.0,
                     .impulse_array = undefined,
                     .count = undefined,
-                    .dyn_tracker = DynamicNoteTracker.init(),
                 };
             }
 
             pub fn reset(self: *NoteTracker) void {
                 self.next_song_note = 0;
                 self.t = 0.0;
-                self.dyn_tracker.reset();
             }
 
             // return impulses for notes that fall within the upcoming buffer frame
@@ -152,67 +149,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             // these methods were split so the caller has an opportunity to
             // alter the impulses (e.g. change the note frequencies)
             pub fn finish(self: *NoteTracker) ?*const Impulse {
-                const head = if (self.count > 0) &self.impulse_array[0] else null;
-
-                return self.dyn_tracker.getImpulses(head);
-            }
-        };
-
-        // TODO - rename
-        // all this does is remember the currently playing note, and push it to the
-        // front of a list of impulses
-        pub const DynamicNoteTracker = struct {
-            // stored_prev: this just exists to keep memory in scope to store the return value of getImpulses
-            stored_prev: Impulse,
-            // next_prev: the last note that played in the previous buffer frame
-            next_prev: ?NoteSpanNote,
-
-            pub fn init() DynamicNoteTracker {
-                return DynamicNoteTracker {
-                    .stored_prev = undefined,
-                    .next_prev = null,
-                };
-            }
-
-            pub fn reset(self: *DynamicNoteTracker) void {
-                self.next_prev = null;
-            }
-
-            // note: the returned list uses pointers to `source`, so when `source` goes
-            // out of scope, consider the returned list to be freed
-            pub fn getImpulses(self: *DynamicNoteTracker, source: ?*const Impulse) ?*const Impulse {
-                var head = source;
-
-                // if there's an old note playing and it's not overridden by a new note
-                // at frame=0, push it to the front of the list
-                if (self.next_prev) |prev| {
-                    if (source == null or (if (source) |s| s.frame > 0 else false)) {
-                        self.stored_prev = Impulse {
-                            .frame = 0,
-                            .note = prev,
-                            .next = head,
-                        };
-                        head = &self.stored_prev;
-                    }
-                }
-
-                // set new value of self.next_prev
-                const maybe_last = blk: {
-                    var maybe_impulse = source;
-                    while (maybe_impulse) |impulse| : (maybe_impulse = impulse.next) {
-                        if (impulse.next == null) {
-                            break :blk impulse;
-                        }
-                    }
-                    break :blk null;
-                };
-
-                if (maybe_last) |last| {
-                    self.next_prev = last.note;
-                }
-                // otherwise, preserve the existing value of next_prev
-
-                return head;
+                return if (self.count > 0) &self.impulse_array[0] else null;
             }
         };
     };
