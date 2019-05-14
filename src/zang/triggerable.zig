@@ -149,13 +149,10 @@ pub fn Triggerable(comptime ModuleType: type) type {
             }
         }
 
-        fn getNextNoteSpan(current_note: ?NoteSpanNote, impulses: []const Impulse, dest_start_: usize, dest_end_: usize) NoteSpan {
-            std.debug.assert(dest_start_ < dest_end_);
+        fn getNextNoteSpan(current_note: ?NoteSpanNote, impulses: []const Impulse, dest_start: usize, dest_end: usize) NoteSpan {
+            std.debug.assert(dest_start < dest_end);
 
-            const dest_start = @intCast(i32, dest_start_);
-            const dest_end = @intCast(i32, dest_end_);
-
-            if (dest_start_ == 0) {
+            if (dest_start == 0) {
                 // check for currently playing note
                 if (current_note) |note| {
                     if (impulses.len > 0) {
@@ -167,7 +164,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                             std.debug.assert(first_impulse_frame >= 0); // FIXME - remove.. frame should be unsigned
                             return NoteSpan {
                                 .start = 0,
-                                .end = @intCast(usize, min(i32, dest_end, first_impulse_frame)),
+                                .end = min(usize, dest_end, first_impulse_frame),
                                 .note = note,
                             };
                         }
@@ -175,7 +172,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                         // no new impulses - play current note for the whole buffer
                         return NoteSpan {
                             .start = 0,
-                            .end = dest_end_,
+                            .end = dest_end,
                             .note = note,
                         };
                     }
@@ -201,8 +198,8 @@ pub fn Triggerable(comptime ModuleType: type) type {
                 if (note_start_clipped > dest_start) {
                     // gap before the note begins
                     return NoteSpan {
-                        .start = @intCast(usize, dest_start),
-                        .end = @intCast(usize, note_start_clipped),
+                        .start = dest_start,
+                        .end = note_start_clipped,
                         .note = null,
                     };
                 }
@@ -211,7 +208,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                 // end of the buffer, whichever comes first
                 const note_end_clipped =
                     if (i + 1 < impulses.len)
-                        min(i32, dest_end, impulses[i + 1].frame)
+                        min(usize, dest_end, impulses[i + 1].frame)
                     else
                         dest_end;
 
@@ -221,8 +218,8 @@ pub fn Triggerable(comptime ModuleType: type) type {
                 }
 
                 return NoteSpan {
-                    .start = @intCast(usize, note_start_clipped),
-                    .end = @intCast(usize, note_end_clipped),
+                    .start = note_start_clipped,
+                    .end = note_end_clipped,
                     .note = impulse.note,
                 };
             }
@@ -230,8 +227,8 @@ pub fn Triggerable(comptime ModuleType: type) type {
             std.debug.assert(dest_start < dest_end);
 
             return NoteSpan {
-                .start = @intCast(usize, dest_start),
-                .end = @intCast(usize, dest_end),
+                .start = dest_start,
+                .end = dest_end,
                 .note = null,
             };
         }

@@ -109,7 +109,7 @@ pub const MainModule = struct {
 
         // create a new list of impulses combining multiple sources
         // FIXME - see https://github.com/dbandstra/zang/issues/18
-        var impulses: [33]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
+        var impulses: [32]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
         var num_impulses: usize = 0;
         for (self.iq.consume()) |impulse| {
             impulses[num_impulses] = zang.Notes(PMOscInstrument.Params).Impulse {

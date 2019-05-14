@@ -4,7 +4,7 @@ const std = @import("std");
 pub fn Notes(comptime NoteParamsType: type) type {
     return struct {
         pub const Impulse = struct {
-            frame: i32, // frames (e.g. 44100 for one second in) FIXME - why is this signed
+            frame: usize, // frames (e.g. 44100 for one second in)
             note: NoteSpanNote,
         };
 
@@ -41,15 +41,15 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 return impulses;
             }
 
-            pub fn push(self: *ImpulseQueue, impulse_frame_: usize, params: NoteParamsType) void {
-                const impulse_frame = blk: {
-                    const impulse_frame = @intCast(i32, impulse_frame_);
-
+            pub fn push(self: *ImpulseQueue, impulse_frame: usize, params: NoteParamsType) void {
+                const actual_impulse_frame = blk: {
                     if (self.length > 0) {
                         const last_impulse_frame = self.array[self.length - 1].frame;
 
                         // if the new impulse would be at the same time or earlier than
                         // the previous one, have it replace the previous one
+                        // FIXME - should i not bother with this here, and just make sure
+                        // Triggerable handles it correctly?
                         if (impulse_frame <= last_impulse_frame) {
                             self.length -= 1;
                             break :blk last_impulse_frame;
@@ -74,7 +74,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     return;
                 }
                 self.array[self.length] = Impulse {
-                    .frame = impulse_frame,
+                    .frame = actual_impulse_frame,
                     .note = note,
                 };
                 self.length += 1;
@@ -120,7 +120,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         const rel_frame_index = min(usize, @floatToInt(usize, f * @intToFloat(f32, out_len)), out_len - 1);
                         // TODO - do something graceful-ish when count >= self.impulse_array.len
                         self.impulse_array[count] = Impulse {
-                            .frame = @intCast(i32, rel_frame_index),
+                            .frame = rel_frame_index,
                             .note = NoteSpanNote {
                                 .id = self.next_song_note,
                                 .params = song_note.params,
