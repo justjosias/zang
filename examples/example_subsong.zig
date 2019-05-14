@@ -95,10 +95,11 @@ const SubtrackPlayer = struct {
     }
 
     fn paint(self: *SubtrackPlayer, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        for (self.tracker.begin(sample_rate, outputs[0].len)) |*impulse| {
+        const impulses = self.tracker.consume(sample_rate, outputs[0].len);
+        for (impulses) |*impulse| {
             impulse.note.params.freq *= params.freq / BaseFrequency;
         }
-        self.instr.paintFromImpulses(sample_rate, outputs, temps, self.tracker.finish());
+        self.instr.paintFromImpulses(sample_rate, outputs, temps, impulses);
     }
 };
 

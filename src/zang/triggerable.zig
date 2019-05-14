@@ -65,7 +65,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
             sample_rate: f32,
             output_bufs: [ModuleType.NumOutputs][]f32,
             temp_bufs: [ModuleType.NumTemps][]f32,
-            impulses: ?*const Impulse,
+            impulses: []const Impulse,
         ) void {
             std.debug.assert(ModuleType.NumOutputs > 0);
             const buf_len = output_bufs[0].len;
@@ -149,7 +149,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
             }
         }
 
-        fn getNextNoteSpan(current_note: ?NoteSpanNote, impulses: ?*const Impulse, dest_start_: usize, dest_end_: usize) NoteSpan {
+        fn getNextNoteSpan(current_note: ?NoteSpanNote, impulses: []const Impulse, dest_start_: usize, dest_end_: usize) NoteSpan {
             std.debug.assert(dest_start_ < dest_end_);
 
             const dest_start = @intCast(i32, dest_start_);
@@ -158,15 +158,16 @@ pub fn Triggerable(comptime ModuleType: type) type {
             if (dest_start_ == 0) {
                 // check for currently playing note
                 if (current_note) |note| {
-                    if (impulses) |first_impulse| {
+                    if (impulses.len > 0) {
+                        const first_impulse_frame = impulses[0].frame;
                         // play up until first impulse
-                        if (first_impulse.frame == 0) {
+                        if (first_impulse_frame == 0) {
                             // new impulse will override this from the beginning - continue
                         } else {
-                            std.debug.assert(first_impulse.frame >= 0); // FIXME - remove.. frame should be unsigned
+                            std.debug.assert(first_impulse_frame >= 0); // FIXME - remove.. frame should be unsigned
                             return NoteSpan {
                                 .start = 0,
-                                .end = @intCast(usize, min(i32, dest_end, first_impulse.frame)),
+                                .end = @intCast(usize, min(i32, dest_end, first_impulse_frame)),
                                 .note = note,
                             };
                         }
@@ -181,8 +182,7 @@ pub fn Triggerable(comptime ModuleType: type) type {
                 }
             }
 
-            var maybe_impulse = impulses;
-            while (maybe_impulse) |impulse| : (maybe_impulse = impulse.next) {
+            for (impulses) |impulse, i| {
                 const start_pos = impulse.frame;
 
                 if (start_pos >= dest_end) {
@@ -190,19 +190,6 @@ pub fn Triggerable(comptime ModuleType: type) type {
                     // starts after the end of the buffer
                     // TODO - crash? this shouldn't happen
                     break;
-                }
-
-                // this span ends at the start of the next impulse (if one exists), or the
-                // end of the buffer, whichever comes first
-                const end_pos =
-                    if (impulse.next) |next_impulse|
-                        min(i32, dest_end, next_impulse.frame)
-                    else
-                        dest_end;
-
-                if (end_pos <= dest_start) {
-                    // impulse is entirely in the past. skip it
-                    continue;
                 }
 
                 const note_start_clipped =
@@ -220,12 +207,18 @@ pub fn Triggerable(comptime ModuleType: type) type {
                     };
                 }
 
-                const note_end = end_pos;
+                // this span ends at the start of the next impulse (if one exists), or the
+                // end of the buffer, whichever comes first
                 const note_end_clipped =
-                    if (note_end > dest_end) // FIXME - didn't i already clip this with dest_end...?
-                        dest_end
+                    if (i + 1 < impulses.len)
+                        min(i32, dest_end, impulses[i + 1].frame)
                     else
-                        note_end;
+                        dest_end;
+
+                if (note_end_clipped <= dest_start) {
+                    // impulse is entirely in the past. skip it
+                    continue;
+                }
 
                 return NoteSpan {
                     .start = @intCast(usize, note_start_clipped),

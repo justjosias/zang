@@ -6,7 +6,6 @@ pub fn Notes(comptime NoteParamsType: type) type {
         pub const Impulse = struct {
             frame: i32, // frames (e.g. 44100 for one second in) FIXME - why is this signed
             note: NoteSpanNote,
-            next: ?*const Impulse,
         };
 
         pub const NoteSpanNote = struct {
@@ -34,8 +33,8 @@ pub fn Notes(comptime NoteParamsType: type) type {
 
             // return impulses and advance state.
             // make sure to use the returned impulse list before pushing more stuff
-            pub fn consume(self: *ImpulseQueue) ?*const Impulse {
-                const impulses = if (self.length > 0) &self.array[0] else null;
+            pub fn consume(self: *ImpulseQueue) []const Impulse {
+                const impulses = self.array[0..self.length];
 
                 self.length = 0;
 
@@ -77,11 +76,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.array[self.length] = Impulse {
                     .frame = impulse_frame,
                     .note = note,
-                    .next = null,
                 };
-                if (self.length > 0) {
-                    self.array[self.length - 1].next = &self.array[self.length];
-                }
                 self.length += 1;
             }
         };
@@ -109,8 +104,10 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.t = 0.0;
             }
 
-            // return impulses for notes that fall within the upcoming buffer frame
-            pub fn begin(self: *NoteTracker, sample_rate: f32, out_len: usize) []Impulse {
+            // return impulses for notes that fall within the upcoming buffer frame.
+            // note: the caller is free to mutate the impulses (e.g. change note frequencies)
+            // before making use of them
+            pub fn consume(self: *NoteTracker, sample_rate: f32, out_len: usize) []Impulse {
                 var count: usize = 0;
 
                 const buf_time = @intToFloat(f32, out_len) / sample_rate;
@@ -128,11 +125,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                                 .id = self.next_song_note,
                                 .params = song_note.params,
                             },
-                            .next = null,
                         };
-                        if (count > 0) {
-                            self.impulse_array[count - 1].next = &self.impulse_array[count];
-                        }
                         count += 1;
                         self.next_song_note += 1;
                     } else {
@@ -144,12 +137,6 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.count = count;
 
                 return self.impulse_array[0..count];
-            }
-
-            // these methods were split so the caller has an opportunity to
-            // alter the impulses (e.g. change the note frequencies)
-            pub fn finish(self: *NoteTracker) ?*const Impulse {
-                return if (self.count > 0) &self.impulse_array[0] else null;
             }
         };
     };

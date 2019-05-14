@@ -167,8 +167,7 @@ pub const MainModule = struct {
 
     pub fn paint(self: *MainModule, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
-            _ = self.trackers[i].begin(sample_rate, outputs[0].len);
-            const impulses = self.trackers[i].finish();
+            const impulses = self.trackers[i].consume(sample_rate, outputs[0].len);
             self.instruments[i].paintFromImpulses(sample_rate, outputs, temps, impulses);
         }
     }

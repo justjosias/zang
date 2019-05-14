@@ -111,7 +111,7 @@ pub const MainModule = struct {
         // FIXME - see https://github.com/dbandstra/zang/issues/18
         var impulses: [33]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
         var num_impulses: usize = 0;
-        var maybe_impulse = self.iq.consume(); while (maybe_impulse) |impulse| : (maybe_impulse = impulse.next) {
+        for (self.iq.consume()) |impulse| {
             impulses[num_impulses] = zang.Notes(PMOscInstrument.Params).Impulse {
                 .frame = impulse.frame,
                 .note = zang.Notes(PMOscInstrument.Params).NoteSpanNote {
@@ -124,16 +124,10 @@ pub const MainModule = struct {
                         .multiplier = temps[1],
                     },
                 },
-                .next = null,
             };
             num_impulses += 1;
         }
-        if (num_impulses > 0) {
-            var i: usize = 0; while (i < num_impulses - 1) : (i += 1) {
-                impulses[i].next = &impulses[i + 1];
-            }
-            self.instr.paintFromImpulses(sample_rate, outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, &impulses[0]);
-        }
+        self.instr.paintFromImpulses(sample_rate, outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, impulses[0..num_impulses]);
     }
 
     pub fn mouseEvent(self: *MainModule, x: f32, y: f32, impulse_frame: usize) void {
