@@ -1,6 +1,4 @@
 const std = @import("std");
-const addInto = @import("basics.zig").addInto;
-const copy = @import("basics.zig").copy;
 
 // this delay module is not able to handle changes in sample rate, or changes
 // in the delay time, so it's not quite ready for prime time. i need to figure
@@ -33,14 +31,20 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from delay buffer to output
-            addInto(actual_out[0..len], delay_slice);
+            var i: usize = 0; while (i < len) : (i += 1) {
+                actual_out[i] += delay_slice[i];
+            }
 
             if (len < actual_out.len) {
                 // wrap around to the start of the delay buffer, and
                 // perform the same operations as above with the remaining
                 // part of the input/output
                 const b_len = actual_out.len - len;
-                addInto(actual_out[len..], self.delay_buffer[0..b_len]);
+
+                i = 0; while (i < b_len) : (i += 1) {
+                    actual_out[len + i] += self.delay_buffer[i];
+                }
+                // addInto(actual_out[len..], self.delay_buffer[0..b_len]);
             }
 
             return actual_out.len;
@@ -59,14 +63,14 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from input into delay buffer
-            copy(delay_slice, input[0..len]);
+            std.mem.copy(f32, delay_slice, input[0..len]);
 
             if (len < input.len) {
                 // wrap around to the start of the delay buffer, and
                 // perform the same operations as above with the remaining
                 // part of the input/output
                 const b_len = input.len - len;
-                copy(self.delay_buffer[0..b_len], input[len..]);
+                std.mem.copy(f32, self.delay_buffer[0..b_len], input[len..]);
                 self.delay_buffer_index = b_len;
             } else {
                 // wrapping not needed

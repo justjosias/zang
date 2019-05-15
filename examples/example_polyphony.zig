@@ -36,7 +36,8 @@ const Polyphony = struct {
     const Voice = struct {
         down: bool,
         iq: zang.Notes(Instrument.Params).ImpulseQueue,
-        instr: zang.Triggerable(Instrument),
+        instrument: Instrument,
+        trigger: zang.Trigger(Instrument.Params),
     };
 
     voices: [common.key_bindings.len]Voice,
@@ -49,15 +50,14 @@ const Polyphony = struct {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
-                .instr = zang.initTriggerable(Instrument.init()),
+                .instrument = Instrument.init(),
+                .trigger = zang.Trigger(Instrument.Params).init(),
             };
         }
         return self;
     }
 
-    fn reset(self: *Polyphony) void {}
-
-    fn paint(self: *Polyphony, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *Polyphony, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
                 self.voices[i].iq.push(0, Instrument.Params {
@@ -70,7 +70,10 @@ const Polyphony = struct {
         }
 
         for (self.voices) |*voice| {
-            voice.instr.paintFromImpulses(outputs, temps, voice.iq.consume());
+            var ctr = voice.trigger.counter(span, voice.iq.consume());
+            while (voice.trigger.next(&ctr)) |result| {
+                voice.instrument.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            }
         }
     }
 };
@@ -83,33 +86,38 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
 
-    iq: zang.Notes(Polyphony.Params).ImpulseQueue,
     current_params: Polyphony.Params,
-    polyphony: zang.Triggerable(Polyphony),
+    iq: zang.Notes(Polyphony.Params).ImpulseQueue,
+    polyphony: Polyphony,
+    trigger: zang.Trigger(Polyphony.Params),
     dec: zang.Decimator,
     dec_mode: u32,
 
     pub fn init() MainModule {
         return MainModule{
-            .iq = zang.Notes(Polyphony.Params).ImpulseQueue.init(),
             .current_params = Polyphony.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
-            .polyphony = zang.initTriggerable(Polyphony.init()),
+            .iq = zang.Notes(Polyphony.Params).ImpulseQueue.init(),
+            .polyphony = Polyphony.init(),
+            .trigger = zang.Trigger(Polyphony.Params).init(),
             .dec = zang.Decimator.init(),
             .dec_mode = 0,
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        const impulses = self.iq.consume();
-
-        zang.zero(temps[2]);
-        self.polyphony.paintFromImpulses([1][]f32{temps[2]}, [2][]f32{temps[0], temps[1]}, impulses);
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        zang.zero(span, temps[2]);
+        {
+            var ctr = self.trigger.counter(span, self.iq.consume());
+            while (self.trigger.next(&ctr)) |result| {
+                self.polyphony.paint(result.span, [1][]f32{temps[2]}, [2][]f32{temps[0], temps[1]}, result.params);
+            }
+        }
 
         if (self.dec_mode > 0) {
-            self.dec.paint(outputs, [0][]f32{}, zang.Decimator.Params {
+            self.dec.paint(span, outputs, [0][]f32{}, zang.Decimator.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .input = temps[2],
                 .fake_sample_rate = switch (self.dec_mode) {
@@ -123,7 +131,7 @@ pub const MainModule = struct {
                 },
             });
         } else {
-            zang.addInto(outputs[0], temps[2]);
+            zang.addInto(span, outputs[0], temps[2]);
         }
     }
 

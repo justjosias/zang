@@ -3,7 +3,7 @@ const zang = @import("zang");
 const f = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/sdl.zig");
-const PMOscInstrument = @import("modules.zig").PMOscInstrument;
+const Instrument = @import("modules.zig").PMOscInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -20,11 +20,7 @@ pub const DESCRIPTION =
 
 const A4 = 440.0;
 
-const MyNoteParams = struct {
-    freq: f32,
-    note_on: bool,
-};
-const MyNotes = zang.Notes(MyNoteParams);
+const MyNoteParams = struct { freq: f32, note_on: bool };
 
 const Note = common.Note;
 const track1Init = []Note(MyNoteParams) {
@@ -139,7 +135,7 @@ const track8Init = []Note(MyNoteParams) {
 const NUM_TRACKS = 8;
 const NOTE_DURATION = 0.08;
 
-const tracks = [NUM_TRACKS][]const MyNotes.SongNote {
+const tracks = [NUM_TRACKS][]const zang.Notes(MyNoteParams).SongNote {
     common.compileSong(MyNoteParams, track1Init.len, track1Init, NOTE_DURATION, 0.0),
     common.compileSong(MyNoteParams, track2Init.len, track2Init, NOTE_DURATION, 0.0),
     common.compileSong(MyNoteParams, track3Init.len, track3Init, NOTE_DURATION, track3Delay),
@@ -154,41 +150,38 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 4;
 
-    instruments: [NUM_TRACKS]zang.Triggerable(PMOscInstrument),
-    trackers: [NUM_TRACKS]MyNotes.NoteTracker,
+    const Voice = struct {
+        instrument: Instrument,
+        trigger: zang.Trigger(MyNoteParams),
+        tracker: zang.Notes(MyNoteParams).NoteTracker,
+    };
+
+    voices: [NUM_TRACKS]Voice,
 
     pub fn init() MainModule {
         var mod: MainModule = undefined;
 
         var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
-            mod.instruments[i] = zang.initTriggerable(PMOscInstrument.init(0.15));
-            mod.trackers[i] = MyNotes.NoteTracker.init(tracks[i]);
+            mod.voices[i] = Voice {
+                .instrument = Instrument.init(0.15),
+                .trigger = zang.Trigger(MyNoteParams).init(),
+                .tracker = zang.Notes(MyNoteParams).NoteTracker.init(tracks[i]),
+            };
         }
 
         return mod;
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
-            // create a new list of impulses combining multiple sources
-            // FIXME - see https://github.com/dbandstra/zang/issues/18
-            var impulses: [32]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
-            var num_impulses: usize = 0;
-            for (self.trackers[i].consume(AUDIO_SAMPLE_RATE, outputs[0].len)) |impulse| {
-                impulses[num_impulses] = zang.Notes(PMOscInstrument.Params).Impulse {
-                    .frame = impulse.frame,
-                    .note = zang.Notes(PMOscInstrument.Params).NoteSpanNote {
-                        .id = impulse.note.id,
-                        .params = PMOscInstrument.Params {
-                            .sample_rate = AUDIO_SAMPLE_RATE,
-                            .freq = impulse.note.params.freq,
-                            .note_on = impulse.note.params.note_on,
-                        },
-                    },
-                };
-                num_impulses += 1;
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        for (self.voices) |*voice| {
+            var ctr = voice.trigger.counter(span, voice.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start));
+            while (voice.trigger.next(&ctr)) |result| {
+                voice.instrument.paint(result.span, outputs, temps, result.note_id_changed, Instrument.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
+                    .freq = result.params.freq,
+                    .note_on = result.params.note_on,
+                });
             }
-            self.instruments[i].paintFromImpulses(outputs, temps, impulses);
         }
     }
 };

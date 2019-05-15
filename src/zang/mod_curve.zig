@@ -1,4 +1,5 @@
 const std = @import("std");
+const Span = @import("basics.zig").Span;
 
 pub const InterpolationFunction = enum {
     Linear,
@@ -59,15 +60,15 @@ pub const Curve = struct {
         };
     }
 
-    pub fn reset(self: *Curve) void {
-        self.current_song_note = 0;
-        self.current_song_note_offset = 0;
-        self.next_song_note = 0;
-        self.t = 0.0;
-    }
+    pub fn paint(self: *Curve, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        if (note_id_changed) {
+            self.current_song_note = 0;
+            self.current_song_note_offset = 0;
+            self.next_song_note = 0;
+            self.t = 0.0;
+        }
 
-    pub fn paint(self: *Curve, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const out = outputs[0];
+        const out = outputs[0][span.start .. span.end];
         const curve_nodes = self.getCurveSpanNodes(params.sample_rate, out.len, params.curve);
 
         var start: usize = 0;

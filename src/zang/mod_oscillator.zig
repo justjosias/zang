@@ -1,5 +1,6 @@
 const std = @import("std");
-const ConstantOrBuffer = @import("triggerable.zig").ConstantOrBuffer;
+const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
+const Span = @import("basics.zig").Span;
 
 pub const Waveform = enum {
     Sine,
@@ -65,24 +66,24 @@ pub const Oscillator = struct {
         };
     }
 
-    pub fn reset(self: *Oscillator) void {}
+    pub fn paint(self: *Oscillator, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const output = outputs[0][span.start..span.end];
 
-    pub fn paint(self: *Oscillator, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // TODO - make params.colour ConstantOrBuffer as well...
         switch (params.freq) {
             .Constant => |freq|
                 switch (params.phase) {
                     .Constant => |phase|
-                        self.paintSimple(params.sample_rate, outputs[0], params.waveform, freq, params.colour),
+                        self.paintSimple(params.sample_rate, output, params.waveform, freq, params.colour),
                     .Buffer =>
                         @panic("TODO"), // FIXME
                 },
             .Buffer => |freq|
                 switch (params.phase) {
-                    .Constant => |phase|
-                        self.paintControlledFrequency(params.sample_rate, outputs[0], params.waveform, freq, params.colour),
+                    .Constant => |phase| // FIXME - ignores phase
+                        self.paintControlledFrequency(params.sample_rate, output, params.waveform, freq[span.start..span.end], params.colour),
                     .Buffer => |phase|
-                        self.paintControlledPhaseAndFrequency(params.sample_rate, outputs[0], params.waveform, phase, freq, params.colour),
+                        self.paintControlledPhaseAndFrequency(params.sample_rate, output, params.waveform, phase[span.start..span.end], freq[span.start..span.end], params.colour),
                 },
         }
     }

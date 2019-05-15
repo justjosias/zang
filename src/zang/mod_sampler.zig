@@ -1,5 +1,6 @@
 const std = @import("std");
 const WavContents = @import("read_wav.zig").WavContents;
+const Span = @import("basics.zig").Span;
 
 // FIXME - no effort at all has been made to optimize the sampler module
 // FIXME - hardcoded to support only 16-bit wav files
@@ -40,12 +41,12 @@ pub const Sampler = struct {
         };
     }
 
-    pub fn reset(self: *Sampler) void {
-        self.t = 0.0;
-    }
+    pub fn paint(self: *Sampler, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        if (note_id_changed) {
+            self.t = 0.0;
+        }
 
-    pub fn paint(self: *Sampler, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const out = outputs[0];
+        const out = outputs[0][span.start..span.end];
 
         const ratio = @intToFloat(f32, params.wav.sample_rate) / params.sample_rate;
 

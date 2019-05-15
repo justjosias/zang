@@ -1,5 +1,6 @@
 const std = @import("std");
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
+const Span = @import("basics.zig").Span;
 
 pub const Envelope = struct {
     pub const NumOutputs = 1;
@@ -31,10 +32,6 @@ pub const Envelope = struct {
             .envelope = 0.0,
             .state = .Idle,
         };
-    }
-
-    pub fn reset(self: *Envelope) void {
-        self.state = .Idle;
     }
 
     fn paintOn(self: *Envelope, buf: []f32, params: Params) void {
@@ -90,11 +87,16 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paint(self: *Envelope, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Envelope, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        const output = outputs[0][span.start..span.end];
+
         if (params.note_on) {
-            self.paintOn(outputs[0], params);
+            if (note_id_changed) {
+                self.state = .Idle;
+            }
+            self.paintOn(output, params);
         } else {
-            self.paintOff(outputs[0], params);
+            self.paintOff(output, params);
         }
     }
 };

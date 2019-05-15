@@ -64,54 +64,48 @@ const LaserPlayer = struct {
         };
     }
 
-    fn reset(self: *LaserPlayer) void {
-        self.carrier_curve.reset();
-        self.modulator_curve.reset();
-        self.volume_curve.reset();
-    }
-
-    fn paint(self: *LaserPlayer, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *LaserPlayer, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
         const out = outputs[0];
 
-        zang.zero(temps[0]);
-        self.modulator_curve.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        zang.zero(span, temps[0]);
+        self.modulator_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
             .curve = modulator_curve,
             .freq_mul = params.freq_mul * params.modulator_mul,
         });
-        zang.zero(temps[1]);
-        self.modulator.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(span, temps[1]);
+        self.modulator.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
-        zang.multiplyWithScalar(temps[1], params.modulator_rad);
-        zang.zero(temps[0]);
-        self.carrier_curve.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        zang.multiplyWithScalar(span, temps[1], params.modulator_rad);
+        zang.zero(span, temps[0]);
+        self.carrier_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
             .curve = carrier_curve,
             .freq_mul = params.freq_mul * params.carrier_mul,
         });
-        zang.zero(temps[2]);
-        self.carrier.paint([1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(span, temps[2]);
+        self.carrier.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
             .colour = 0.5,
         });
-        zang.zero(temps[0]);
-        self.volume_curve.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Curve.Params {
+        zang.zero(span, temps[0]);
+        self.volume_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
             .curve = volume_curve,
             .freq_mul = 1.0,
         });
-        zang.multiply(out, temps[0], temps[2]);
+        zang.multiply(span, out, temps[0], temps[2]);
     }
 };
 
@@ -120,20 +114,25 @@ pub const MainModule = struct {
     pub const NumTemps = 3;
 
     iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
-    laser_player: zang.Triggerable(LaserPlayer),
+    player: LaserPlayer,
+    trigger: zang.Trigger(LaserPlayer.Params),
 
     r: std.rand.Xoroshiro128,
 
     pub fn init() MainModule {
         return MainModule {
             .iq = zang.Notes(LaserPlayer.Params).ImpulseQueue.init(),
-            .laser_player = zang.initTriggerable(LaserPlayer.init()),
+            .player = LaserPlayer.init(),
+            .trigger = zang.Trigger(LaserPlayer.Params).init(),
             .r = std.rand.DefaultPrng.init(0),
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.laser_player.paintFromImpulses(outputs, temps, self.iq.consume());
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        var ctr = self.trigger.counter(span, self.iq.consume());
+        while (self.trigger.next(&ctr)) |result| {
+            self.player.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+        }
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

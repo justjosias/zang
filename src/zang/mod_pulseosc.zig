@@ -3,6 +3,7 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const std = @import("std");
+const Span = @import("basics.zig").Span;
 
 const fc32bit = f32(1 << 32);
 
@@ -39,15 +40,13 @@ pub const PulseOsc = struct {
         return PulseOsc { .cnt = 0 };
     }
 
-    pub fn reset(self: *PulseOsc) void {}
-
-    pub fn paint(self: *PulseOsc, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *PulseOsc, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.freq < 0 or params.freq > params.sample_rate / 8.0) {
             return;
         }
         // note: farbrausch code includes some explanatory comments. i've
         // preserved the variable names they used, but condensed the code
-        const buf = outputs[0];
+        const buf = outputs[0][span.start..span.end];
         var cnt = self.cnt;
         const SRfcobasefrq = fc32bit / params.sample_rate;
         const freq = @floatToInt(u32, SRfcobasefrq * params.freq);

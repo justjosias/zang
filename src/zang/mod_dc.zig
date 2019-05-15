@@ -1,4 +1,5 @@
-const basics = @import("basics.zig");
+const Span = @import("basics.zig").Span;
+const addScalarInto = @import("basics.zig").addScalarInto;
 
 pub const DC = struct {
     pub const NumOutputs = 1;
@@ -11,9 +12,7 @@ pub const DC = struct {
         return DC {};
     }
 
-    pub fn reset(self: *DC) void {}
-
-    pub fn paint(self: *DC, outputs: [NumOutputs][]f32, tmp: [NumTemps][]f32, params: Params) void {
-        basics.addScalarInto(outputs[0], params.value);
+    pub fn paint(self: *DC, span: Span, outputs: [NumOutputs][]f32, tmp: [NumTemps][]f32, params: Params) void {
+        addScalarInto(span, outputs[0], params.value);
     }
 };

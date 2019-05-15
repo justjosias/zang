@@ -21,23 +21,25 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 0;
 
-    iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
     wav: zang.WavContents,
-    sampler: zang.Triggerable(zang.Sampler),
+    iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
+    sampler: zang.Sampler,
+    trigger: zang.Trigger(zang.Sampler.Params),
     r: std.rand.Xoroshiro128,
     first: bool,
 
     pub fn init() MainModule {
         return MainModule {
-            .iq = zang.Notes(zang.Sampler.Params).ImpulseQueue.init(),
             .wav = zang.readWav(@embedFile("drumloop.wav")) catch unreachable,
-            .sampler = zang.initTriggerable(zang.Sampler.init()),
+            .iq = zang.Notes(zang.Sampler.Params).ImpulseQueue.init(),
+            .sampler = zang.Sampler.init(),
+            .trigger = zang.Trigger(zang.Sampler.Params).init(),
             .r = std.rand.DefaultPrng.init(0),
             .first = true,
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         if (self.first) {
             self.first = false;
             self.iq.push(0, zang.Sampler.Params {
@@ -47,8 +49,11 @@ pub const MainModule = struct {
             });
         }
 
-        self.sampler.paintFromImpulses(outputs, temps, self.iq.consume());
-        zang.multiplyWithScalar(outputs[0], 2.5);
+        var ctr = self.trigger.counter(span, self.iq.consume());
+        while (self.trigger.next(&ctr)) |result| {
+            self.sampler.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+        }
+        zang.multiplyWithScalar(span, outputs[0], 2.5);
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {

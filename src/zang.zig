@@ -1,12 +1,12 @@
 const notes = @import("zang/notes.zig");
+pub const Impulse = notes.Impulse;
 pub const Notes = notes.Notes;
 
-const triggerable = @import("zang/triggerable.zig");
-pub const ConstantOrBuffer = triggerable.ConstantOrBuffer;
-pub const constant = triggerable.constant;
-pub const buffer = triggerable.buffer;
-pub const initTriggerable = triggerable.initTriggerable;
-pub const Triggerable = triggerable.Triggerable;
+const trigger = @import("zang/trigger.zig");
+pub const ConstantOrBuffer = trigger.ConstantOrBuffer;
+pub const constant = trigger.constant;
+pub const buffer = trigger.buffer;
+pub const Trigger = trigger.Trigger;
 
 const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;
@@ -17,6 +17,7 @@ pub const WavContents = read_wav.WavContents;
 pub const readWav = read_wav.readWav;
 
 const basics = @import("zang/basics.zig");
+pub const Span = basics.Span;
 pub const zero = basics.zero;
 pub const set = basics.set;
 pub const copy = basics.copy;

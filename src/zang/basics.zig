@@ -1,91 +1,66 @@
 const std = @import("std");
 
-pub fn zero(dest: []f32) void {
-    std.mem.set(f32, dest, 0.0);
+pub const Span = struct {
+    start: usize,
+    end: usize,
+};
+
+pub fn zero(span: Span, dest: []f32) void {
+    std.mem.set(f32, dest[span.start..span.end], 0.0);
 }
 
-pub fn set(dest: []f32, a: f32) void {
-    std.mem.set(f32, dest, a);
+pub fn set(span: Span, dest: []f32, a: f32) void {
+    std.mem.set(f32, dest[span.start..span.end], a);
 }
 
-pub fn copy(dest: []f32, src: []const f32) void {
-    std.debug.assert(dest.len == src.len);
-
-    std.mem.copy(f32, dest, src);
+pub fn copy(span: Span, dest: []f32, src: []const f32) void {
+    std.mem.copy(f32, dest[span.start..span.end], src[span.start..span.end]);
 }
 
-pub fn add(dest: []f32, a: []const f32, b: []const f32) void {
-    std.debug.assert(dest.len == a.len and dest.len == b.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn add(span: Span, dest: []f32, a: []const f32, b: []const f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += a[i] + b[i];
     }
 }
 
-pub fn addInto(dest: []f32, src: []const f32) void {
-    std.debug.assert(dest.len == src.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn addInto(span: Span, dest: []f32, src: []const f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += src[i];
     }
 }
 
-pub fn addScalar(dest: []f32, a: []const f32, b: f32) void {
-    std.debug.assert(dest.len == a.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn addScalar(span: Span, dest: []f32, a: []const f32, b: f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += a[i] + b;
     }
 }
 
-pub fn addScalarInto(dest: []f32, a: f32) void {
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn addScalarInto(span: Span, dest: []f32, a: f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += a;
     }
 }
 
-pub fn multiply(dest: []f32, a: []const f32, b: []const f32) void {
-    std.debug.assert(dest.len == a.len and dest.len == b.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn multiply(span: Span, dest: []f32, a: []const f32, b: []const f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += a[i] * b[i];
     }
 }
 
-pub fn multiplyWith(dest: []f32, a: []const f32) void {
-    std.debug.assert(dest.len == a.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn multiplyWith(span: Span, dest: []f32, a: []const f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] *= a[i];
     }
 }
 
-pub fn multiplyScalar(dest: []f32, a: []const f32, b: f32) void {
-    std.debug.assert(dest.len == a.len);
-
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn multiplyScalar(span: Span, dest: []f32, a: []const f32, b: f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] += a[i] * b;
     }
 }
 
-pub fn multiplyWithScalar(dest: []f32, a: f32) void {
-    var i: usize = 0;
-
-    while (i < dest.len) : (i += 1) {
+pub fn multiplyWithScalar(span: Span, dest: []f32, a: f32) void {
+    var i = span.start; while (i < span.end) : (i += 1) {
         dest[i] *= a;
     }
 }

@@ -20,18 +20,18 @@ pub const DESCRIPTION =
 ;
 
 // take input (-1 to +1) and scale it to (min to max)
-fn scaleWave(out: []f32, in: []const f32, tmp0: []f32, min: f32, max: f32) void {
-    zang.zero(tmp0);
-    zang.multiplyScalar(tmp0, in, (max - min) * 0.5);
-    zang.addScalar(out, tmp0, (max - min) * 0.5 + min);
+fn scaleWave(span: zang.Span, out: []f32, in: []const f32, tmp0: []f32, min: f32, max: f32) void {
+    zang.zero(span, tmp0);
+    zang.multiplyScalar(span, tmp0, in, (max - min) * 0.5);
+    zang.addScalar(span, out, tmp0, (max - min) * 0.5 + min);
 }
 
 // overwrite out with (1 - out)
-fn invertWaveInPlace(out: []f32, tmp0: []f32) void {
-    zang.zero(tmp0);
-    zang.multiplyScalar(tmp0, out, -1.0);
-    zang.zero(out);
-    zang.addScalar(out, tmp0, 1.0);
+fn invertWaveInPlace(span: zang.Span, out: []f32, tmp0: []f32) void {
+    zang.zero(span, tmp0);
+    zang.multiplyScalar(span, tmp0, out, -1.0);
+    zang.zero(span, out);
+    zang.addScalar(span, out, tmp0, 1.0);
 }
 
 const NoiseModule = struct {
@@ -55,32 +55,33 @@ const NoiseModule = struct {
         };
     }
 
-    fn reset(self: *NoiseModule) void {}
-
-    fn paint(self: *NoiseModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *NoiseModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // temps[0] = filtered noise
-        zang.zero(temps[0]);
-        zang.zero(temps[1]);
-        self.noise.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
-        self.flt.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
+        zang.zero(span, temps[0]);
+        zang.zero(span, temps[1]);
+        self.noise.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
+        self.flt.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
             .filterType = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(params.cutoff_frequency, params.sample_rate)),
             .resonance = 0.4,
         });
 
+        // increase volume
+        zang.multiplyWithScalar(span, temps[0], 4.0);
+
         // temps[1] = pan scaled to (min to max)
-        zang.zero(temps[1]);
-        scaleWave(temps[1], params.pan, temps[2], params.min, params.max);
+        zang.zero(span, temps[1]);
+        scaleWave(span, temps[1], params.pan, temps[2], params.min, params.max);
 
         // left channel += temps[0] * temps[1]
-        zang.multiply(outputs[0], temps[0], temps[1]);
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
 
         // temps[1] = 1 - temps[1]
-        invertWaveInPlace(temps[1], temps[2]);
+        invertWaveInPlace(span, temps[1], temps[2]);
 
         // right channel += temps[0] * temps[1]
-        zang.multiply(outputs[1], temps[0], temps[1]);
+        zang.multiply(span, outputs[1], temps[0], temps[1]);
     }
 };
 
@@ -100,12 +101,12 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         const sample_rate = AUDIO_SAMPLE_RATE;
 
         // temps[0] = slow oscillator representing left/right pan (-1 to +1)
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = sample_rate,
             .waveform = .Sine,
             .freq = zang.constant(0.1),
@@ -114,14 +115,14 @@ pub const MainModule = struct {
         });
 
         // paint two noise voices
-        self.noisem0.paint(outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+        self.noisem0.paint(span, outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
             .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.0,
             .max = 0.5,
             .cutoff_frequency = 320.0,
         });
-        self.noisem1.paint(outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
+        self.noisem1.paint(span, outputs, [3][]f32{temps[1], temps[2], temps[3]}, NoiseModule.Params {
             .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.5,

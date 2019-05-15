@@ -29,45 +29,38 @@ pub const PhaseModOscillator = struct {
         };
     }
 
-    pub fn reset(self: *PhaseModOscillator) void {
-        self.carrier.reset();
-        self.modulator.reset();
-    }
-
-    pub fn paint(self: *PhaseModOscillator, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const out = outputs[0];
-
-        zang.set(temps[0], params.freq);
+    pub fn paint(self: *PhaseModOscillator, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        zang.set(span, temps[0], params.freq);
         switch (params.ratio) {
             .Constant => |ratio| {
                 if (params.relative) {
-                    zang.set(temps[1], params.freq * ratio);
+                    zang.set(span, temps[1], params.freq * ratio);
                 } else {
-                    zang.set(temps[1], ratio);
+                    zang.set(span, temps[1], ratio);
                 }
             },
             .Buffer => |ratio| {
                 if (params.relative) {
-                    zang.multiplyScalar(temps[1], ratio, params.freq);
+                    zang.multiplyScalar(span, temps[1], ratio, params.freq);
                 } else {
-                    zang.copy(temps[1], ratio);
+                    zang.copy(span, temps[1], ratio);
                 }
             },
         }
-        zang.zero(temps[2]);
-        self.modulator.paint([1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(span, temps[2]);
+        self.modulator.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[1]),
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
-        zang.zero(temps[1]);
+        zang.zero(span, temps[1]);
         switch (params.multiplier) {
-            .Constant => |multiplier| zang.multiplyScalar(temps[1], temps[2], multiplier),
-            .Buffer => |multiplier| zang.multiply(temps[1], temps[2], multiplier),
+            .Constant => |multiplier| zang.multiplyScalar(span, temps[1], temps[2], multiplier),
+            .Buffer => |multiplier| zang.multiply(span, temps[1], temps[2], multiplier),
         }
-        self.carrier.paint([1][]f32{out}, [0][]f32{}, zang.Oscillator.Params {
+        self.carrier.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
@@ -99,22 +92,17 @@ pub const PMOscInstrument = struct {
         };
     }
 
-    pub fn reset(self: *PMOscInstrument) void {
-        self.osc.reset();
-        self.env.reset();
-    }
-
-    pub fn paint(self: *PMOscInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
+    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = true,
             .ratio = zang.constant(1.0),
             .multiplier = zang.constant(1.5),
         });
-        zang.zero(temps[1]);
-        self.env.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+        zang.zero(span, temps[1]);
+        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -122,7 +110,7 @@ pub const PMOscInstrument = struct {
             .release_duration = self.release_duration,
             .note_on = params.note_on,
         });
-        zang.multiply(outputs[0], temps[0], temps[1]);
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 };
 
@@ -147,24 +135,18 @@ pub const FilteredSawtoothInstrument = struct {
         };
     }
 
-    pub fn reset(self: *FilteredSawtoothInstrument) void {
-        self.osc.reset();
-        self.env.reset();
-        self.flt.reset();
-    }
-
-    pub fn paint(self: *FilteredSawtoothInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+    pub fn paint(self: *FilteredSawtoothInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sawtooth,
             .freq = zang.constant(params.freq),
             .phase = zang.constant(0.0),
             .colour = 0.5,
         });
-        zang.multiplyWithScalar(temps[0], 1.5); // boost sawtooth volume
-        zang.zero(temps[1]);
-        self.env.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+        zang.multiplyWithScalar(span, temps[0], 1.5); // boost sawtooth volume
+        zang.zero(span, temps[1]);
+        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -172,9 +154,9 @@ pub const FilteredSawtoothInstrument = struct {
             .release_duration = 1.0,
             .note_on = params.note_on,
         });
-        zang.zero(temps[2]);
-        zang.multiply(temps[2], temps[0], temps[1]);
-        self.flt.paint([1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
+        zang.zero(span, temps[2]);
+        zang.multiply(span, temps[2], temps[0], temps[1]);
+        self.flt.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[2],
             .filterType = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(440.0 * note_frequencies.C5, params.sample_rate)),
@@ -204,29 +186,23 @@ pub const NiceInstrument = struct {
         };
     }
 
-    pub fn reset(self: *NiceInstrument) void {
-        self.osc.reset();
-        self.flt.reset();
-        self.env.reset();
-    }
-
-    pub fn paint(self: *NiceInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
+    pub fn paint(self: *NiceInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .colour = 0.3,
         });
-        zang.multiplyWithScalar(temps[0], 0.5);
-        zang.zero(temps[1]);
-        self.flt.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Filter.Params {
+        zang.multiplyWithScalar(span, temps[0], 0.5);
+        zang.zero(span, temps[1]);
+        self.flt.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[0],
             .filterType = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(params.freq * 8.0, params.sample_rate)),
             .resonance = 0.7,
         });
-        zang.zero(temps[0]);
-        self.env.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+        zang.zero(span, temps[0]);
+        self.env.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.01,
             .decay_duration = 0.1,
@@ -234,7 +210,7 @@ pub const NiceInstrument = struct {
             .release_duration = 0.5,
             .note_on = params.note_on,
         });
-        zang.multiply(outputs[0], temps[0], temps[1]);
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 };
 
@@ -257,23 +233,18 @@ pub const HardSquareInstrument = struct {
         };
     }
 
-    pub fn reset(self: *HardSquareInstrument) void {
-        self.osc.reset();
-        self.gate.reset();
-    }
-
-    pub fn paint(self: *HardSquareInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
+    pub fn paint(self: *HardSquareInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .colour = 0.5,
         });
-        zang.zero(temps[1]);
-        self.gate.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Gate.Params {
+        zang.zero(span, temps[1]);
+        self.gate.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Gate.Params {
             .note_on = params.note_on,
         });
-        zang.multiply(outputs[0], temps[0], temps[1]);
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 };
 
@@ -295,23 +266,16 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
             };
         }
 
-        pub fn reset(self: *@This()) void {}
+        pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+            var start = span.start;
+            const end = span.end;
 
-        pub fn paint(self: *@This(), outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-            var output = outputs[0];
-            var input = params.input;
+            while (start < end) {
+                const samples_read = self.delay.readDelayBuffer(outputs[0][start .. end]);
 
-            while (true) {
-                const samples_read = self.delay.readDelayBuffer(output);
+                self.delay.writeDelayBuffer(params.input[start .. start + samples_read]);
 
-                self.delay.writeDelayBuffer(input[0..samples_read]);
-
-                if (samples_read == output.len) {
-                    break;
-                } else {
-                    output = output[samples_read..];
-                    input = input[samples_read..];
-                }
+                start += samples_read;
             }
         }
     };
@@ -339,48 +303,44 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
             };
         }
 
-        pub fn reset(self: *@This()) void {}
+        pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+            const output = outputs[0];
+            const input = params.input;
+            const temp0 = temps[0];
+            const temp1 = temps[1];
 
-        pub fn paint(self: *@This(), outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-            var output = outputs[0];
-            var input = params.input;
-            var temp0 = temps[0];
-            var temp1 = temps[1];
+            var start = span.start;
+            const end = span.end;
 
-            while (true) {
+            while (start < end) {
                 // get delay buffer (this is the feedback)
-                zang.zero(temp0);
-                const samples_read = self.delay.readDelayBuffer(temp0);
+                zang.zero(zang.Span { .start = start, .end = end }, temp0);
+                const samples_read = self.delay.readDelayBuffer(temp0[start..end]);
+
+                const span1 = zang.Span { .start = start, .end = start + samples_read };
 
                 // reduce its volume
-                zang.multiplyWithScalar(temp0[0..samples_read], params.feedback_volume);
+                zang.multiplyWithScalar(span1, temp0, params.feedback_volume);
 
                 // add input
-                zang.addInto(temp0[0..samples_read], input[0..samples_read]);
+                zang.addInto(span1, temp0, input);
 
                 // filter it
-                zang.zero(temp1[0..samples_read]);
-                self.filter.paint([1][]f32{temp1[0..samples_read]}, [0][]f32{}, zang.Filter.Params {
-                    .input = temp0[0..samples_read],
+                zang.zero(span1, temp1);
+                self.filter.paint(span1, [1][]f32{temp1}, [0][]f32{}, zang.Filter.Params {
+                    .input = temp0,
                     .filterType = .LowPass,
                     .cutoff = zang.constant(params.cutoff),
                     .resonance = 0.0,
                 });
 
                 // output it
-                zang.addInto(output[0..samples_read], temp1[0..samples_read]);
+                zang.addInto(span1, output, temp1);
 
                 // also send what we have to the delay module (which doesn't output anything)
-                self.delay.writeDelayBuffer(temp1[0..samples_read]);
+                self.delay.writeDelayBuffer(temp1[span1.start..span1.end]);
 
-                if (samples_read == output.len) {
-                    break;
-                } else {
-                    output = output[samples_read..];
-                    input = input[samples_read..];
-                    temp0 = temp0[samples_read..];
-                    temp1 = temp1[samples_read..];
-                }
+                start += samples_read;
             }
         }
     };
@@ -410,28 +370,26 @@ pub const StereoEchoes = struct {
         };
     }
 
-    pub fn reset(self: *StereoEchoes) void {}
-
-    pub fn paint(self: *StereoEchoes, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *StereoEchoes, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // output dry signal to center channel
-        zang.addInto(outputs[0], params.input);
-        zang.addInto(outputs[1], params.input);
+        zang.addInto(span, outputs[0], params.input);
+        zang.addInto(span, outputs[1], params.input);
 
         // initial half delay before first echo on the left channel
-        zang.zero(temps[0]);
-        self.delay0.paint([1][]f32{temps[0]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
+        zang.zero(span, temps[0]);
+        self.delay0.paint(span, [1][]f32{temps[0]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
             .input = params.input,
         });
         // filtered echoes to the left
-        zang.zero(temps[1]);
-        self.echoes.paint([1][]f32{temps[1]}, [2][]f32{temps[2], temps[3]}, FilteredEchoes(MAIN_DELAY).Params {
+        zang.zero(span, temps[1]);
+        self.echoes.paint(span, [1][]f32{temps[1]}, [2][]f32{temps[2], temps[3]}, FilteredEchoes(MAIN_DELAY).Params {
             .input = temps[0],
             .feedback_volume = params.feedback_volume,
             .cutoff = params.cutoff,
         });
         // use another delay to mirror the left echoes to the right side
-        zang.addInto(outputs[0], temps[1]);
-        self.delay1.paint([1][]f32{outputs[1]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
+        zang.addInto(span, outputs[0], temps[1]);
+        self.delay1.paint(span, [1][]f32{outputs[1]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
             .input = temps[1],
         });
     }

@@ -45,22 +45,17 @@ const PMOscInstrument = struct {
         };
     }
 
-    pub fn reset(self: *PMOscInstrument) void {
-        self.osc.reset();
-        self.env.reset();
-    }
-
-    pub fn paint(self: *PMOscInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.osc.paint([1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
+    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,
             .ratio = zang.buffer(params.ratio),
             .multiplier = zang.buffer(params.multiplier),
         });
-        zang.zero(temps[1]);
-        self.env.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Envelope.Params {
+        zang.zero(span, temps[1]);
+        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -68,7 +63,7 @@ const PMOscInstrument = struct {
             .release_duration = 1.0,
             .note_on = params.note_on,
         });
-        zang.multiply(outputs[0], temps[0], temps[1]);
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 };
 
@@ -76,93 +71,120 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 6;
 
-    const NoteParams = struct {
-        freq: f32,
-        note_on: bool,
+    const Instr = struct {
+        const Params = struct { freq: f32, note_on: bool };
+
+        iq: zang.Notes(Params).ImpulseQueue,
+        mod: PMOscInstrument,
+        trig: zang.Trigger(Params),
     };
 
-    iq: zang.Notes(NoteParams).ImpulseQueue,
+    const Porta = struct {
+        const Params = struct { value: f32, note_on: bool };
+
+        iq: zang.Notes(Params).ImpulseQueue,
+        mod: zang.Portamento,
+        trig: zang.Trigger(Params),
+    };
+
     key: ?i32,
-    instr: zang.Triggerable(PMOscInstrument),
-    ratio_iq: zang.Notes(zang.Portamento.Params).ImpulseQueue,
-    multiplier_iq: zang.Notes(zang.Portamento.Params).ImpulseQueue,
-    ratio_portamento: zang.Triggerable(zang.Portamento),
-    multiplier_portamento: zang.Triggerable(zang.Portamento),
+    first: bool,
     mode: u32,
+    mode_iq: zang.Notes(u32).ImpulseQueue,
+    instr: Instr,
+    ratio: Porta,
+    multiplier: Porta,
 
     pub fn init() MainModule {
         return MainModule {
-            .iq = zang.Notes(NoteParams).ImpulseQueue.init(),
             .key = null,
-            .instr = zang.initTriggerable(PMOscInstrument.init()),
-            .ratio_iq = zang.Notes(zang.Portamento.Params).ImpulseQueue.init(),
-            .multiplier_iq = zang.Notes(zang.Portamento.Params).ImpulseQueue.init(),
-            .ratio_portamento = zang.initTriggerable(zang.Portamento.init()),
-            .multiplier_portamento = zang.initTriggerable(zang.Portamento.init()),
+            .first = true,
             .mode = 0,
+            .mode_iq = zang.Notes(u32).ImpulseQueue.init(),
+            .instr = Instr {
+                .iq = zang.Notes(Instr.Params).ImpulseQueue.init(),
+                .mod = PMOscInstrument.init(),
+                .trig = zang.Trigger(Instr.Params).init(),
+            },
+            .ratio = Porta {
+                .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
+                .mod = zang.Portamento.init(),
+                .trig = zang.Trigger(Porta.Params).init(),
+            },
+            .multiplier = Porta {
+                .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
+                .mod = zang.Portamento.init(),
+                .trig = zang.Trigger(Porta.Params).init(),
+            },
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        zang.zero(temps[0]);
-        self.ratio_portamento.paintFromImpulses([1][]f32{temps[0]}, [0][]f32{}, self.ratio_iq.consume());
-
-        zang.zero(temps[1]);
-        self.multiplier_portamento.paintFromImpulses([1][]f32{temps[1]}, [0][]f32{}, self.multiplier_iq.consume());
-
-        // create a new list of impulses combining multiple sources
-        // FIXME - see https://github.com/dbandstra/zang/issues/18
-        var impulses: [32]zang.Notes(PMOscInstrument.Params).Impulse = undefined;
-        var num_impulses: usize = 0;
-        for (self.iq.consume()) |impulse| {
-            impulses[num_impulses] = zang.Notes(PMOscInstrument.Params).Impulse {
-                .frame = impulse.frame,
-                .note = zang.Notes(PMOscInstrument.Params).NoteSpanNote {
-                    .id = impulse.note.id,
-                    .params = PMOscInstrument.Params {
-                        .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = impulse.note.params.freq,
-                        .note_on = impulse.note.params.note_on,
-                        .relative = self.mode == 0,
-                        .ratio = temps[0],
-                        .multiplier = temps[1],
-                    },
-                },
-            };
-            num_impulses += 1;
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        if (self.first) {
+            self.first = false;
+            self.mode_iq.push(0, self.mode);
         }
-        self.instr.paintFromImpulses(outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, impulses[0..num_impulses]);
+        // ratio
+        zang.zero(span, temps[0]);
+        {
+            var ctr = self.ratio.trig.counter(span, self.ratio.iq.consume());
+            while (self.ratio.trig.next(&ctr)) |result| {
+                self.ratio.mod.paint(result.span, [1][]f32{temps[0]}, [0][]f32{}, zang.Portamento.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
+                    .mode = .CatchUp,
+                    .velocity = 8.0,
+                    .value = switch (self.mode) {
+                        0 => result.params.value * 4.0,
+                        else => result.params.value * 880.0,
+                    },
+                    .note_on = result.params.note_on,
+                });
+            }
+        }
+        // multiplier
+        zang.zero(span, temps[1]);
+        {
+            var ctr = self.multiplier.trig.counter(span, self.multiplier.iq.consume());
+            while (self.multiplier.trig.next(&ctr)) |result| {
+                self.multiplier.mod.paint(result.span, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
+                    .mode = .CatchUp,
+                    .velocity = 8.0,
+                    .value = result.params.value * 2.0,
+                    .note_on = result.params.note_on,
+                });
+            }
+        }
+        // instr
+        {
+            var ctr = self.instr.trig.counter(span, self.instr.iq.consume());
+            while (self.instr.trig.next(&ctr)) |result| {
+                self.instr.mod.paint(result.span, outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, result.note_id_changed, PMOscInstrument.Params {
+                    .sample_rate = AUDIO_SAMPLE_RATE,
+                    .freq = result.params.freq,
+                    .note_on = result.params.note_on,
+                    .relative = self.mode == 0,
+                    .ratio = temps[0],
+                    .multiplier = temps[1],
+                });
+            }
+        }
     }
 
     pub fn mouseEvent(self: *MainModule, x: f32, y: f32, impulse_frame: usize) void {
-        // use portamentos to smooth out the mouse motion
-        self.ratio_iq.push(impulse_frame, zang.Portamento.Params {
-            .sample_rate = AUDIO_SAMPLE_RATE,
-            .mode = .CatchUp,
-            .velocity = 8.0,
-            .value = switch (self.mode) {
-                0 => x * 4.0,
-                else => x * 880.0,
-            },
-            .note_on = true,
-        });
-        self.multiplier_iq.push(impulse_frame, zang.Portamento.Params {
-            .sample_rate = AUDIO_SAMPLE_RATE,
-            .mode = .CatchUp,
-            .velocity = 8.0,
-            .value = y * 2.0,
-            .note_on = true,
-        });
+        self.ratio.iq.push(impulse_frame, Porta.Params { .value = x, .note_on = true });
+        self.multiplier.iq.push(impulse_frame, Porta.Params { .value = y, .note_on = true });
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (key == c.SDLK_SPACE and down) {
             self.mode = (self.mode + 1) % 2;
+            self.mode_iq.push(impulse_frame, self.mode);
         }
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, NoteParams {
+                self.instr.iq.push(impulse_frame, Instr.Params {
                     .freq = A4 * rel_freq,
                     .note_on = down,
                 });

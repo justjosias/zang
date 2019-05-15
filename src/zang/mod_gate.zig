@@ -1,4 +1,5 @@
-const basics = @import("basics.zig");
+const Span = @import("basics.zig").Span;
+const addScalarInto = @import("basics.zig").addScalarInto;
 
 // this is a simple version of the Envelope
 pub const Gate = struct {
@@ -12,11 +13,9 @@ pub const Gate = struct {
         return Gate {};
     }
 
-    pub fn reset(self: *Gate) void {}
-
-    pub fn paint(self: *Gate, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Gate, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         if (params.note_on) {
-            basics.addScalarInto(outputs[0], 1.0);
+            addScalarInto(span, outputs[0], 1.0);
         }
     }
 };

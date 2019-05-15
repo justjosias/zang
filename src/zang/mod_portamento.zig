@@ -1,5 +1,6 @@
 const std = @import("std");
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
+const Span = @import("basics.zig").Span;
 
 pub const Portamento = struct {
     pub const NumOutputs = 1;
@@ -28,10 +29,8 @@ pub const Portamento = struct {
         };
     }
 
-    pub fn reset(self: *Portamento) void {}
-
-    pub fn paint(self: *Portamento, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const buf = outputs[0];
+    pub fn paint(self: *Portamento, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const output = outputs[0][span.start..span.end];
 
         if (params.note_on) {
             if (self.gap) {
@@ -46,20 +45,20 @@ pub const Portamento = struct {
 
         if (params.velocity <= 0.0) {
             self.value = self.goal;
-            std.mem.set(f32, buf, self.goal);
+            std.mem.set(f32, output, self.goal);
         } else {
             switch (params.mode) {
                 .Linear => {
                     var i: u31 = 0;
-                    if (paintLineTowards(&self.value, params.sample_rate, buf, &i, 1.0 / params.velocity, self.goal)) {
+                    if (paintLineTowards(&self.value, params.sample_rate, output, &i, 1.0 / params.velocity, self.goal)) {
                         // reached the goal
-                        std.mem.set(f32, buf[i..], self.goal);
+                        std.mem.set(f32, output[i..], self.goal);
                     }
                 },
                 .CatchUp => {
-                    var i: usize = 0; while (i < buf.len) : (i += 1) {
+                    var i: usize = 0; while (i < output.len) : (i += 1) {
                         self.value += (self.goal - self.value) * (params.velocity / params.sample_rate);
-                        buf[i] = self.value;
+                        output[i] = self.value;
                     }
                 },
             }

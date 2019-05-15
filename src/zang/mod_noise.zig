@@ -1,4 +1,5 @@
 const std = @import("std");
+const Span = @import("basics.zig").Span;
 
 pub const Noise = struct {
     pub const NumOutputs = 1;
@@ -13,10 +14,8 @@ pub const Noise = struct {
         };
     }
 
-    pub fn reset(self: *Noise) void {}
-
-    pub fn paint(self: *Noise, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        const buf = outputs[0];
+    pub fn paint(self: *Noise, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        const buf = outputs[0][span.start..span.end];
         var r = self.r;
         var i: usize = 0;
 

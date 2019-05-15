@@ -45,28 +45,26 @@ pub const Instrument = struct {
         };
     }
 
-    pub fn reset(self: *Instrument) void {}
-
-    pub fn paint(self: *Instrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        zang.zero(temps[0]);
-        self.noise.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
-        zang.zero(temps[1]);
-        self.porta.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+    pub fn paint(self: *Instrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.noise.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
+        zang.zero(span, temps[1]);
+        self.porta.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
             .sample_rate = params.sample_rate,
             .mode = .CatchUp,
             .velocity = 8.0,
             .value = zang.cutoffFromFrequency(params.freq, params.sample_rate),
             .note_on = params.note_on,
         });
-        zang.zero(temps[2]);
-        self.flt.paint([1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
+        zang.zero(span, temps[2]);
+        self.flt.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[0],
             .filterType = .LowPass,
             .cutoff = zang.buffer(temps[1]),
             .resonance = 0.985,
         });
-        zang.zero(temps[0]);
-        self.env.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+        zang.zero(span, temps[0]);
+        self.env.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -74,7 +72,7 @@ pub const Instrument = struct {
             .release_duration = 1.0,
             .note_on = params.note_on,
         });
-        zang.multiply(outputs[0], temps[2], temps[0]);
+        zang.multiply(span, outputs[0], temps[2], temps[0]);
     }
 };
 
@@ -82,20 +80,25 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 3;
 
-    iq: zang.Notes(Instrument.Params).ImpulseQueue,
     keys_held: u64,
-    instr: zang.Triggerable(Instrument),
+    iq: zang.Notes(Instrument.Params).ImpulseQueue,
+    instr: Instrument,
+    trigger: zang.Trigger(Instrument.Params),
 
     pub fn init() MainModule {
         return MainModule {
-            .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
             .keys_held = 0,
-            .instr = zang.initTriggerable(Instrument.init()),
+            .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
+            .instr = Instrument.init(),
+            .trigger = zang.Trigger(Instrument.Params).init(),
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.instr.paintFromImpulses(outputs, temps, self.iq.consume());
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        var ctr = self.trigger.counter(span, self.iq.consume());
+        while (self.trigger.next(&ctr)) |result| {
+            self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+        }
     }
 
     // this is a bit different from the other examples. i'm mimicking the

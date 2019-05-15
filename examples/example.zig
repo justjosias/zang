@@ -33,15 +33,20 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     var temps: [example.MainModule.NumTemps][]f32 = undefined;
     var i: usize = undefined;
 
+    const span = zang.Span {
+        .start = 0,
+        .end = AUDIO_BUFFER_SIZE,
+    };
+
     i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
         outputs[i] = g_outputs[i][0..];
-        zang.zero(outputs[i]);
+        zang.zero(span, outputs[i]);
     }
     i = 0; while (i < example.MainModule.NumTemps) : (i += 1) {
         temps[i] = g_temps[i][0..];
     }
 
-    main_module.paint(outputs, temps);
+    main_module.paint(span, outputs, temps);
 
     const mul = 0.25;
 
@@ -62,8 +67,8 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
         }
     }
 
-    zang.copy(g_fft_real[0..], outputs[0][0..]);
-    zang.zero(g_fft_imag[0..]);
+    zang.copy(span, g_fft_real[0..], outputs[0][0..]);
+    zang.zero(span, g_fft_imag[0..]);
     fft(example.AUDIO_BUFFER_SIZE, g_fft_real[0..], g_fft_imag[0..]);
 
     pushRedrawEvent();
@@ -153,7 +158,7 @@ pub fn main() !void {
                     if (event.key.repeat == 0) {
                         c.SDL_LockAudioDevice(device);
                         // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
-                        const impulse_frame = 0;
+                        const impulse_frame = getImpulseFrame();
                         main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
                         c.SDL_UnlockAudioDevice(device);
                     }
@@ -163,7 +168,7 @@ pub fn main() !void {
                 if (comptime hasDef(example.MainModule, "mouseEvent")) {
                     const x = @intToFloat(f32, event.motion.x) / @intToFloat(f32, 640 - 1);
                     const y = @intToFloat(f32, event.motion.y) / @intToFloat(f32, 480 - 1);
-                    const impulse_frame = 0;
+                    const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
                     main_module.mouseEvent(x, y, impulse_frame);
@@ -185,6 +190,16 @@ pub fn main() !void {
     c.SDL_CloseAudioDevice(device);
     c.SDL_DestroyWindow(window);
     c.SDL_Quit();
+}
+
+// start notes at a random time within the mix buffer.
+// this is only for testing purposes, because if i start everything at 0 there
+// are some code paths not being hit.
+// TODO - actually time the proper impulse frame
+var r = std.rand.DefaultPrng.init(0);
+
+fn getImpulseFrame() usize {
+    return r.random.intRangeLessThan(usize, 0, example.AUDIO_BUFFER_SIZE);
 }
 
 // // come up with a frame index to start the sound at

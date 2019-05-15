@@ -24,8 +24,6 @@ pub const Distortion = struct {
         return Distortion {};
     }
 
-    pub fn reset(self: *Distortion) void {}
-
     pub fn paint(self: *Distortion, sample_rate: f32, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         const output = outputs[0];
 

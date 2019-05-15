@@ -55,17 +55,13 @@ pub const Instrument = struct {
         };
     }
 
-    pub fn reset(self: *Instrument) void {
-        self.env.reset();
-    }
-
-    pub fn paint(self: *Instrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
-        var i: usize = 0; while (i < temps[0].len) : (i += 1) {
+    pub fn paint(self: *Instrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        var i: usize = span.start; while (i < span.end) : (i += 1) {
             temps[0][i] = params.freq * std.math.pow(f32, 2.0, params.freq_warble[i]);
         }
         // paint with oscillator into temps[1]
-        zang.zero(temps[1]);
-        self.osc.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+        zang.zero(span, temps[1]);
+        self.osc.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
             .waveform = .Sawtooth,
             .freq = zang.buffer(temps[0]),
@@ -73,10 +69,10 @@ pub const Instrument = struct {
             .colour = 0.5,
         });
         // slight volume reduction
-        zang.multiplyWithScalar(temps[1], 0.75);
+        zang.multiplyWithScalar(span, temps[1], 0.75);
         // combine with envelope
-        zang.zero(temps[0]);
-        self.env.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Envelope.Params {
+        zang.zero(span, temps[0]);
+        self.env.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
             .attack_duration = 0.025,
             .decay_duration = 0.1,
@@ -84,10 +80,10 @@ pub const Instrument = struct {
             .release_duration = 1.0,
             .note_on = params.note_on,
         });
-        zang.zero(temps[2]);
-        zang.multiply(temps[2], temps[1], temps[0]);
+        zang.zero(span, temps[2]);
+        zang.multiply(span, temps[2], temps[1], temps[0]);
         // add main filter
-        self.main_filter.paint([1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
+        self.main_filter.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[2],
             .filterType = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(880.0, params.sample_rate)),
@@ -119,21 +115,17 @@ pub const OuterInstrument = struct {
         };
     }
 
-    pub fn reset(self: *OuterInstrument) void {
-        self.inner.reset();
-    }
-
-    pub fn paint(self: *OuterInstrument, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *OuterInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
         // temps[0] = filtered noise
         // note: filter frequency is set to 4hz. i wanted to go slower but
         // unfortunately at below 4, the filter degrades and the output
         // frequency slowly sinks to zero
         // (the number is relative to sample rate, so at 96khz it should be at
         // least 8hz)
-        zang.zero(temps[1]);
-        self.noise.paint([1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
-        zang.zero(temps[0]);
-        self.noise_filter.paint([1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
+        zang.zero(span, temps[1]);
+        self.noise.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
+        zang.zero(span, temps[0]);
+        self.noise_filter.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
             .filterType = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(4.0, params.sample_rate)),
@@ -141,10 +133,10 @@ pub const OuterInstrument = struct {
         });
 
         if ((params.mode & 1) == 0) {
-            zang.multiplyWithScalar(temps[0], 4.0);
+            zang.multiplyWithScalar(span, temps[0], 4.0);
         }
 
-        self.inner.paint(outputs, [3][]f32{temps[1], temps[2], temps[3]}, Instrument.Params {
+        self.inner.paint(span, outputs, [3][]f32{temps[1], temps[2], temps[3]}, note_id_changed, Instrument.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .freq_warble = temps[0],
@@ -157,39 +149,46 @@ pub const MainModule = struct {
     pub const NumOutputs = 2;
     pub const NumTemps = 5;
 
-    iq: zang.Notes(OuterInstrument.Params).ImpulseQueue,
     key: ?i32,
-    outer: zang.Triggerable(OuterInstrument),
+    iq: zang.Notes(OuterInstrument.Params).ImpulseQueue,
+    outer: OuterInstrument,
+    trigger: zang.Trigger(OuterInstrument.Params),
     echoes: StereoEchoes,
     mode: u32,
 
     pub fn init() MainModule {
         return MainModule {
-            .iq = zang.Notes(OuterInstrument.Params).ImpulseQueue.init(),
             .key = null,
-            .outer = zang.initTriggerable(OuterInstrument.init()),
+            .iq = zang.Notes(OuterInstrument.Params).ImpulseQueue.init(),
+            .outer = OuterInstrument.init(),
+            .trigger = zang.Trigger(OuterInstrument.Params).init(),
             .echoes = StereoEchoes.init(),
             .mode = 0,
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         // FIXME - here's something missing in the API... what if i want to
         // pass some "global" params to paintFromImpulses? in other words,
         // saw that of the fields in OuterInstrument.Params, i only want to set
         // some of them in the impulse queue. others i just want to pass once,
         // here. for example i would pass the "mode" field.
-        zang.zero(temps[0]);
-        self.outer.paintFromImpulses([1][]f32{temps[0]}, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, self.iq.consume());
+        zang.zero(span, temps[0]);
+        {
+            var ctr = self.trigger.counter(span, self.iq.consume());
+            while (self.trigger.next(&ctr)) |result| {
+                self.outer.paint(result.span, [1][]f32{temps[0]}, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, result.note_id_changed, result.params);
+            }
+        }
 
         if ((self.mode & 2) == 0) {
             // avoid the echo effect
-            zang.addInto(outputs[0], temps[0]);
-            zang.addInto(outputs[1], temps[0]);
-            zang.zero(temps[0]);
+            zang.addInto(span, outputs[0], temps[0]);
+            zang.addInto(span, outputs[1], temps[0]);
+            zang.zero(span, temps[0]);
         }
 
-        self.echoes.paint(outputs, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, StereoEchoes.Params {
+        self.echoes.paint(span, outputs, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, StereoEchoes.Params {
             .input = temps[0],
             .feedback_volume = 0.6,
             .cutoff = 0.1,

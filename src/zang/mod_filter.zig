@@ -3,7 +3,8 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const std = @import("std");
-const ConstantOrBuffer = @import("triggerable.zig").ConstantOrBuffer;
+const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
+const Span = @import("basics.zig").Span;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
@@ -45,15 +46,16 @@ pub const Filter = struct {
         };
     }
 
-    pub fn reset(self: *Filter) void {}
-
-    pub fn paint(self: *Filter, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Filter, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
         // TODO make resonance a ConstantOrBuffer as well
+        const output = outputs[0][span.start..span.end];
+        const input = params.input[span.start..span.end];
+
         switch (params.cutoff) {
             .Constant => |cutoff|
-                self.paintSimple(outputs[0], params.input, params.filterType, cutoff, params.resonance),
+                self.paintSimple(output, input, params.filterType, cutoff, params.resonance),
             .Buffer => |cutoff|
-                self.paintControlledCutoff(outputs[0], params.input, params.filterType, cutoff, params.resonance),
+                self.paintControlledCutoff(output, input, params.filterType, cutoff[span.start..span.end], params.resonance),
         }
     }
 

@@ -25,25 +25,39 @@ pub const MainModule = struct {
     pub const NumOutputs = 1;
     pub const NumTemps = 4;
 
-    iq0: zang.Notes(PMOscInstrument.Params).ImpulseQueue,
     key0: ?i32,
-    instr0: zang.Triggerable(PMOscInstrument),
+    iq0: zang.Notes(PMOscInstrument.Params).ImpulseQueue,
+    instr0: PMOscInstrument,
+    trig0: zang.Trigger(PMOscInstrument.Params),
     iq1: zang.Notes(FilteredSawtoothInstrument.Params).ImpulseQueue,
-    instr1: zang.Triggerable(FilteredSawtoothInstrument),
+    instr1: FilteredSawtoothInstrument,
+    trig1: zang.Trigger(FilteredSawtoothInstrument.Params),
 
     pub fn init() MainModule {
         return MainModule{
-            .iq0 = zang.Notes(PMOscInstrument.Params).ImpulseQueue.init(),
             .key0 = null,
-            .instr0 = zang.initTriggerable(PMOscInstrument.init(1.0)),
+            .iq0 = zang.Notes(PMOscInstrument.Params).ImpulseQueue.init(),
+            .instr0 = PMOscInstrument.init(1.0),
+            .trig0 = zang.Trigger(PMOscInstrument.Params).init(),
             .iq1 = zang.Notes(FilteredSawtoothInstrument.Params).ImpulseQueue.init(),
-            .instr1 = zang.initTriggerable(FilteredSawtoothInstrument.init()),
+            .instr1 = FilteredSawtoothInstrument.init(),
+            .trig1 = zang.Trigger(FilteredSawtoothInstrument.Params).init(),
         };
     }
 
-    pub fn paint(self: *MainModule, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
-        self.instr0.paintFromImpulses(outputs, temps, self.iq0.consume());
-        self.instr1.paintFromImpulses(outputs, [3][]f32{temps[0], temps[1], temps[2]}, self.iq1.consume());
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+        {
+            var ctr = self.trig0.counter(span, self.iq0.consume());
+            while (self.trig0.next(&ctr)) |result| {
+                self.instr0.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            }
+        }
+        {
+            var ctr = self.trig1.counter(span, self.iq1.consume());
+            while (self.trig1.next(&ctr)) |result| {
+                self.instr1.paint(result.span, outputs, [3][]f32{temps[0], temps[1], temps[2]}, result.note_id_changed, result.params);
+            }
+        }
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
