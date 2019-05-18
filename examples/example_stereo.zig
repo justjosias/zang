@@ -1,9 +1,8 @@
 // in this example a stereophonic noise sound oscillates slowly from left to right
 
-const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;

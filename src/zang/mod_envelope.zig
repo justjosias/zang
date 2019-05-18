@@ -1,4 +1,3 @@
-const std = @import("std");
 const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 const Span = @import("basics.zig").Span;
 

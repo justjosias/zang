@@ -1,7 +1,6 @@
-const std = @import("std");
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 
 pub fn Note(comptime NoteParamsType: type) type {
     return struct {

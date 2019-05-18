@@ -1,7 +1,7 @@
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const PhaseModOscillator = @import("modules.zig").PhaseModOscillator;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

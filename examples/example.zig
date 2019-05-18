@@ -3,7 +3,7 @@
 const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const fft = @import("common/fft.zig").fft;
 const example = @import(@import("build_options").example);
 

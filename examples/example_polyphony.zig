@@ -1,11 +1,10 @@
 // this a "brute force" approach to polyphony... every possible note gets its
 // own voice that is always running. well, it works
 
-const std = @import("std");
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").NiceInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

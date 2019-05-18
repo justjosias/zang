@@ -2,7 +2,6 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/LICENSE.txt
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
-const std = @import("std");
 const Span = @import("basics.zig").Span;
 
 const fc32bit = f32(1 << 32);

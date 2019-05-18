@@ -1,11 +1,10 @@
 // maybe this would be better implemented as a module that just converted
 // impulses to impulses (somehow), then you could use it with anything...
 
-const std = @import("std");
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

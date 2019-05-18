@@ -1,8 +1,7 @@
-const std = @import("std");
 const zang = @import("zang");
 const f = @import("zang-12tet");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").PMOscInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

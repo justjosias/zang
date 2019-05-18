@@ -1,6 +1,6 @@
 const zang = @import("zang");
 const common = @import("common.zig");
-const c = @import("common/sdl.zig");
+const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
 const StereoEchoes = @import("modules.zig").StereoEchoes;
 

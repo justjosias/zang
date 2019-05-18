@@ -69,7 +69,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.next_id += 1;
 
                 if (self.length >= self.impulses_array.len) {
-                    std.debug.warn("ImpulseQueue: no more slots\n");
+                    std.debug.warn("ImpulseQueue: no more slots\n"); // FIXME
                     return;
                 }
                 self.impulses_array[self.length] = Impulse {
