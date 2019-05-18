@@ -23,6 +23,28 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "polyphony", "example_polyphony.zig");
     example(b, mode, windows, "delay", "example_delay.zig");
     example(b, mode, windows, "mouse", "example_mouse.zig");
+
+    {
+        var exe = b.addExecutable("write_wav.zig", "examples/write_wav.zig");
+        exe.setBuildMode(mode);
+
+        if (windows) {
+            exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
+        }
+
+        exe.addPackagePath("zang", "src/zang.zig");
+        exe.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+
+        exe.setOutputDir("zig-cache");
+
+        b.default_step.dependOn(&exe.step);
+
+        b.installArtifact(exe);
+
+        const play = b.step("write_wav", "Run example 'write_wav'");
+        const run = exe.run();
+        play.dependOn(&run.step);
+    }
 }
 
 fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []const u8, comptime source_file: []const u8) void {

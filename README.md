@@ -6,7 +6,7 @@ This library provides functions to "paint" audio (generators and effects) into b
 The library is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, they will be in separate libraries.
 
 ## Examples
-All the examples use [SDL2](https://www.libsdl.org/), so make sure that's installed. The library is built on the latest (master) version of Zig.
+All the examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed. The library is built on the latest (master) version of Zig.
 
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 
@@ -31,6 +31,8 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 `zig build delay`: Play the keyboard with a stereo filtered echo effect.
 
 `zig build mouse`: Play the keyboard while changing sound parameters by moving the mouse.
+
+`zig build write_wav`: Writes the melody of the `song` example to a file called "out.wav" in the current directory. It does not use SDL or libc.
 
 ## Features
 Modules:
