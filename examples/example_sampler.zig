@@ -16,6 +16,9 @@ pub const DESCRIPTION =
     c\\with a randomly selected speed between
     c\\50% and 150%.
     c\\
+    c\\Press 'b' to do the same, but with the
+    c\\sound playing in reverse.
+    c\\
     c\\Press 'd' to toggle distortion.
 ;
 
@@ -80,6 +83,13 @@ pub const MainModule = struct {
         if (down and key == c.SDLK_SPACE) {
             self.iq.push(impulse_frame, zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * (0.5 + 1.0 * self.r.random.float(f32)),
+                .wav = self.wav,
+                .loop = true,
+            });
+        }
+        if (down and key == c.SDLK_b) {
+            self.iq.push(impulse_frame, zang.Sampler.Params {
+                .sample_rate = AUDIO_SAMPLE_RATE * -(0.5 + 1.0 * self.r.random.float(f32)),
                 .wav = self.wav,
                 .loop = true,
             });
