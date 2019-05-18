@@ -15,17 +15,21 @@ pub const DESCRIPTION =
     c\\Press spacebar to reset the sampler
     c\\with a randomly selected speed between
     c\\50% and 150%.
+    c\\
+    c\\Press 'd' to toggle distortion.
 ;
 
 pub const MainModule = struct {
     pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const NumTemps = 1;
 
     wav: zang.WavContents,
     iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
     sampler: zang.Sampler,
     trigger: zang.Trigger(zang.Sampler.Params),
+    distortion: zang.Distortion,
     r: std.rand.Xoroshiro128,
+    distort: bool,
     first: bool,
 
     pub fn init() MainModule {
@@ -34,7 +38,9 @@ pub const MainModule = struct {
             .iq = zang.Notes(zang.Sampler.Params).ImpulseQueue.init(),
             .sampler = zang.Sampler.init(),
             .trigger = zang.Trigger(zang.Sampler.Params).init(),
+            .distortion = zang.Distortion.init(),
             .r = std.rand.DefaultPrng.init(0),
+            .distort = false,
             .first = true,
         };
     }
@@ -49,11 +55,25 @@ pub const MainModule = struct {
             });
         }
 
+        zang.zero(span, temps[0]);
+
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.sampler.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.sampler.paint(result.span, [1][]f32{temps[0]}, [0][]f32{}, result.note_id_changed, result.params);
         }
-        zang.multiplyWithScalar(span, outputs[0], 2.5);
+        zang.multiplyWithScalar(span, temps[0], 2.5);
+
+        if (self.distort) {
+            self.distortion.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Distortion.Params {
+                .input = temps[0],
+                .distortionType = .Overdrive,
+                .ingain = 0.9,
+                .outgain = 0.5,
+                .offset = 0.0,
+            });
+        } else {
+            zang.addInto(span, outputs[0], temps[0]);
+        }
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
@@ -63,6 +83,9 @@ pub const MainModule = struct {
                 .wav = self.wav,
                 .loop = true,
             });
+        }
+        if (down and key == c.SDLK_d) {
+            self.distort = !self.distort;
         }
     }
 };

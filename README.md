@@ -24,7 +24,7 @@ All the examples use [SDL2](https://www.libsdl.org/), so make sure that's instal
 
 `zig build arpeggiator`: Rapid chiptune-like arpeggiator that cycles between whatever keys you have held down.
 
-`zig build sampler`: Loop a WAV file (drum loop from [free-loops.com](http://free-loops.com/6791-live-drums.html)). Press space to restart the loop at a randomly altered playback speed.
+`zig build sampler`: Loop a WAV file (drum loop from [free-loops.com](http://free-loops.com/6791-live-drums.html)). Press space to restart the loop at a randomly altered playback speed. Press 'd' to toggle a distortion effect.
 
 `zig build polyphony`: Each key is an individual voice so you can hold down as many keys as your keyboard wiring lets you. Press space to cycle through various levels of decimation (artificial sample rate reduction).
 
