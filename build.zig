@@ -25,7 +25,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "mouse", "example_mouse.zig");
 
     {
-        var exe = b.addExecutable("write_wav.zig", "examples/write_wav.zig");
+        var exe = b.addExecutable("write_wav", "examples/write_wav.zig");
         exe.setBuildMode(mode);
 
         if (windows) {
