@@ -19,6 +19,8 @@ var g_redraw_event: c.Uint32 = undefined;
 var g_fft_real = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
 var g_fft_imag = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
 
+var g_drawing = true;
+
 const fontdata = @embedFile("font.dat");
 
 const screen_w = 512;
@@ -57,6 +59,10 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
 
     i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
         zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, mul);
+    }
+
+    if (!g_drawing) {
+        return;
     }
 
     // i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
@@ -158,6 +164,12 @@ pub fn main() !void {
                 const down = event.type == c.SDL_KEYDOWN;
                 if (event.key.keysym.sym == c.SDLK_ESCAPE and down) {
                     break;
+                }
+                if (event.key.keysym.sym == c.SDLK_F1 and down) {
+                    c.SDL_LockAudioDevice(device);
+                    g_drawing = !g_drawing;
+                    c.clear(window, screen, fontdata[0..].ptr, c"Press F1 to re-enable drawing");
+                    c.SDL_UnlockAudioDevice(device);
                 }
                 if (comptime hasDef(example.MainModule, "keyEvent")) {
                     if (event.key.repeat == 0) {

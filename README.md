@@ -6,7 +6,9 @@ This library provides functions to "paint" audio (generators and effects) into b
 The library is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, they will be in separate libraries.
 
 ## Examples
-All the examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed. The library is built on the latest (master) version of Zig.
+The library is frequently updated to use the latest (master) version of Zig. Also, the examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed.
+
+Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. All drawing can be toggled by hitting the F1 key (this is useful for profiling the audio code).
 
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 

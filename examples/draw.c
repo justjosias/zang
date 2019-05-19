@@ -10,10 +10,9 @@ static const int fft_height = 100;
 
 static unsigned int waveformbuf[screen_w * waveform_height];
 static int drawindex;
+static int firstdraw = 1;
 
 void plot(float sample_min, float sample_max) {
-    static int first = 1;
-
     const unsigned int background_color = 0x18181818;
     const unsigned int waveform_color = 0x44444444;
     const unsigned int clipped_color = 0xFFFF0000;
@@ -26,13 +25,6 @@ void plot(float sample_min, float sample_max) {
     int y1 = (int)(y_mid - sample_min_clipped * waveform_height / 2 + 0.5f);
     int sx = drawindex;
     int sy = 0;
-
-    if (first) {
-        /* initialize background and center line */
-        memset(waveformbuf, 0x18, sizeof(waveformbuf));
-        memset(waveformbuf + y_mid * screen_w, 0x66, screen_w * sizeof(unsigned int));
-        first = 0;
-    }
 
     if (sample_max_clipped != sample_max)
         waveformbuf[sy++ * screen_w + sx] = clipped_color;
@@ -131,8 +123,32 @@ static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fon
 void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, size_t bufsize, const float *fft) {
     SDL_LockSurface(screen);
 
+    if (firstdraw) {
+        memset(screen->pixels, 0, screen_h * screen->pitch);
+
+        /* initialize waveform background and center line */
+        memset(waveformbuf, 0x18, sizeof(waveformbuf));
+        memset(waveformbuf + (waveform_height / 2) * screen_w, 0x66, screen_w * sizeof(unsigned int));
+    }
+
     drawwaveform(screen->pixels, screen->pitch >> 2);
     drawfft(screen->pixels, screen->pitch >> 2, bufsize, fft);
+    drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
+
+    SDL_UnlockSurface(screen);
+    SDL_UpdateWindowSurface(window);
+
+    firstdraw = 0;
+}
+
+void clear(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s) {
+    SDL_LockSurface(screen);
+
+    memset(screen->pixels, 0, screen_h * screen->pitch);
+    memset(waveformbuf, 0, screen_w * waveform_height * sizeof(unsigned int));
+    drawindex = 0;
+    firstdraw = 1;
+
     drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
 
     SDL_UnlockSurface(screen);
