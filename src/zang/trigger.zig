@@ -68,15 +68,8 @@ pub fn Trigger(comptime ParamsType: type) type {
 
                 ctr.start = note_span.end;
 
-                // if note_span.note is null, the first note hasn't started yet
-                // (there is no way to go back to null once things start playing)
                 if (note_span.note) |note| {
-                    var note_id_changed = false;
-
-                    if (if (self.note) |self_note| (note.id != self_note.id) else true) {
-                        self.note = note;
-                        note_id_changed = true;
-                    }
+                    self.note = note;
 
                     return NewPaintReturnValue {
                         .span = Span {
@@ -84,7 +77,7 @@ pub fn Trigger(comptime ParamsType: type) type {
                             .end = note_span.end,
                         },
                         .params = note.params,
-                        .note_id_changed = note_id_changed,
+                        .note_id_changed = if (self.note) |self_note| (note.id != self_note.id) else true,
                     };
                 }
             }
