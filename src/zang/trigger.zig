@@ -1,4 +1,3 @@
-const std = @import("std");
 const Impulse = @import("notes.zig").Impulse;
 const Notes = @import("notes.zig").Notes;
 const Span = @import("basics.zig").Span;
@@ -64,19 +63,8 @@ pub fn Trigger(comptime ParamsType: type) type {
         }
 
         pub fn next(self: *@This(), ctr: *Counter) ?NewPaintReturnValue {
-            var first = true;
-
             while (ctr.start < ctr.end) {
-                const note_span = blk: {
-                    const a = carryOver(ctr, self.note, ctr.iap, ctr.start, ctr.end);
-                    if (a) |aa| break :blk aa;
-
-                    break :blk getNextNoteSpan(ctr, self.note, ctr.iap, ctr.start, ctr.end);
-                };
-
-                std.debug.assert(note_span.start == ctr.start);
-                std.debug.assert(note_span.end > ctr.start);
-                std.debug.assert(note_span.end <= ctr.end);
+                const note_span = carryOver(ctr, self.note) orelse getNextNoteSpan(ctr, self.note);
 
                 ctr.start = note_span.end;
 
@@ -104,22 +92,17 @@ pub fn Trigger(comptime ParamsType: type) type {
             return null;
         }
 
-        fn carryOver(ctr: *const Counter, current_note: ?NoteSpanNote, iap: Notes(ParamsType).ImpulsesAndParamses, dest_start: usize, dest_end: usize) ?NoteSpan {
-            std.debug.assert(dest_start < dest_end);
-
-            const impulses = iap.impulses;
-            const paramses = iap.paramses;
-
+        fn carryOver(ctr: *const Counter, current_note: ?NoteSpanNote) ?NoteSpan {
             // check for currently playing note
             if (current_note) |note| {
-                if (ctr.impulse_index < impulses.len) {
-                    const next_impulse_frame = impulses[ctr.impulse_index].frame;
+                if (ctr.impulse_index < ctr.iap.impulses.len) {
+                    const next_impulse_frame = ctr.iap.impulses[ctr.impulse_index].frame;
 
-                    if (next_impulse_frame > dest_start) {
+                    if (next_impulse_frame > ctr.start) {
                         // next impulse starts later, so play the current note for now
                         return NoteSpan {
-                            .start = dest_start,
-                            .end = min(usize, dest_end, next_impulse_frame),
+                            .start = ctr.start,
+                            .end = min(usize, ctr.end, next_impulse_frame),
                             .note = note,
                         };
                     } else {
@@ -129,8 +112,8 @@ pub fn Trigger(comptime ParamsType: type) type {
                 } else {
                     // no new impulses - play current note for the whole buffer
                     return NoteSpan {
-                        .start = dest_start,
-                        .end = dest_end,
+                        .start = ctr.start,
+                        .end = ctr.end,
                         .note = note,
                     };
                 }
@@ -139,14 +122,12 @@ pub fn Trigger(comptime ParamsType: type) type {
             }
         }
 
-        fn getNextNoteSpan(ctr: *Counter, current_note: ?NoteSpanNote, iap: Notes(ParamsType).ImpulsesAndParamses, dest_start: usize, dest_end: usize) NoteSpan {
-            std.debug.assert(dest_start < dest_end);
-
-            const impulses = iap.impulses[ctr.impulse_index..];
-            const paramses = iap.paramses[ctr.impulse_index..];
+        fn getNextNoteSpan(ctr: *Counter, current_note: ?NoteSpanNote) NoteSpan {
+            const impulses = ctr.iap.impulses[ctr.impulse_index..];
+            const paramses = ctr.iap.paramses[ctr.impulse_index..];
 
             for (impulses) |impulse, i| {
-                if (impulse.frame >= dest_end) {
+                if (impulse.frame >= ctr.end) {
                     // this impulse (and all after it, since they're in chronological order)
                     // starts after the end of the buffer.
                     // this should never happen (you should never create an impulse at >=
@@ -154,10 +135,10 @@ pub fn Trigger(comptime ParamsType: type) type {
                     break;
                 }
 
-                if (impulse.frame > dest_start) {
+                if (impulse.frame > ctr.start) {
                     // gap before the note begins
                     return NoteSpan {
-                        .start = dest_start,
+                        .start = ctr.start,
                         .end = impulse.frame,
                         .note = null,
                     };
@@ -169,17 +150,17 @@ pub fn Trigger(comptime ParamsType: type) type {
                 // end of the buffer, whichever comes first
                 const note_end_clipped =
                     if (i + 1 < impulses.len)
-                        min(usize, dest_end, impulses[i + 1].frame)
+                        min(usize, ctr.end, impulses[i + 1].frame)
                     else
-                        dest_end;
+                        ctr.end;
 
-                if (note_end_clipped <= dest_start) {
+                if (note_end_clipped <= ctr.start) {
                     // impulse is entirely in the past. skip it
                     continue;
                 }
 
                 return NoteSpan {
-                    .start = dest_start,
+                    .start = ctr.start,
                     .end = note_end_clipped,
                     .note = NoteSpanNote {
                         .id = impulse.note_id,
@@ -190,8 +171,8 @@ pub fn Trigger(comptime ParamsType: type) type {
 
             // no more impulses
             return NoteSpan {
-                .start = dest_start,
-                .end = dest_end,
+                .start = ctr.start,
+                .end = ctr.end,
                 .note = null,
             };
         }
