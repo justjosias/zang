@@ -69,11 +69,16 @@ static void drawfft(unsigned int *pixels, int pitch, size_t bufsize, const float
     for (i = 0; i < (b >> 1); i++) {
         const float v = fabs(values[i << step]) * inv_buffer_size;
         const float v2 = sqrt(v); // sqrt to make things more visible
-        const int value = (int)(v2 * (float)height + 0.5f);
+        const float fv = v2 * (float)height;
+        const int value = (int)floor(fv);
         const int value_clipped = value > height - 1 ? height - 1 : value;
         int sy = y;
         for (; sy < y + height - value_clipped; sy++) {
             pixels[sy * pitch + i] = background_color;
+        }
+        if (sy < y + height) {
+            const unsigned int c = 0x44 * (fv - value);
+            pixels[sy++ * pitch + i] = 0xFF000000 | (c << 16) | (c << 8) | c;
         }
         for (; sy < y + height; sy++) {
             pixels[sy * pitch + i] = color;
