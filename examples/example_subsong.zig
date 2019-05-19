@@ -13,9 +13,9 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_subsong
     c\\
-    c\\Play with the keyboard - a little
-    c\\melody is played with each keypress.
-    c\\This demonstrates "notes within notes".
+    c\\Play with the keyboard - a little melody is played
+    c\\with each keypress. This demonstrates "notes within
+    c\\notes".
 ;
 
 const A4 = 440.0;

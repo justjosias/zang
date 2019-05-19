@@ -19,6 +19,11 @@ var g_redraw_event: c.Uint32 = undefined;
 var g_fft_real = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
 var g_fft_imag = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
 
+const fontdata = @embedFile("font.dat");
+
+const screen_w = 512;
+const screen_h = 320;
+
 fn pushRedrawEvent() void {
     var event: c.SDL_Event = undefined;
     event.type = g_redraw_event;
@@ -99,7 +104,7 @@ pub fn main() !void {
         c"zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        640, 480,
+        screen_w, screen_h,
         0,
     ) orelse {
         c.SDL_Log(c"Unable to create window: %s", c.SDL_GetError());
@@ -166,8 +171,8 @@ pub fn main() !void {
             },
             c.SDL_MOUSEMOTION => {
                 if (comptime hasDef(example.MainModule, "mouseEvent")) {
-                    const x = @intToFloat(f32, event.motion.x) / @intToFloat(f32, 640 - 1);
-                    const y = @intToFloat(f32, event.motion.y) / @intToFloat(f32, 480 - 1);
+                    const x = @intToFloat(f32, event.motion.x) / @intToFloat(f32, screen_w - 1);
+                    const y = @intToFloat(f32, event.motion.y) / @intToFloat(f32, screen_h - 1);
                     const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
@@ -180,7 +185,7 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(window, screen, example.DESCRIPTION, example.AUDIO_BUFFER_SIZE, g_fft_real[0..].ptr);
+            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, example.AUDIO_BUFFER_SIZE, g_fft_real[0..].ptr);
             c.SDL_UnlockAudioDevice(device);
         }
     }

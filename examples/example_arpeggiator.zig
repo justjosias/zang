@@ -14,10 +14,9 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_arpeggiator
     c\\
-    c\\Play an instrument with the keyboard.
-    c\\You can hold down multiple notes. The
-    c\\arpeggiator will cycle through them
-    c\\lowest to highest.
+    c\\Play an instrument with the keyboard. You can hold
+    c\\down multiple notes. The arpeggiator will cycle
+    c\\through them lowest to highest.
 ;
 
 const A4 = 440.0;

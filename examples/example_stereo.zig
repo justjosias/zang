@@ -1,5 +1,3 @@
-// in this example a stereophonic noise sound oscillates slowly from left to right
-
 const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
@@ -11,9 +9,8 @@ pub const AUDIO_BUFFER_SIZE = 4096;
 pub const DESCRIPTION =
     c\\example_stereo
     c\\
-    c\\A wind-like noise effect slowly
-    c\\oscillates between the left and right
-    c\\speakers.
+    c\\A wind-like noise effect slowly oscillates between the
+    c\\left and right speakers.
     c\\
     c\\This example is not interactive.
 ;

@@ -7,9 +7,8 @@ const StereoEchoes = @import("modules.zig").StereoEchoes;
 pub const DESCRIPTION =
     c\\example_delay
     c\\
-    c\\Play a square-wave instrument with the
-    c\\keyboard.
-    c\\There is a stereo echo effect.
+    c\\Play a square-wave instrument with the keyboard. There
+    c\\is a stereo echo effect.
 ;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

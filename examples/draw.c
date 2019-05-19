@@ -1,22 +1,25 @@
 #include <math.h>
 #include <SDL2/SDL.h>
 
-static float drawbuf[640][2];
+static const int screen_w = 512;
+static const int screen_h = 320;
+
+static float drawbuf[screen_w][2];
 static int drawindex;
 
 void plot(float min, float max) {
     drawbuf[drawindex][0] = min;
     drawbuf[drawindex][1] = max;
-    if (++drawindex == 640) {
+    if (++drawindex == screen_w) {
         drawindex = 0;
     }
 }
 
 static void drawwaveform(unsigned int *pixels, int pitch) {
-    const int width = 640;
+    const int width = screen_w;
     const int height = 80;
-    const int bottom_padding = 10;
-    const int y = 480 - bottom_padding - height;
+    const int bottom_padding = 8;
+    const int y = screen_h - bottom_padding - height;
     const int y_mid = y + height / 2;
     const unsigned int background_color = 0x18181818;
     const unsigned int waveform_color = 0x44444444;
@@ -51,7 +54,7 @@ static void drawwaveform(unsigned int *pixels, int pitch) {
 
 static void drawfft(unsigned int *pixels, int pitch, size_t bufsize, const float *values) {
     const int height = 100;
-    const int y = 480 - 10 - 80 - height;
+    const int y = screen_h - 8 - 80 - height;
     const unsigned int background_color = 0x00000000;
     const unsigned int color = 0x44444444;
     const float inv_buffer_size = 1.0f / bufsize;
@@ -86,50 +89,39 @@ static void drawfft(unsigned int *pixels, int pitch, size_t bufsize, const float
     }
 }
 
-static void drawstring(unsigned int *pixels, int pitch, const char *s) {
-    static const char *font =
-        "0000000044444040::000000::O:O::04N5>D?403C842IH02552E9F084200000"
-        "84222480248884204E>4>E40044O440000000442000O00000000066000@84210"
-        ">AIECA>0465444O0>A@@<3O0>A@<@A>0<:999O80O1?@@A>0>1?AAA>0OA@88440"
-        ">AA>AA>0>AAAN@>000400400004004428421248000O0O000248@8420>AA84040"
-        ">A@FEE>0>AAAOAA0?BB>BB?0>A111A>0?BBBBB?0O11O11O0O11O1110>A11IAN0"
-        "AAAOAAA0>44444>0L8888960A95359A0111111O0AKKEEEA0ACCEIIA0>AAAAA>0"
-        "?AAA?110>AAAE9F0?AAA?9A0>A1>@A>0O4444440AAAAAA>0AA:::440AAEEE::0"
-        "AA:4:AA0AA:44440O@8421O0>22222>0001248@0>88888>04:A00000000000O0"
-        "2480000000>@NA^011=CAA?000>A1A>0@@FIAAN000>AO1>0<22O222000^AAN@>"
-        "11=CAAA04064444080<8888622B:6:B0644444<000?EEEE000?AAAA000>AAA>0"
-        "00>AA?1100>AAN@@00=C111000N1>@?022O222<0009999F000AA::4000AEE::0"
-        "00A:4:A000AA::4300O842O0H44244H04444444034484430002E800000000000";
-
-    const int ix = 8;
-    const int iy = 8;
-    const unsigned int colour = 0x88888888;
+static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fontdata, const char *s) {
+    const int fontchar_w = 8;
+    const int fontchar_h = 13;
+    const int start_x = 12;
+    const int start_y = 13;
+    const unsigned int colour = 0xAAAAAAAA;
 
     // warning: does no checking for drawing off screen
-    int x = ix, y = iy;
+    int x = start_x, y = start_y;
     for (; *s; s++) {
         if (*s == '\n') {
-            x = ix; y += 20;
+            x = start_x;
+            y += fontchar_h + 1;
         } else if (*s >= 32) {
-            int index = (*s - 32) << 3, sx, sy;
-            for (sy = 0; sy < 16; sy++) {
-                for (sx = 0; sx < 16; sx++) {
-                    if ((font[index + (sy >> 1)] - '0') & (1 << (sx >> 1))) {
+            int index = (*s - 32) * fontchar_h, sx, sy;
+            for (sy = 0; sy < fontchar_h; sy++) {
+                for (sx = 0; sx < fontchar_w; sx++) {
+                    if ((fontdata[index + sy]) & (1 << sx)) {
                         pixels[(y + sy) * pitch + x + sx] = colour;
                     }
                 }
             }
-            x += 16;
+            x += fontchar_w + 1;
         }
     }
 }
 
-void draw(SDL_Window *window, SDL_Surface *screen, const char *s, size_t bufsize, const float *fft) {
+void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, size_t bufsize, const float *fft) {
     SDL_LockSurface(screen);
 
     drawwaveform(screen->pixels, screen->pitch >> 2);
     drawfft(screen->pixels, screen->pitch >> 2, bufsize, fft);
-    drawstring(screen->pixels, screen->pitch >> 2, s);
+    drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
 
     SDL_UnlockSurface(screen);
     SDL_UpdateWindowSurface(window);

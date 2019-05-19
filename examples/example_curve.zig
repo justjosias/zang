@@ -9,10 +9,9 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_curve
     c\\
-    c\\Trigger a weird sound effect with the
-    c\\keyboard. The sound is defined using a
-    c\\curve, and scales with the frequency of
-    c\\the key you press.
+    c\\Trigger a weird sound effect with the keyboard. The
+    c\\sound is defined using a curve, and scales with the
+    c\\frequency of the key you press.
 ;
 
 const carrier_curve = []zang.CurveNode {

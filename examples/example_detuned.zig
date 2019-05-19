@@ -11,22 +11,18 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_detuned
     c\\
-    c\\Play an instrument with the keyboard.
-    c\\There is a random warble added to the
-    c\\note frequencies, which was created
-    c\\using white noise and a low-pass
-    c\\filter.
+    c\\Play an instrument with the keyboard. There is a
+    c\\random warble added to the note frequencies, which was
+    c\\created using white noise and a low-pass filter.
     c\\
-    c\\Press spacebar to cycle through a few
-    c\\modes:
+    c\\Press spacebar to cycle through a few modes:
     c\\
     c\\  1. wide warble, no echo
     c\\  2. narrow warble, no echo
     c\\  3. wide warble, echo
-    c\\  4. narrow warble, echo (here the
-    c\\     warble does a good job of avoiding
-    c\\     constructive interference from the
-    c\\     echo)
+    c\\  4. narrow warble, echo (here the warble does a good
+    c\\     job of avoiding constructive interference from
+    c\\     the echo)
 ;
 
 const A4 = 440.0;

@@ -12,12 +12,11 @@ pub const DESCRIPTION =
     c\\
     c\\Loop a WAV file.
     c\\
-    c\\Press spacebar to reset the sampler
-    c\\with a randomly selected speed between
-    c\\50% and 150%.
+    c\\Press spacebar to reset the sampler with a randomly
+    c\\selected speed between 50% and 150%.
     c\\
-    c\\Press 'b' to do the same, but with the
-    c\\sound playing in reverse.
+    c\\Press 'b' to do the same, but with the sound playing
+    c\\in reverse.
     c\\
     c\\Press 'd' to toggle distortion.
 ;

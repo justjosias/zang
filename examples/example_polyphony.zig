@@ -14,12 +14,11 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_polyphony
     c\\
-    c\\Play an instrument with the keyboard.
-    c\\You can hold down multiple notes.
+    c\\Play an instrument with the keyboard. You can hold
+    c\\down multiple notes.
     c\\
-    c\\Press spacebar to cycle through various
-    c\\amounts of decimation (artificial
-    c\\sample rate reduction).
+    c\\Press spacebar to cycle through various amounts of
+    c\\decimation (artificial sample rate reduction).
 ;
 
 const A4 = 220.0;

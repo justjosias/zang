@@ -12,11 +12,10 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_play
     c\\
-    c\\Play a simple monophonic synthesizer
-    c\\with the keyboard.
+    c\\Play a simple monophonic synthesizer with the
+    c\\keyboard.
     c\\
-    c\\Press spacebar to create a low drone
-    c\\in another voice.
+    c\\Press spacebar to create a low drone in another voice.
 ;
 
 const A4 = 440.0;

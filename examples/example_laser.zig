@@ -10,13 +10,12 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_laser
     c\\
-    c\\Trigger a "laser" sound effect by
-    c\\pressing the spacebar. Some parameters
-    c\\of the sound are randomly perturbed.
+    c\\Trigger a "laser" sound effect by pressing the
+    c\\spacebar. Some parameters of the sound are randomly
+    c\\perturbed.
     c\\
-    c\\Press "a", "s", or "d" for some
-    c\\alternate sound effects based on the
-    c\\same module.
+    c\\Press "a", "s", or "d" for some alternate sound
+    c\\effects based on the same module.
 ;
 
 const carrier_curve = []zang.CurveNode {

@@ -11,8 +11,8 @@ pub const AUDIO_BUFFER_SIZE = 4096;
 pub const DESCRIPTION =
     c\\example_song
     c\\
-    c\\Plays a canned melody (the first few
-    c\\bars of Bach's Toccata in D Minor).
+    c\\Plays a canned melody (the first few bars of Bach's
+    c\\Toccata in D Minor).
     c\\
     c\\This example is not interactive.
 ;

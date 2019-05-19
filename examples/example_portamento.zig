@@ -10,13 +10,11 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_portamento
     c\\
-    c\\Play an "instrument" with the keyboard.
-    c\\(The tone is created using noise and a
-    c\\resonant low-pass filter.)
+    c\\Play an "instrument" with the keyboard. (The tone is
+    c\\created using noise and a resonant low-pass filter.)
     c\\
-    c\\If you press multiple keys, the
-    c\\frequency will slide toward the highest
-    c\\held key.
+    c\\If you press multiple keys, the frequency will slide
+    c\\toward the highest held key.
 ;
 
 const A4 = 440.0;
@@ -134,7 +132,7 @@ pub const MainModule = struct {
                         .note_on = false,
                     });
                 } else {
-                    const rel_freq = common.key_bindings[63 - @clz(self.keys_held)].rel_freq;
+                    const rel_freq = common.key_bindings[63 - @clz(u64, self.keys_held)].rel_freq;
                     self.iq.push(impulse_frame, Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = A4 * rel_freq,
