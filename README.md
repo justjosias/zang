@@ -34,6 +34,8 @@ Running the examples (again, except `write_wav`) will display a window with some
 
 `zig build mouse`: Play the keyboard while changing sound parameters by moving the mouse.
 
+`zig build two`: Play an instrument controlled by two input sources (note frequency and oscillator duty cycle are controlled with separate ranges of keys on the keyboard, but both trigger the instrument's envelope). I'm not sure that this demonstrates anything actually useful.
+
 `zig build write_wav`: Writes the melody of the `song` example to a file called "out.wav" in the current directory. It does not use SDL or libc.
 
 ## Features

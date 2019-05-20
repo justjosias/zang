@@ -23,6 +23,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "polyphony", "example_polyphony.zig");
     example(b, mode, windows, "delay", "example_delay.zig");
     example(b, mode, windows, "mouse", "example_mouse.zig");
+    example(b, mode, windows, "two", "example_two.zig");
 
     {
         var exe = b.addExecutable("write_wav", "examples/write_wav.zig");
