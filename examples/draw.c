@@ -2,17 +2,52 @@
 #include <SDL2/SDL.h>
 
 static const int screen_w = 512;
-static const int screen_h = 320;
+static const int screen_h = 512;
 
 static const int waveform_height = 81;
 static const int bottom_padding = 7;
-static const int fft_height = 100;
 
+static float lastfft[512];
+static unsigned int fftbuf[screen_w * 512];
 static unsigned int waveformbuf[screen_w * waveform_height];
 static int drawindex;
 static int firstdraw = 1;
 
-void plot(float sample_min, float sample_max) {
+/* from stackoverflow */
+static float hueToRgb(float p, float q, float t) {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+    if (t < 1.0f / 2.0f) return q;
+    if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6;
+    return p;
+}
+
+static unsigned int hslToRgb(float h, float s, float l) {
+    float r, g, b;
+
+    if (s == 0.0f) {
+        r = g = b = 1.0f;
+    } else {
+        float q = l < 0.5f ? l * (1 + s) : l + s - l * s;
+        float p = 2 * l - q;
+        r = hueToRgb(p, q, h + 1.0f / 3.0f);
+        g = hueToRgb(p, q, h);
+        b = hueToRgb(p, q, h - 1.0f / 3.0f);
+    }
+
+    /* my contribution */
+    r *= sqrt(h);
+    g *= sqrt(h);
+    b *= sqrt(h);
+
+    return 0xFF000000 |
+        ((unsigned int)(b * 0xFF) << 16) |
+        ((unsigned int)(g * 0xFF) << 8) |
+        ((unsigned int)(r * 0xFF));
+}
+
+void plot(float sample_min, float sample_max, const float *fft) {
     const unsigned int background_color = 0x18181818;
     const unsigned int waveform_color = 0x44444444;
     const unsigned int clipped_color = 0xFFFF0000;
@@ -40,6 +75,21 @@ void plot(float sample_min, float sample_max) {
     if (sample_min_clipped != sample_min)
         waveformbuf[--sy * screen_w + sx] = clipped_color;
 
+    {
+        const float inv_buffer_size = 1.0f / 1024.0f;
+        int i;
+        for (i = 0; i < 512; i++) {
+            /* black out the first sample because it's weird and i don't like it */
+            const float v0 = i == 0 ? 0 : fft[i];
+            const float v1 = fabs(v0) * inv_buffer_size;
+            const float v2 = sqrt(v1); /* sqrt to make things more visible */
+            const unsigned int c = hslToRgb(v2, 1.0f, 0.5f);
+
+            fftbuf[(512 - 1 - i) * screen_w + sx] = c;
+            lastfft[i] = v2;
+        }
+    }
+
     if (++drawindex == screen_w) {
         drawindex = 0;
     }
@@ -57,26 +107,25 @@ static void drawwaveform(unsigned int *pixels, int pitch) {
     }
 }
 
-static void drawfft(unsigned int *pixels, int pitch, size_t bufsize, const float *values) {
+static void drawfullfft(unsigned int *pixels, int pitch) {
+    int i;
+    for (i = 0; i < 512; i++) {
+        unsigned int *dest = pixels + i * pitch;
+        const unsigned int *src = fftbuf + i * screen_w;
+        memcpy(dest + (screen_w - drawindex), src, drawindex * sizeof(unsigned int));
+        memcpy(dest, src + drawindex, (screen_w - drawindex) * sizeof(unsigned int));
+    }
+}
+
+static void drawfft(unsigned int *pixels, int pitch) {
+    const int fft_height = 128;
     const int y = screen_h - bottom_padding - waveform_height - fft_height;
     const unsigned int background_color = 0x00000000;
     const unsigned int color = 0x44444444;
-    const float inv_buffer_size = 1.0f / bufsize;
 
     int i;
-    /* assume bufsize is a power of two. if it's greater than 1024, halve
-     * it until it reaches 1024. */
-    int step = 0, b = bufsize;
-    while (b > 1024) {
-        b >>= 1;
-        step++;
-    }
-    /* draw only half (so 512 pixels), because the other half is just a mirror
-     * image */
-    for (i = 0; i < (b >> 1); i++) {
-        const float v = fabs(values[i << step]) * inv_buffer_size;
-        const float v2 = sqrt(v); /* sqrt to make things more visible */
-        const float fv = v2 * (float)fft_height;
+    for (i = 0; i < 512; i++) {
+        const float fv = lastfft[i] * (float)fft_height;
         const int value = (int)floor(fv);
         const int value_clipped = value > fft_height - 1 ? fft_height - 1 : value;
         int sy = y;
@@ -120,25 +169,30 @@ static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fon
     }
 }
 
-void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, size_t bufsize, const float *fft) {
+void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, int full_fft) {
     SDL_LockSurface(screen);
 
-    if (firstdraw) {
-        memset(screen->pixels, 0, screen_h * screen->pitch);
+    if (full_fft) {
+        drawfullfft(screen->pixels, screen->pitch >> 2);
+        firstdraw = 1;
+    } else {
+        if (firstdraw) {
+            memset(screen->pixels, 0, screen_h * screen->pitch);
 
-        /* initialize waveform background and center line */
-        memset(waveformbuf, 0x18, sizeof(waveformbuf));
-        memset(waveformbuf + (waveform_height / 2) * screen_w, 0x66, screen_w * sizeof(unsigned int));
+            /* initialize waveform background and center line */
+            memset(waveformbuf, 0x18, sizeof(waveformbuf));
+            memset(waveformbuf + (waveform_height / 2) * screen_w, 0x66, screen_w * sizeof(unsigned int));
+
+            firstdraw = 0;
+        }
+
+        drawwaveform(screen->pixels, screen->pitch >> 2);
+        drawfft(screen->pixels, screen->pitch >> 2);
+        drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
     }
-
-    drawwaveform(screen->pixels, screen->pitch >> 2);
-    drawfft(screen->pixels, screen->pitch >> 2, bufsize, fft);
-    drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
 
     SDL_UnlockSurface(screen);
     SDL_UpdateWindowSurface(window);
-
-    firstdraw = 0;
 }
 
 void clear(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s) {

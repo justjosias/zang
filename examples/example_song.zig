@@ -6,7 +6,7 @@ const Instrument = @import("modules.zig").PMOscInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 4096;
+pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
     c\\example_song

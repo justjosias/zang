@@ -16,15 +16,16 @@ var g_temps: [example.MainModule.NumTemps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
 var g_redraw_event: c.Uint32 = undefined;
 
-var g_fft_real = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
-var g_fft_imag = [1]f32{0.0} ** example.AUDIO_BUFFER_SIZE;
+var g_fft_real = [1]f32{0.0} ** 1024;
+var g_fft_imag = [1]f32{0.0} ** 1024;
 
 var g_drawing = true;
+var g_full_fft = false;
 
 const fontdata = @embedFile("font.dat");
 
 const screen_w = 512;
-const screen_h = 320;
+const screen_h = 512;
 
 fn pushRedrawEvent() void {
     var event: c.SDL_Event = undefined;
@@ -68,19 +69,21 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     // i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
     i = 0; {
         var j: usize = 0; while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
+            const output = outputs[i][j * 1024 .. j * 1024 + 1024];
             var min: f32 = 0.0;
             var max: f32 = 0.0;
-            for (outputs[i][j * 1024 .. j * 1024 + 1024]) |sample| {
+            for (output) |sample| {
                 if (sample < min) min = sample;
                 if (sample > max) max = sample;
             }
-            c.plot(min * mul, max * mul);
+
+            std.mem.copy(f32, g_fft_real[0..], output);
+            std.mem.set(f32, g_fft_imag[0..], 0.0);
+            fft(1024, g_fft_real[0..], g_fft_imag[0..]);
+
+            c.plot(min * mul, max * mul, g_fft_real[0..].ptr);
         }
     }
-
-    zang.copy(span, g_fft_real[0..], outputs[0][0..]);
-    zang.zero(span, g_fft_imag[0..]);
-    fft(example.AUDIO_BUFFER_SIZE, g_fft_real[0..], g_fft_imag[0..]);
 
     pushRedrawEvent();
 }
@@ -171,6 +174,9 @@ pub fn main() !void {
                     c.clear(window, screen, fontdata[0..].ptr, c"Press F1 to re-enable drawing");
                     c.SDL_UnlockAudioDevice(device);
                 }
+                if (event.key.keysym.sym == c.SDLK_F2 and down) {
+                    g_full_fft = !g_full_fft;
+                }
                 if (comptime hasDef(example.MainModule, "keyEvent")) {
                     if (event.key.repeat == 0) {
                         c.SDL_LockAudioDevice(device);
@@ -197,7 +203,7 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, example.AUDIO_BUFFER_SIZE, g_fft_real[0..].ptr);
+            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, if (g_full_fft) c_int(1) else c_int(0));
             c.SDL_UnlockAudioDevice(device);
         }
     }
