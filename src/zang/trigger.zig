@@ -69,7 +69,7 @@ pub fn Trigger(comptime ParamsType: type) type {
                 ctr.start = note_span.end;
 
                 if (note_span.note) |note| {
-                    self.note = note;
+                    defer self.note = note;
 
                     return NewPaintReturnValue {
                         .span = Span {
