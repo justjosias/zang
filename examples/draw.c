@@ -47,45 +47,73 @@ static unsigned int hslToRgb(float h, float s, float l) {
         ((unsigned int)(r * 0xFF));
 }
 
-void plot(float sample_min, float sample_max, const float *fft) {
-    const unsigned int background_color = 0x18181818;
-    const unsigned int waveform_color = 0x44444444;
-    const unsigned int clipped_color = 0xFFFF0000;
-    const unsigned int center_line_color = 0x66666666;
-    const int y_mid = waveform_height / 2;
-
-    float sample_min_clipped = sample_min < -1.0f ? -1.0f : sample_min;
-    float sample_max_clipped = sample_max > 1.0f ? 1.0f : sample_max;
-    int y0 = (int)(y_mid - sample_max_clipped * waveform_height / 2 + 0.5f);
-    int y1 = (int)(y_mid - sample_min_clipped * waveform_height / 2 + 0.5f);
-    int sx = drawindex;
-    int sy = 0;
-
-    if (sample_max_clipped != sample_max)
-        waveformbuf[sy++ * screen_w + sx] = clipped_color;
-    for (; sy < y0; sy++)
-        waveformbuf[sy * screen_w + sx] = background_color;
-    for (; sy < y_mid; sy++)
-        waveformbuf[sy * screen_w + sx] = waveform_color;
-    waveformbuf[sy++ * screen_w + sx] = center_line_color;
-    for (; sy <= y1 && sy < waveform_height; sy++)
-        waveformbuf[sy * screen_w + sx] = waveform_color;
-    for (; sy < waveform_height; sy++)
-        waveformbuf[sy * screen_w + sx] = background_color;
-    if (sample_min_clipped != sample_min)
-        waveformbuf[--sy * screen_w + sx] = clipped_color;
-
+void plot(float sample_min, float sample_max, const float *fft, int fft_log) {
+    /* plot waveform */
     {
-        const float inv_buffer_size = 1.0f / 1024.0f;
-        int i;
-        for (i = 0; i < 512; i++) {
-            /* black out the first sample because it's weird and i don't like it */
-            const float v0 = i == 0 ? 0 : fft[i];
-            const float v1 = fabs(v0) * inv_buffer_size;
-            const float v2 = sqrt(v1); /* sqrt to make things more visible */
-            const unsigned int c = hslToRgb(v2, 1.0f, 0.5f);
+        const unsigned int background_color = 0x18181818;
+        const unsigned int waveform_color = 0x44444444;
+        const unsigned int clipped_color = 0xFFFF0000;
+        const unsigned int center_line_color = 0x66666666;
+        const int y_mid = waveform_height / 2;
 
-            fftbuf[(512 - 1 - i) * screen_w + sx] = c;
+        float sample_min_clipped = sample_min < -1.0f ? -1.0f : sample_min;
+        float sample_max_clipped = sample_max > 1.0f ? 1.0f : sample_max;
+        int y0 = (int)(y_mid - sample_max_clipped * waveform_height / 2 + 0.5f);
+        int y1 = (int)(y_mid - sample_min_clipped * waveform_height / 2 + 0.5f);
+        int sx = drawindex;
+        int sy = 0;
+
+        if (sample_max_clipped != sample_max)
+            waveformbuf[sy++ * screen_w + sx] = clipped_color;
+        for (; sy < y0; sy++)
+            waveformbuf[sy * screen_w + sx] = background_color;
+        for (; sy < y_mid; sy++)
+            waveformbuf[sy * screen_w + sx] = waveform_color;
+        waveformbuf[sy++ * screen_w + sx] = center_line_color;
+        for (; sy <= y1 && sy < waveform_height; sy++)
+            waveformbuf[sy * screen_w + sx] = waveform_color;
+        for (; sy < waveform_height; sy++)
+            waveformbuf[sy * screen_w + sx] = background_color;
+        if (sample_min_clipped != sample_min)
+            waveformbuf[--sy * screen_w + sx] = clipped_color;
+    }
+
+    /* plot fft */
+    {
+        static int prev_fft_log = 0;
+        const float inv_buffer_size = 1.0f / 1024.0f;
+        int sx = drawindex;
+        int i;
+
+        if (prev_fft_log != fft_log) {
+            prev_fft_log = fft_log;
+            memset(fftbuf, 0, sizeof(fftbuf));
+        }
+
+        for (i = 0; i < 512; i++) {
+            float v2;
+
+            if (fft_log) {
+                const float f = (float)i / 511.0f;
+
+                const float exp = 10.0f;
+                const float v = (pow(exp, f) - 1.0f) / (exp - 1.0f);
+
+                const int i0 = (int)floor(v * 511.0f);
+                const int i1 = i0 < 512 ? i0 + 1 : i0;
+                const float t = v * 511.0f - i0;
+
+                const float v00 = fabs(fft[i0]) * inv_buffer_size;
+                const float v01 = fabs(fft[i1]) * inv_buffer_size;
+
+                v2 = v00 * (1.0f - t) + v01 * t;
+            } else {
+                v2 = fabs(fft[i]) * inv_buffer_size;
+            }
+
+            v2 = sqrt(v2); /* kludge to make things more visible */
+
+            fftbuf[(512 - 1 - i) * screen_w + sx] = hslToRgb(v2, 1.0f, 0.5f);
             lastfft[i] = v2;
         }
     }

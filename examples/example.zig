@@ -21,6 +21,7 @@ var g_fft_imag = [1]f32{0.0} ** 1024;
 
 var g_drawing = true;
 var g_full_fft = false;
+var g_fft_log = false;
 
 const fontdata = @embedFile("font.dat");
 
@@ -81,7 +82,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
             std.mem.set(f32, g_fft_imag[0..], 0.0);
             fft(1024, g_fft_real[0..], g_fft_imag[0..]);
 
-            c.plot(min * mul, max * mul, g_fft_real[0..].ptr);
+            c.plot(min * mul, max * mul, g_fft_real[0..].ptr, if (g_fft_log) c_int(1) else c_int(0));
         }
     }
 
@@ -176,6 +177,9 @@ pub fn main() !void {
                 }
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {
                     g_full_fft = !g_full_fft;
+                }
+                if (event.key.keysym.sym == c.SDLK_F3 and down) {
+                    g_fft_log = !g_fft_log;
                 }
                 if (comptime hasDef(example.MainModule, "keyEvent")) {
                     if (event.key.repeat == 0) {
