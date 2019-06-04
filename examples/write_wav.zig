@@ -91,9 +91,9 @@ pub fn main() !void {
         start += len;
     }
 
-    const file = try std.os.File.openWrite("out.wav");
+    const file = try std.fs.File.openWrite("out.wav");
     var fileOutStream = file.outStream();
-    try writeWav(std.os.File.OutStream.Error, &fileOutStream.stream, g_big_buffer[0..]);
+    try writeWav(std.fs.File.OutStream.Error, &fileOutStream.stream, g_big_buffer[0..]);
     file.close();
 }
 
