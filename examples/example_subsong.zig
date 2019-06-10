@@ -88,7 +88,7 @@ const SubtrackPlayer = struct {
         const t = 0.1;
 
         return SubtrackPlayer {
-            .tracker = zang.Notes(MyNoteParams).NoteTracker.init([]SongNote {
+            .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongNote {
                 SongNote { .t = 0.0 * t, .params = MyNoteParams { .freq = A4 * f.C4, .note_on = true }},
                 SongNote { .t = 1.0 * t, .params = MyNoteParams { .freq = A4 * f.Ab3, .note_on = true }},
                 SongNote { .t = 2.0 * t, .params = MyNoteParams { .freq = A4 * f.G3, .note_on = true }},

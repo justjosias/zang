@@ -22,7 +22,7 @@ const A4 = 440.0;
 const MyNoteParams = struct { freq: f32, note_on: bool };
 
 const Note = common.Note;
-const track1Init = []Note(MyNoteParams) {
+const track1Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 1 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 12 },
@@ -57,7 +57,7 @@ const track1Init = []Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = true }, .dur = 128 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = false }, .dur = 0 },
 };
-const track2Init = []Note(MyNoteParams) {
+const track2Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 1 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G5, .note_on = true }, .dur = 1 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 12 },
@@ -96,36 +96,36 @@ const C = 5;
 const D = 4;
 const E = 4;
 const track3Delay = ofs;
-const track3Init = []Note(MyNoteParams) {
+const track3Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs2, .note_on = true }, .dur = A + B + C + D + E + 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 14 + (14 + 30) },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = false }, .dur = 0 },
 };
 const track4Delay = ofs + A;
-const track4Init = []Note(MyNoteParams) {
+const track4Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = B + C + D + E + 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = false }, .dur = 0 },
 };
 const track5Delay = ofs + A + B;
-const track5Init = []Note(MyNoteParams) {
+const track5Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = C + D + E + 30 + (14) },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = 14 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = true }, .dur = 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = false }, .dur = 0 },
 };
 const track6Delay = ofs + A + B + C;
-const track6Init = []Note(MyNoteParams) {
+const track6Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Bb2, .note_on = true }, .dur = D + E + 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 14 + (14 + 30) },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = false }, .dur = 0 },
 };
 const track7Delay = ofs + A + B + C + D;
-const track7Init = []Note(MyNoteParams) {
+const track7Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = E + 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = false }, .dur = 0 },
 };
 const track8Delay = ofs + A + B + C + D + E;
-const track8Init = []Note(MyNoteParams) {
+const track8Init = [_]Note(MyNoteParams) {
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 30 },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 14 + (14 + 30) },
     Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 0 },

@@ -14,7 +14,7 @@ pub const DESCRIPTION =
     c\\frequency of the key you press.
 ;
 
-const carrier_curve = []zang.CurveNode {
+const carrier_curve = [_]zang.CurveNode {
     zang.CurveNode { .t = 0.0, .value = 440.0 },
     zang.CurveNode { .t = 0.5, .value = 880.0 },
     zang.CurveNode { .t = 1.0, .value = 110.0 },
@@ -23,7 +23,7 @@ const carrier_curve = []zang.CurveNode {
     zang.CurveNode { .t = 3.9, .value = 20.0 },
 };
 
-const modulator_curve = []zang.CurveNode {
+const modulator_curve = [_]zang.CurveNode {
     zang.CurveNode { .t = 0.0, .value = 110.0 },
     zang.CurveNode { .t = 1.5, .value = 55.0 },
     zang.CurveNode { .t = 3.0, .value = 220.0 },

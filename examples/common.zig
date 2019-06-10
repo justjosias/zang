@@ -41,7 +41,7 @@ pub const KeyBinding = struct {
 
 // note: arpeggiator will cycle in this order, so i've arranged it from lowest
 // frequency to highest
-pub const key_bindings = []KeyBinding {
+pub const key_bindings = [_]KeyBinding {
     // bottom two rows is one octave
     KeyBinding { .row = 0, .rel_freq = note_frequencies.As2, .key = c.SDLK_CAPSLOCK },
     KeyBinding { .row = 0, .rel_freq = note_frequencies.B2,  .key = c.SDLK_LSHIFT },

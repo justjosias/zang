@@ -18,19 +18,19 @@ pub const DESCRIPTION =
     c\\effects based on the same module.
 ;
 
-const carrier_curve = []zang.CurveNode {
+const carrier_curve = [_]zang.CurveNode {
     zang.CurveNode { .t = 0.0, .value = 1000.0 },
     zang.CurveNode { .t = 0.1, .value = 200.0 },
     zang.CurveNode { .t = 0.2, .value = 100.0 },
 };
 
-const modulator_curve = []zang.CurveNode {
+const modulator_curve = [_]zang.CurveNode {
     zang.CurveNode { .t = 0.0, .value = 1000.0 },
     zang.CurveNode { .t = 0.1, .value = 200.0 },
     zang.CurveNode { .t = 0.2, .value = 100.0 },
 };
 
-const volume_curve = []zang.CurveNode {
+const volume_curve = [_]zang.CurveNode {
     zang.CurveNode { .t = 0.0, .value = 0.0 },
     zang.CurveNode { .t = 0.004, .value = 1.0 },
     zang.CurveNode { .t = 0.2, .value = 0.0 },
