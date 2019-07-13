@@ -1,37 +1,5 @@
-const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const c = @import("common/c.zig");
-
-pub fn Note(comptime NoteParamsType: type) type {
-    return struct {
-        value: NoteParamsType,
-        dur: usize,
-    };
-}
-
-pub fn compileSong(
-    comptime NoteParamsType: type,
-    comptime len: usize,
-    notes: [len]Note(NoteParamsType),
-    note_duration: f32,
-    initial_delay: usize,
-) [len]zang.Notes(NoteParamsType).SongNote {
-    var song_notes: [len]zang.Notes(NoteParamsType).SongNote = undefined;
-
-    var pos = @intToFloat(f32, initial_delay) * note_duration;
-    var i: usize = 0;
-
-    for (notes) |note| {
-        song_notes[i] = zang.Notes(NoteParamsType).SongNote {
-            .t = pos,
-            .params = note.value,
-        };
-        i += 1;
-        pos += @intToFloat(f32, note.dur) * note_duration;
-    }
-
-    return song_notes;
-}
 
 pub const KeyBinding = struct {
     row: u1,

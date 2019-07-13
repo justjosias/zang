@@ -1,3 +1,4 @@
+const std = @import("std");
 const zang = @import("zang");
 const f = @import("zang-12tet");
 const common = @import("common.zig");
@@ -6,7 +7,7 @@ const Instrument = @import("modules.zig").PMOscInstrument;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 1024;
+pub const AUDIO_BUFFER_SIZE = 4096;
 
 pub const DESCRIPTION =
     c\\example_song
@@ -21,129 +22,124 @@ const A4 = 440.0;
 
 const MyNoteParams = struct { freq: f32, note_on: bool };
 
-const Note = common.Note;
-const track1Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs4, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = false }, .dur = 4 },
+const Parser = struct {
+    contents: []const u8,
+    index: usize,
+};
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 4 },
+fn parseNote(parser: *Parser) ?MyNoteParams {
+    if (parser.index + 3 > parser.contents.len) {
+        return null;
+    }
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs2, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = false }, .dur = 2 },
+    const letter = parser.contents[parser.index];
+    const modifier = parser.contents[parser.index + 1];
+    const octave = parser.contents[parser.index + 2];
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = true }, .dur = 128 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D1, .note_on = false }, .dur = 0 },
-};
-const track2Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A5, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs5, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D5, .note_on = false }, .dur = 4 },
+    const offset =
+        if (octave >= '0' and octave <= '9')
+            @intCast(i32, octave - '0') * 12 - 57
+        else
+            return null;
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G4, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A4, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs4, .note_on = true }, .dur = 3 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D4, .note_on = false }, .dur = 4 },
+    const semitone = blk: {
+        if (letter == 'C' and modifier == '-') break :blk i32(0);
+        if (letter == 'C' and modifier == '#') break :blk i32(1);
+        if (letter == 'D' and modifier == '-') break :blk i32(2);
+        if (letter == 'D' and modifier == '#') break :blk i32(3);
+        if (letter == 'E' and modifier == '-') break :blk i32(4);
+        if (letter == 'F' and modifier == '-') break :blk i32(5);
+        if (letter == 'F' and modifier == '#') break :blk i32(6);
+        if (letter == 'G' and modifier == '-') break :blk i32(7);
+        if (letter == 'G' and modifier == '#') break :blk i32(8);
+        if (letter == 'A' and modifier == '-') break :blk i32(9);
+        if (letter == 'A' and modifier == '#') break :blk i32(10);
+        if (letter == 'B' and modifier == '-') break :blk i32(11);
+        return null;
+    };
 
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A3, .note_on = true }, .dur = 10 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.F3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 1 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = 8 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 12 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 2 },
-};
-const ofs = 130;
-const A = 6;
-const B = 6;
-const C = 5;
-const D = 4;
-const E = 4;
-const track3Delay = ofs;
-const track3Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs2, .note_on = true }, .dur = A + B + C + D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D2, .note_on = false }, .dur = 0 },
-};
-const track4Delay = ofs + A;
-const track4Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = B + C + D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = false }, .dur = 0 },
-};
-const track5Delay = ofs + A + B;
-const track5Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.G2, .note_on = true }, .dur = C + D + E + 30 + (14) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E2, .note_on = true }, .dur = 14 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = true }, .dur = 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Fs2, .note_on = false }, .dur = 0 },
-};
-const track6Delay = ofs + A + B + C;
-const track6Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Bb2, .note_on = true }, .dur = D + E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.A2, .note_on = false }, .dur = 0 },
-};
-const track7Delay = ofs + A + B + C + D;
-const track7Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = true }, .dur = E + 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.Cs3, .note_on = false }, .dur = 0 },
-};
-const track8Delay = ofs + A + B + C + D + E;
-const track8Init = [_]Note(MyNoteParams) {
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.E3, .note_on = true }, .dur = 30 },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = true }, .dur = 14 + (14 + 30) },
-    Note(MyNoteParams){ .value = MyNoteParams{ .freq = A4 * f.D3, .note_on = false }, .dur = 0 },
-};
+    parser.index += 3;
+
+    return MyNoteParams {
+        .freq = A4 * std.math.pow(f32, 2.0, @intToFloat(f32, offset + semitone) / 12.0),
+        .note_on = true,
+    };
+}
+
+var result_arr: [NUM_TRACKS][9999]zang.Notes(MyNoteParams).SongNote = undefined;
+
+fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
+    var parser = Parser {
+        .contents = @embedFile("example_song.txt"),
+        .index = 0,
+    };
+
+    const TrackState = struct {
+        last_freq: ?f32,
+        num_notes: usize,
+    };
+    var track_states = [1]TrackState{ TrackState{ .last_freq = null, .num_notes = 0} } ** NUM_TRACKS;
+
+    var offset: usize = 0;
+
+    while (true) {
+        var col: usize = 0; while (true) : (col += 1) {
+            if (parseNote(&parser)) |note| {
+                result_arr[col][track_states[col].num_notes] = zang.Notes(MyNoteParams).SongNote {
+                    .t = @intToFloat(f32, offset) * NOTE_DURATION,
+                    .params = note,
+                };
+                track_states[col].last_freq = note.freq;
+                track_states[col].num_notes += 1;
+            } else if (parser.index + 3 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 3], "off")) {
+                if (track_states[col].last_freq) |last_freq| {
+                    result_arr[col][track_states[col].num_notes] = zang.Notes(MyNoteParams).SongNote {
+                        .t = @intToFloat(f32, offset) * NOTE_DURATION,
+                        .params = MyNoteParams {
+                            .freq = last_freq,
+                            .note_on = false,
+                        },
+                    };
+                    track_states[col].num_notes += 1;
+                }
+                parser.index += 3;
+            } else if (parser.index + 3 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 3], "   ")) {
+                parser.index += 3;
+            } else {
+                break;
+            }
+            if (parser.index < parser.contents.len and parser.contents[parser.index] == ' ') {
+                parser.index += 1;
+            } else {
+                break;
+            }
+        }
+        if (parser.index == parser.contents.len) {
+            break;
+        }
+        if (parser.contents[parser.index] == '\n') {
+            parser.index += 1;
+            offset += 1;
+        } else {
+            std.debug.warn("fail\n");
+            break;
+        }
+    }
+
+    var result: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
+    var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
+        result[i] = result_arr[i][0..track_states[i].num_notes];
+    }
+    return result;
+}
 
 const NUM_TRACKS = 8;
 const NOTE_DURATION = 0.08;
 
-const tracks = [NUM_TRACKS][]const zang.Notes(MyNoteParams).SongNote {
-    common.compileSong(MyNoteParams, track1Init.len, track1Init, NOTE_DURATION, 0.0),
-    common.compileSong(MyNoteParams, track2Init.len, track2Init, NOTE_DURATION, 0.0),
-    common.compileSong(MyNoteParams, track3Init.len, track3Init, NOTE_DURATION, track3Delay),
-    common.compileSong(MyNoteParams, track4Init.len, track4Init, NOTE_DURATION, track4Delay),
-    common.compileSong(MyNoteParams, track5Init.len, track5Init, NOTE_DURATION, track5Delay),
-    common.compileSong(MyNoteParams, track6Init.len, track6Init, NOTE_DURATION, track6Delay),
-    common.compileSong(MyNoteParams, track7Init.len, track7Init, NOTE_DURATION, track7Delay),
-    common.compileSong(MyNoteParams, track8Init.len, track8Init, NOTE_DURATION, track8Delay),
-};
+// FIXME - there's a crash in the zig compiler preventing me from calling this in the global scope?
+// https://github.com/ziglang/zig/issues/2889
+// const tracks = parse();
+var tracks: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
 
 pub const MainModule = struct {
     pub const NumOutputs = 1;
@@ -158,6 +154,8 @@ pub const MainModule = struct {
     voices: [NUM_TRACKS]Voice,
 
     pub fn init() MainModule {
+        tracks = parse(); // TODO - remove (see above)
+
         var mod: MainModule = undefined;
 
         var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
