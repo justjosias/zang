@@ -86,7 +86,7 @@ pub const MainModule = struct {
             if (maybe_result1) |result1| {
                 const inner_span = zang.Span {
                     .start = start,
-                    .end = min(usize, result0.span.end, result1.span.end),
+                    .end = std.math.min(result0.span.end, result1.span.end),
                 };
                 self.osc.paint(
                     inner_span,
@@ -102,7 +102,13 @@ pub const MainModule = struct {
                     inner_span,
                     [1][]f32{temps[1]},
                     [0][]f32{},
-                    result0.note_id_changed or result1.note_id_changed,
+                    (
+                        // only reset the envelope when a button is depressed
+                        // when no buttons were previous depressed
+                        (result0.note_id_changed and result0.params.note_on and !result1.note_id_changed)
+                        or
+                        (result1.note_id_changed and result1.params.note_on and !result0.note_id_changed)
+                    ),
                     zang.Envelope.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .attack_duration = 0.025,
@@ -151,7 +157,3 @@ pub const MainModule = struct {
         }
     }
 };
-
-fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
-}
