@@ -12,13 +12,15 @@ pub const AUDIO_BUFFER_SIZE = 4096;
 pub const DESCRIPTION =
     c\\example_song
     c\\
-    c\\Plays a canned melody (the first few bars of Bach's
-    c\\Toccata in D Minor).
+    c\\Plays a canned melody (Bach's Toccata and Fugue in D
+    c\\Minor).
     c\\
     c\\This example is not interactive.
 ;
 
-const A4 = 440.0;
+const A4 = 220.0;
+const NOTE_DURATION = 0.15;
+const NUM_TRACKS = 9;
 
 const MyNoteParams = struct { freq: f32, note_on: bool };
 
@@ -80,13 +82,15 @@ fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
     };
     var track_states = [1]TrackState{ TrackState{ .last_freq = null, .num_notes = 0} } ** NUM_TRACKS;
 
-    var offset: usize = 0;
+    var t: f32 = 0;
+    var rate: f32 = 1.0;
+    var tempo: f32 = 1.0;
 
     while (true) {
         var col: usize = 0; while (true) : (col += 1) {
             if (parseNote(&parser)) |note| {
                 result_arr[col][track_states[col].num_notes] = zang.Notes(MyNoteParams).SongNote {
-                    .t = @intToFloat(f32, offset) * NOTE_DURATION,
+                    .t = t,
                     .params = note,
                 };
                 track_states[col].last_freq = note.freq;
@@ -94,7 +98,7 @@ fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
             } else if (parser.index + 3 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 3], "off")) {
                 if (track_states[col].last_freq) |last_freq| {
                     result_arr[col][track_states[col].num_notes] = zang.Notes(MyNoteParams).SongNote {
-                        .t = @intToFloat(f32, offset) * NOTE_DURATION,
+                        .t = t,
                         .params = MyNoteParams {
                             .freq = last_freq,
                             .note_on = false,
@@ -119,7 +123,47 @@ fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
         }
         if (parser.contents[parser.index] == '\n') {
             parser.index += 1;
-            offset += 1;
+            t += NOTE_DURATION / (rate * tempo);
+        } else if (parser.index + 6 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 6], "start\n")) {
+            parser.index += 6;
+            t = 0.0;
+            col = 0; while (col < NUM_TRACKS) : (col += 1) {
+                track_states[col].num_notes = 0;
+            }
+        } else if (parser.index + 5 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 5], "rate ")) {
+            parser.index += 5;
+            var endpos: usize = parser.index; while (endpos < parser.contents.len and parser.contents[endpos] != '\n') : (endpos += 1) {}
+            const slice = parser.contents[parser.index .. endpos];
+            const value = std.fmt.parseFloat(f32, slice) catch {
+                std.debug.warn("parseFloat fail\n");
+                break;
+            };
+            parser.index = endpos;
+            if (parser.index < parser.contents.len) {
+                parser.index += 1; // skip newline
+            }
+            rate = value;
+        } else if (parser.index + 6 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 6], "tempo ")) {
+            parser.index += 6;
+            var endpos: usize = parser.index; while (endpos < parser.contents.len and parser.contents[endpos] != '\n') : (endpos += 1) {}
+            const slice = parser.contents[parser.index .. endpos];
+            const value = std.fmt.parseFloat(f32, slice) catch {
+                std.debug.warn("parseFloat fail\n");
+                break;
+            };
+            parser.index = endpos;
+            if (parser.index < parser.contents.len) {
+                parser.index += 1; // skip newline
+            }
+            tempo = value;
+        } else if (parser.index + 1 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 1], "#")) {
+            // comment
+            parser.index += 1;
+            var endpos: usize = parser.index; while (endpos < parser.contents.len and parser.contents[endpos] != '\n') : (endpos += 1) {}
+            parser.index = endpos;
+            if (parser.index < parser.contents.len) {
+                parser.index += 1; // skip newline
+            }
         } else {
             std.debug.warn("fail\n");
             break;
@@ -132,9 +176,6 @@ fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
     }
     return result;
 }
-
-const NUM_TRACKS = 8;
-const NOTE_DURATION = 0.08;
 
 // FIXME - there's a crash in the zig compiler preventing me from calling this in the global scope?
 // https://github.com/ziglang/zig/issues/2889
