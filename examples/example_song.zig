@@ -69,10 +69,33 @@ fn parseNote(parser: *Parser) ?MyNoteParams {
 }
 
 var result_arr: [NUM_TRACKS][9999]zang.Notes(MyNoteParams).SongNote = undefined;
+var tracks: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
 
-fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
+var contents_arr: [1*1024*1024]u8 = undefined;
+
+fn readFile() ![]const u8 {
+    const file = try std.fs.File.openRead("examples/example_song.txt");
+    defer file.close();
+
+    var file_size = try file.getEndPos();
+
+    const read_amount = try file.read(contents_arr[0..file_size]);
+
+    if (file_size != read_amount) {
+        return error.MyReadFailed;
+    }
+
+    return contents_arr[0..read_amount];
+}
+
+fn parse() void {
+    const contents = readFile() catch {
+        std.debug.warn("failed to read song file\n");
+        return;
+    };
+
     var parser = Parser {
-        .contents = @embedFile("example_song.txt"),
+        .contents = contents,
         .index = 0,
     };
 
@@ -170,17 +193,10 @@ fn parse() [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote {
         }
     }
 
-    var result: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
     var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
-        result[i] = result_arr[i][0..track_states[i].num_notes];
+        tracks[i] = result_arr[i][0..track_states[i].num_notes];
     }
-    return result;
 }
-
-// FIXME - there's a crash in the zig compiler preventing me from calling this in the global scope?
-// https://github.com/ziglang/zig/issues/2889
-// const tracks = parse();
-var tracks: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
 
 pub const MainModule = struct {
     pub const NumOutputs = 1;
@@ -195,7 +211,7 @@ pub const MainModule = struct {
     voices: [NUM_TRACKS]Voice,
 
     pub fn init() MainModule {
-        tracks = parse(); // TODO - remove (see above)
+        parse();
 
         var mod: MainModule = undefined;
 
@@ -220,6 +236,19 @@ pub const MainModule = struct {
                     .note_on = result.params.note_on,
                 });
             }
+        }
+    }
+
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+        if (down and key == c.SDLK_SPACE) {
+            parse();
+
+            for (self.voices) |*voice| {
+                voice.trigger.reset();
+                voice.tracker.reset();
+            }
+
+            std.debug.warn("reloaded\n");
         }
     }
 };

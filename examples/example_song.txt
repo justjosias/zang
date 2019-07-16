@@ -354,7 +354,9 @@ tempo 1.0
 
 
 
+tempo 0.5
 off off off off off off off off
+tempo 1.0
                                 A-4
                                 G-4
                                 F-4
@@ -406,133 +408,133 @@ off off off off off             off
 
 
             A-4
-        A-4
-            D-5
-        A-4
-            E-5
-        A-4
-            F-5
-        A-4
-            D-5
-        A-4
-            E-5
-        A-4
-            F-5
-        A-4
-            G-5
-        A-4
-            E-5
-        A-4
+        A-4 off
+        off D-5
+        A-4 off
+        off E-5
+        A-4 off
+        off F-5
+        A-4 off
+        off D-5
+        A-4 off
+        off E-5
+        A-4 off
+        off F-5
+        A-4 off
+        off G-5
+        A-4 off
+        off E-5
+        A-4 off
 #
 # bar
 #
-            F-5
-        A-4
-            G-5
-        A-4
-            A-5
-        A-4
-            F-5
-        A-4
-            G-5
-        A-4
-            A-5
-        A-4
-            A#5
-        A-4
-            G-5
-        A-4
-            A-5
-        A-4
-            F-5
-        A-4
-            G-5
-        A-4
-            E-5
-        A-4
-            F-5
-        A-4
-            D-5
-        A-4
-            E-5
-        A-4
-            C#5
-        A-4
+        off F-5
+        A-4 off
+        off G-5
+        A-4 off
+        off A-5
+        A-4 off
+        off F-5
+        A-4 off
+        off G-5
+        A-4 off
+        off A-5
+        A-4 off
+        off A#5
+        A-4 off
+        off G-5
+        A-4 off
+        off A-5
+        A-4 off
+        off F-5
+        A-4 off
+        off G-5
+        A-4 off
+        off E-5
+        A-4 off
+        off F-5
+        A-4 off
+        off D-5
+        A-4 off
+        off E-5
+        A-4 off
+        off C#5
+        A-4 off
 #
 # bar
 #
-            D-5
-        A-4
-            A-4
-        A-4
-            A#4
-        A-4
-            G-4
-        A-4
-            A-4
-        A-4
-            F-4
-        A-4
-            G-4
-        A-4
-            E-4
-        A-4
-            F-4
-        A-4
-            D-4
-        A-4
-            G-4
-        A-4
-            E-4
-        A-4
-            F-4
-        A-4
-            D-4
-        A-4
-            E-4
-        A-4
-            C#4
-        A-4
+        off D-5
+        A-4 off
+        off A-4
+        A-4 off
+        off A#4
+        A-4 off
+        off G-4
+        A-4 off
+        off A-4
+        A-4 off
+        off F-4
+        A-4 off
+        off G-4
+        A-4 off
+        off E-4
+        A-4 off
+        off F-4
+        A-4 off
+        off D-4
+        A-4 off
+        off G-4
+        A-4 off
+        off E-4
+        A-4 off
+        off F-4
+        A-4 off
+        off D-4
+        A-4 off
+        off E-4
+        A-4 off
+        off C#4
+        A-4 off
 #
 # bar
 #
-            D-4
-        A-4
-            A-3
-        A-4
-            A#3
-        A-4
-            G-3
-        A-4
-            A-3
-        A-4
-            F-3
-        A-4
-            G-3
-        A-4
-            E-3
-        A-4
-            F-3
-        A-4
-            D-3
-        A-4
-            G-3
-        A-4
-            E-3
-        A-4
-            F-3
-        A-4
-            D-3
-        A-4
-            E-3
-        A-4
-            C#3
-        A-4
+        off D-4
+        A-4 off
+        off A-3
+        A-4 off
+        off A#3
+        A-4 off
+        off G-3
+        A-4 off
+        off A-3
+        A-4 off
+        off F-3
+        A-4 off
+        off G-3
+        A-4 off
+        off E-3
+        A-4 off
+        off F-3
+        A-4 off
+        off D-3
+        A-4 off
+        off G-3
+        A-4 off
+        off E-3
+        A-4 off
+        off F-3
+        A-4 off
+        off D-3
+        A-4 off
+        off E-3
+        A-4 off
+        off C#3
+        A-4 off
 #
 # bar
 #
-            D-3
-        off
+        off D-3
+
 
 
         D-4 off
@@ -609,7 +611,9 @@ A-2 E-3 C#4 E-4 A-4
 
 
 
+tempo 0.5
 off off off off
+tempo 1.0
                 G-4
                 F-4
                 E-4
@@ -718,18 +722,19 @@ G-2 A-3 E-4 A-4 C#5
 
                 B-4
 
-tempo 1.0
+tempo 0.666
 off off off off A-4
 
                 C#5
 
                 E-5
                 G-5
-tempo 0.5
+tempo 0.25
                 A#5
 
-tempo 1.0
+tempo 0.5
                 A-5
+tempo 1.0
                 G-5
                 F-5
                 E-5
@@ -749,7 +754,7 @@ tempo 1.0
 # bar
 #
 rate 1.0
-tempo 0.75
+tempo 0.666
 G-3 C#4 E-4 G-4 A#4 C#5 E-5
 
 
@@ -2855,8 +2860,9 @@ off     G-3     off E-4
 
 
 rate 2.0
-tempo 1.0
+tempo 0.2
     off off off     off off
+tempo 1.0
         G-4
         F-4
         G-4
