@@ -3,7 +3,7 @@ const zang = @import("zang");
 const f = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
-const Instrument = @import("modules.zig").PMOscInstrument;
+const Instrument = @import("modules.zig").SquareWithEnvelope;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -15,14 +15,19 @@ pub const DESCRIPTION =
     c\\Plays a canned melody (Bach's Toccata and Fugue in D
     c\\Minor).
     c\\
-    c\\This example is not interactive.
+    c\\Press spacebar to restart the song.
 ;
 
-const A4 = 220.0;
+const A4 = 440.0;
 const NOTE_DURATION = 0.15;
-const NUM_TRACKS = 9;
+const NUM_TRACKS_1 = 9; // normal keys
+const NUM_TRACKS_2 = 2; // weird keys
+const TOTAL_TRACKS = NUM_TRACKS_1 + NUM_TRACKS_2;
 
-const MyNoteParams = struct { freq: f32, note_on: bool };
+const MyNoteParams = struct {
+    freq: f32,
+    note_on: bool,
+};
 
 const Note = union(enum) {
     Idle: void,
@@ -33,7 +38,7 @@ const Note = union(enum) {
 const Token = union(enum) {
     Word: []const u8,
     Number: f32,
-    Notes: [NUM_TRACKS]Note,
+    Notes: [TOTAL_TRACKS]Note,
 };
 
 const Parser = struct {
@@ -111,7 +116,7 @@ fn parseToken(parser: *Parser) !?Token {
     if (ch == '|') {
         parser.index += 1;
 
-        var notes = [1]Note { Note { .Idle = undefined } } ** NUM_TRACKS;
+        var notes = [1]Note { Note { .Idle = undefined } } ** TOTAL_TRACKS;
 
         var col: usize = 0; while (true) : (col += 1) {
             if (parseNote(parser)) |note_params| {
@@ -183,8 +188,8 @@ fn parseToken(parser: *Parser) !?Token {
     return error.SyntaxError;
 }
 
-var result_arr: [NUM_TRACKS][9999]zang.Notes(MyNoteParams).SongNote = undefined;
-var tracks: [NUM_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
+var result_arr: [TOTAL_TRACKS][9999]zang.Notes(MyNoteParams).SongNote = undefined;
+var tracks: [TOTAL_TRACKS][]zang.Notes(MyNoteParams).SongNote = undefined;
 
 var contents_arr: [1*1024*1024]u8 = undefined;
 
@@ -236,7 +241,7 @@ fn doParse(parser: *Parser) !void {
         last_freq: ?f32,
         num_notes: usize,
     };
-    var track_states = [1]TrackState{ TrackState{ .last_freq = null, .num_notes = 0} } ** NUM_TRACKS;
+    var track_states = [1]TrackState{ TrackState{ .last_freq = null, .num_notes = 0} } ** TOTAL_TRACKS;
 
     var t: f32 = 0;
     var rate: f32 = 1.0;
@@ -245,7 +250,7 @@ fn doParse(parser: *Parser) !void {
     while (try parseToken(parser)) |token| {
         if (tokenIsWord(token, "start")) {
             t = 0.0;
-            var col: usize = 0; while (col < NUM_TRACKS) : (col += 1) {
+            var col: usize = 0; while (col < TOTAL_TRACKS) : (col += 1) {
                 track_states[col].num_notes = 0;
             }
         } else if (tokenIsWord(token, "rate")) {
@@ -278,7 +283,7 @@ fn doParse(parser: *Parser) !void {
         }
     }
 
-    var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
+    var i: usize = 0; while (i < TOTAL_TRACKS) : (i += 1) {
         tracks[i] = result_arr[i][0..track_states[i].num_notes];
     }
 }
@@ -302,7 +307,7 @@ fn parse() void {
 
 pub const MainModule = struct {
     pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const NumTemps = 2;
 
     const Voice = struct {
         instrument: Instrument,
@@ -310,16 +315,24 @@ pub const MainModule = struct {
         tracker: zang.Notes(MyNoteParams).NoteTracker,
     };
 
-    voices: [NUM_TRACKS]Voice,
+    voices: [TOTAL_TRACKS]Voice,
 
     pub fn init() MainModule {
         parse();
 
         var mod: MainModule = undefined;
 
-        var i: usize = 0; while (i < NUM_TRACKS) : (i += 1) {
+        var i: usize = 0;
+        while (i < NUM_TRACKS_1) : (i += 1) {
             mod.voices[i] = Voice {
-                .instrument = Instrument.init(0.15),
+                .instrument = Instrument.init(false),
+                .trigger = zang.Trigger(MyNoteParams).init(),
+                .tracker = zang.Notes(MyNoteParams).NoteTracker.init(tracks[i]),
+            };
+        }
+        while (i < NUM_TRACKS_1 + NUM_TRACKS_2) : (i += 1) {
+            mod.voices[i] = Voice {
+                .instrument = Instrument.init(true),
                 .trigger = zang.Trigger(MyNoteParams).init(),
                 .tracker = zang.Notes(MyNoteParams).NoteTracker.init(tracks[i]),
             };

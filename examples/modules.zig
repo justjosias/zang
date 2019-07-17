@@ -251,6 +251,47 @@ pub const HardSquareInstrument = struct {
     }
 };
 
+pub const SquareWithEnvelope = struct {
+    pub const NumOutputs = 1;
+    pub const NumTemps = 2;
+    pub const Params = struct {
+        sample_rate: f32,
+        freq: f32,
+        note_on: bool,
+    };
+
+    weird: bool,
+    osc: zang.PulseOsc,
+    env: zang.Envelope,
+
+    pub fn init(weird: bool) SquareWithEnvelope {
+        return SquareWithEnvelope {
+            .weird = weird,
+            .osc = zang.PulseOsc.init(),
+            .env = zang.Envelope.init(),
+        };
+    }
+
+    pub fn paint(self: *SquareWithEnvelope, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+        zang.zero(span, temps[0]);
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
+            .sample_rate = params.sample_rate,
+            .freq = params.freq,
+            .colour = if (self.weird) f32(0.3) else f32(0.5),
+        });
+        zang.zero(span, temps[1]);
+        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
+            .sample_rate = params.sample_rate,
+            .attack_duration = 0.01,
+            .decay_duration = 0.1,
+            .sustain_volume = 0.5,
+            .release_duration = 0.5,
+            .note_on = params.note_on,
+        });
+        zang.multiply(span, outputs[0], temps[0], temps[1]);
+    }
+};
+
 // this is a module that simply delays the input signal. there's no dry output
 // and no feedback (echoes)
 pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {

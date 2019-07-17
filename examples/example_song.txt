@@ -1,3 +1,7 @@
+# toccata and fugue in d minor (bach)
+# reference used: https://musescore.com/classicman/scores/55680
+
+# 1 -----------------------
 rate 2.0
            |        A-4 A-5
            |        G-4 G-5
@@ -63,916 +67,821 @@ tempo 1.0  |        off off
            |
            |
            |
-
-# bar
-
-|        A-2 A-3
-|        G-2 G-3
-tempo 0.5
-|        A-2 A-3
-|
-|
-|
-|
-|
-tempo 1.0
-|        off off
-|
-|        G-2 G-3
-|        F-2 F-3
-|        E-2 E-3
-|        D-2 D-3
-tempo 0.5
-|        C#2 C#3
-|
-|        D-2 D-3
-|
-|
-|
-tempo 1.0
-|        off off
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
+# 2 -----------------------
+           |        A-2 A-3
+           |        G-2 G-3
+tempo 0.5  |        A-2 A-3
+           |
+           |
+           |
+           |
+           |
+tempo 1.0  |        off off
+           |
+           |        G-2 G-3
+           |        F-2 F-3
+           |        E-2 E-3
+           |        D-2 D-3
+tempo 0.5  |        C#2 C#3
+           |
+           |        D-2 D-3
+           |
+           |
+           |
+tempo 1.0  |        off off
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |
 rate 1.0
-|D-2
-|
-|
-|
-tempo 2.0
-|    C#3
-|
-|
-|
-|        E-3
-|
-|
-|
-|            G-3
-|
-|
-|
-tempo 2.25
-|                A#3
-|
-|
-|
-tempo 2.5
-|                    C#4
-|
-|
-|
-tempo 1.0
-|                        E-4
-|
-|
-|
-
-# bar
-
-tempo 0.25
-|
-|
-|
-tempo 0.2
-|    D-3 off     A-3 off D-4
-tempo 0.4
-|            E-3
-|
-tempo 0.1
-|            F#3
-|
-tempo 1.0
-|off off     off off     off
-|
-|
-|
-|
-|
-|
-|        C#3 C#4
-
-# bar
-
-tempo 1.5
-|        D-3 D-4
-|        E-3 E-4
-|        C#3 C#4
-|        D-3 D-4
-|        E-3 E-4
-|        C#3 C#4
-|        D-3 D-4
-|        E-3 E-4
-|        C#3 C#4
-|        D-3 D-4
-|        E-3 E-4
-|        F-3 F-4
-|        G-3 G-4
-|        E-3 E-4
-|        F-3 F-4
-|        G-3 G-4
-|        E-3 E-4
-|        F-3 F-4
-|        G-3 G-4
-|        E-3 E-4
-|        F-3 F-4
-|        G-3 G-4
-
-# bar
-
-|        A-3 A-4
-|        A#3 A#4
-|        G-3 G-4
-|        A-3 A-4
-|        A#3 A#4
-|        G-3 G-4
-|        A-3 A-4
-|        A#3 A#4
-|        G-3 G-4
-|        A-3 A-4
-|        off off
-|
-|
-|
-|
-|
-|
-|
-|        C#4 C#5
-
-# bar
-
-|        D-4 D-5
-|        E-4 E-5
-|        C#4 C#5
-|        D-4 D-5
-|        E-4 E-5
-|        C#4 C#5
-|        D-4 D-5
-|        E-4 E-5
-|        C#4 C#5
-|        D-4 D-5
-|        E-4 E-5
-|        F-4 F-5
-|        G-4 G-5
-|        E-4 E-5
-|        F-4 F-5
-|        G-4 G-5
-|        E-4 E-5
-|        F-4 F-5
-|        G-4 G-5
-|        E-4 E-5
-|        F-4 F-5
-|        G-4 G-5
-
-# bar
-
-|        A-4 A-5
-|        A#4 A#5
-|        G-4 G-5
-|        A-4 A-5
-|        A#4 A#5
-|        G-4 G-5
-|        A-4 A-5
-|        A#4 A#5
-|        G-4 G-5
-|        A-4 A-5
-|        off off
-|
-|
-|
-|
-|
-|
-|
-|        A-5
-
-# bar
-
-|        G-4 G-5
-|        A#4 A#5
-|        E-4 E-5
-|        G-4 G-5
-|        A#4 A#5
-|        E-4 E-5
-|        F-4 F-5
-|        A-4 A-5
-|        D-4 D-5
-|        F-4 F-5
-|        A-4 A-5
-|        D-4 D-5
-|        E-4 E-5
-|        G-4 G-5
-|        C-4 C-5
-|        E-4 E-5
-|        G-4 G-5
-|        C-4 C-5
-|        D-4 D-5
-|        F-4 F-5
-|        A#3 A#4
-|        D-4 D-5
-|        F-4 F-5
-|        A#3 A#4
-
-# bar
-
-|        C-4 C-5
-|        E-4 E-5
-|        A-3 A-4
-|        C-4 C-5
-|        E-4 E-5
-|        A-3 A-4
-|        A#3 A#4
-|        D-4 D-5
-|        G-3 G-4
-|        A#3 A#4
-|        D-4 D-5
-|        G-3 G-4
-|        A-3 A-4
-|        C-4 C-5
-|        F-3 F-4
-|        A-3 A-4
-|        C-4 C-5
-|        F-3 F-4
-|        G-3 G-4
-|        A#3 A#4
-|        E-3 E-4
-|        G-3 G-4
-|        A#3 A#4
-|        E-3 E-4
-
-# bar
-
-|        F-3 F-4
-|        A-3 A-4
-|        D-3 D-4
-|        F-3 F-4
-|        A-3 A-4
-|        D-3 D-4
-|        E-3 E-4
-|        G-3 G-4
-|        C#3 C#4
-|        E-3 E-4
-|        G-3 G-4
-|        C#3 C#4
-tempo 1.0
-|D-2     off off
-|
-|
-|
-tempo 0.5
-|    C#3 E-3 G-3 A#3 C#4 E-4 G-4 A#4
-|
-|
-|
-
-# bar
-
+           |D-2
+           |
+           |
+           |
+tempo 2.0  |    C#3
+           |
+           |
+           |
+           |        E-3
+           |
+           |
+           |
+           |            G-3
+           |
+           |
+           |
+tempo 2.25 |                A#3
+           |
+           |
+           |
+tempo 2.5  |                    C#4
+           |
+           |
+           |
+tempo 1.0  |                        E-4
+           |
+           |
+           |
+# 3 -----------------------
+tempo 0.25 |
+           |
+           |
+tempo 0.2  |    D-3 off     A-3 off D-4
+tempo 0.4  |            E-3
+           |
+tempo 0.1  |            F#3
+           |
+tempo 1.0  |off off     off off     off
+           |
+           |
+           |
+           |
+           |
+           |
+           |        C#3 C#4
+# 4 -----------------------
+tempo 1.5  |        D-3 D-4
+           |        E-3 E-4
+           |        C#3 C#4
+           |        D-3 D-4
+           |        E-3 E-4
+           |        C#3 C#4
+           |        D-3 D-4
+           |        E-3 E-4
+           |        C#3 C#4
+           |        D-3 D-4
+           |        E-3 E-4
+           |        F-3 F-4
+           |        G-3 G-4
+           |        E-3 E-4
+           |        F-3 F-4
+           |        G-3 G-4
+           |        E-3 E-4
+           |        F-3 F-4
+           |        G-3 G-4
+           |        E-3 E-4
+           |        F-3 F-4
+           |        G-3 G-4
+# 5 -----------------------
+           |        A-3 A-4
+           |        A#3 A#4
+           |        G-3 G-4
+           |        A-3 A-4
+           |        A#3 A#4
+           |        G-3 G-4
+           |        A-3 A-4
+           |        A#3 A#4
+           |        G-3 G-4
+           |        A-3 A-4
+           |        off off
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |        C#4 C#5
+# 6 -----------------------
+           |        D-4 D-5
+           |        E-4 E-5
+           |        C#4 C#5
+           |        D-4 D-5
+           |        E-4 E-5
+           |        C#4 C#5
+           |        D-4 D-5
+           |        E-4 E-5
+           |        C#4 C#5
+           |        D-4 D-5
+           |        E-4 E-5
+           |        F-4 F-5
+           |        G-4 G-5
+           |        E-4 E-5
+           |        F-4 F-5
+           |        G-4 G-5
+           |        E-4 E-5
+           |        F-4 F-5
+           |        G-4 G-5
+           |        E-4 E-5
+           |        F-4 F-5
+           |        G-4 G-5
+# 7 -----------------------
+           |        A-4 A-5
+           |        A#4 A#5
+           |        G-4 G-5
+           |        A-4 A-5
+           |        A#4 A#5
+           |        G-4 G-5
+           |        A-4 A-5
+           |        A#4 A#5
+           |        G-4 G-5
+           |        A-4 A-5
+           |        off off
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+           |        A-5
+# 8 -----------------------
+           |        G-4 G-5
+           |        A#4 A#5
+           |        E-4 E-5
+           |        G-4 G-5
+           |        A#4 A#5
+           |        E-4 E-5
+           |        F-4 F-5
+           |        A-4 A-5
+           |        D-4 D-5
+           |        F-4 F-5
+           |        A-4 A-5
+           |        D-4 D-5
+           |        E-4 E-5
+           |        G-4 G-5
+           |        C-4 C-5
+           |        E-4 E-5
+           |        G-4 G-5
+           |        C-4 C-5
+           |        D-4 D-5
+           |        F-4 F-5
+           |        A#3 A#4
+           |        D-4 D-5
+           |        F-4 F-5
+           |        A#3 A#4
+# 9 -----------------------
+           |        C-4 C-5
+           |        E-4 E-5
+           |        A-3 A-4
+           |        C-4 C-5
+           |        E-4 E-5
+           |        A-3 A-4
+           |        A#3 A#4
+           |        D-4 D-5
+           |        G-3 G-4
+           |        A#3 A#4
+           |        D-4 D-5
+           |        G-3 G-4
+           |        A-3 A-4
+           |        C-4 C-5
+           |        F-3 F-4
+           |        A-3 A-4
+           |        C-4 C-5
+           |        F-3 F-4
+           |        G-3 G-4
+           |        A#3 A#4
+           |        E-3 E-4
+           |        G-3 G-4
+           |        A#3 A#4
+           |        E-3 E-4
+# 10 ----------------------
+           |        F-3 F-4
+           |        A-3 A-4
+           |        D-3 D-4
+           |        F-3 F-4
+           |        A-3 A-4
+           |        D-3 D-4
+           |        E-3 E-4
+           |        G-3 G-4
+           |        C#3 C#4
+           |        E-3 E-4
+           |        G-3 G-4
+           |        C#3 C#4
+tempo 1.0  |D-2     off off
+           |
+           |
+           |
+tempo 0.5  |    C#3 E-3 G-3 A#3 C#4 E-4 G-4 A#4
+           |
+           |
+           |
+# 11 ----------------------
 rate 2.0
-tempo 1.0
-|
-|
-|
-|
-|
-|
-|
-|
-tempo 0.5
-|off off off off off off off off
-tempo 1.0
-|                                A-4
-|                                G-4
-|                                F-4
-|                                E-4
-|                                D-4
-|                                C#4
-|                                B-3
-|                                C#4
-|
-|                                A-3
-|
-|                                C#4
-|
-|                                E-4
-|                                G-4
+tempo 1.0  |
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+tempo 0.5  |off off off off off off off off
+tempo 1.0  |                                A-4
+           |                                G-4
+           |                                F-4
+           |                                E-4
+           |                                D-4
+           |                                C#4
+           |                                B-3
+           |                                C#4
+           |
+           |                                A-3
+           |
+           |                                C#4
+           |
+           |                                E-4
+           |                                G-4
 rate 4.0
-|                                F-4
-|
-|
-|                                F-4
-|                                G-4
-|
-|                                F-4
-|                                G-4
-|                                F-4
-|                                G-4
-|                                F-4
-|
+           |                                F-4
+           |
+           |
+           |                                F-4
+           |                                G-4
+           |
+           |                                F-4
+           |                                G-4
+           |                                F-4
+           |                                G-4
+           |                                F-4
+           |
 rate 2.0
-|                                E-4
-|
-
-# bar
-
-tempo 0.5
-|D-2 D-3 F-3 A-3 D-4             F-4
-|
-|
-|
-|
-|
-|
-|
-tempo 1.0
-|off off off off off             off
-|
-|
-|
-|
-|
-|            A-4
-|        A-4 off
-|        off D-5
-|        A-4 off
-|        off E-5
-|        A-4 off
-|        off F-5
-|        A-4 off
-|        off D-5
-|        A-4 off
-|        off E-5
-|        A-4 off
-|        off F-5
-|        A-4 off
-|        off G-5
-|        A-4 off
-|        off E-5
-|        A-4 off
-
-# bar
-
-|        off F-5
-|        A-4 off
-|        off G-5
-|        A-4 off
-|        off A-5
-|        A-4 off
-|        off F-5
-|        A-4 off
-|        off G-5
-|        A-4 off
-|        off A-5
-|        A-4 off
-|        off A#5
-|        A-4 off
-|        off G-5
-|        A-4 off
-|        off A-5
-|        A-4 off
-|        off F-5
-|        A-4 off
-|        off G-5
-|        A-4 off
-|        off E-5
-|        A-4 off
-|        off F-5
-|        A-4 off
-|        off D-5
-|        A-4 off
-|        off E-5
-|        A-4 off
-|        off C#5
-|        A-4 off
-
-# bar
-
-|        off D-5
-|        A-4 off
-|        off A-4
-|        A-4 off
-|        off A#4
-|        A-4 off
-|        off G-4
-|        A-4 off
-|        off A-4
-|        A-4 off
-|        off F-4
-|        A-4 off
-|        off G-4
-|        A-4 off
-|        off E-4
-|        A-4 off
-|        off F-4
-|        A-4 off
-|        off D-4
-|        A-4 off
-|        off G-4
-|        A-4 off
-|        off E-4
-|        A-4 off
-|        off F-4
-|        A-4 off
-|        off D-4
-|        A-4 off
-|        off E-4
-|        A-4 off
-|        off C#4
-|        A-4 off
-
-# bar
-
-|        off D-4
-|        A-4 off
-|        off A-3
-|        A-4 off
-|        off A#3
-|        A-4 off
-|        off G-3
-|        A-4 off
-|        off A-3
-|        A-4 off
-|        off F-3
-|        A-4 off
-|        off G-3
-|        A-4 off
-|        off E-3
-|        A-4 off
-|        off F-3
-|        A-4 off
-|        off D-3
-|        A-4 off
-|        off G-3
-|        A-4 off
-|        off E-3
-|        A-4 off
-|        off F-3
-|        A-4 off
-|        off D-3
-|        A-4 off
-|        off E-3
-|        A-4 off
-|        off C#3
-|        A-4 off
-
-# bar
-
-|        off D-3
-|
-|
-|
-|        D-4 off
-|        F-4
-|        A#4
-|        F-4
-|        C-4
-|        E-4
-|        A-4
-|        E-4
-|        A#3
-|        D-4
-|        G-4
-|        D-4
-|        A-3
-|        C#4
-|        E-4
-|        A-4
-|D-3 D-4 off
-|
-|    off F-4 A#4
-|
-|C-3 A-3 off off
-|
-|    off E-4 A-4
-|
-|A#2 A#3 off off
-|
-|    off D-4 G-4
-|
-
-# bar
-
-|A-2 E-3 C#4 E-4 A-4
-|
-|
-|
-|off off D-4 off off
-|        F-4
-|        A#4
-|        F-4
-|        C-4
-|        E-4
-|        A-4
-|        E-4
-|        A#3
-|        D-4
-|        G-4
-|        D-4
-|        A-3
-|        C#4
-|        E-4
-|        A-4
-|D-3 D-4 off
-|
-|    off F-4 A#4
-|
-|C-3 A-3 off off
-|
-|    off E-4 A-4
-|
-|A#2 A#3 off off
-|
-|    off D-4 G-4
-|
-
-# bar
-
-|A-2 E-3 C#4 E-4 A-4
-|
-|
-|
-|
-|
-|
-|
-tempo 0.5
-|off off off off
-tempo 1.0
-|                G-4
-|                F-4
-|                E-4
-|                D-4
-|                C#4
-|                B-3
-|                C#4
-|                A-3
-|                B-3
-|                C#4
-|                D-4
-|                E-4
-|                F-4
-|                G-4
-|                A-4
-|                G-4
-|                F-4
-|                E-4
-|                F-4
-|                D-4
-|                F-4
-|                A-4
-|                C#5
-
-# bar
-
-|                D-5
-|                A-4
-|                B-4
-|                C#5
-|                D-5
-|                E-5
+           |                                E-4
+           |
+# 12 ----------------------
+tempo 0.5  |D-2 D-3 F-3 A-3 D-4             F-4
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+tempo 1.0  |off off off off off             off
+           |
+           |
+           |
+           |
+           |
+           |            A-4
+           |        A-4 off
+           |        off D-5
+           |        A-4 off
+           |        off E-5
+           |        A-4 off
+           |        off F-5
+           |        A-4 off
+           |        off D-5
+           |        A-4 off
+           |        off E-5
+           |        A-4 off
+           |        off F-5
+           |        A-4 off
+           |        off G-5
+           |        A-4 off
+           |        off E-5
+           |        A-4 off
+# 13 ----------------------
+           |        off F-5
+           |        A-4 off
+           |        off G-5
+           |        A-4 off
+           |        off A-5
+           |        A-4 off
+           |        off F-5
+           |        A-4 off
+           |        off G-5
+           |        A-4 off
+           |        off A-5
+           |        A-4 off
+           |        off A#5
+           |        A-4 off
+           |        off G-5
+           |        A-4 off
+           |        off A-5
+           |        A-4 off
+           |        off F-5
+           |        A-4 off
+           |        off G-5
+           |        A-4 off
+           |        off E-5
+           |        A-4 off
+           |        off F-5
+           |        A-4 off
+           |        off D-5
+           |        A-4 off
+           |        off E-5
+           |        A-4 off
+           |        off C#5
+           |        A-4 off
+# 14 ----------------------
+           |        off D-5
+           |        A-4 off
+           |        off A-4
+           |        A-4 off
+           |        off A#4
+           |        A-4 off
+           |        off G-4
+           |        A-4 off
+           |        off A-4
+           |        A-4 off
+           |        off F-4
+           |        A-4 off
+           |        off G-4
+           |        A-4 off
+           |        off E-4
+           |        A-4 off
+           |        off F-4
+           |        A-4 off
+           |        off D-4
+           |        A-4 off
+           |        off G-4
+           |        A-4 off
+           |        off E-4
+           |        A-4 off
+           |        off F-4
+           |        A-4 off
+           |        off D-4
+           |        A-4 off
+           |        off E-4
+           |        A-4 off
+           |        off C#4
+           |        A-4 off
+# 15 ----------------------
+           |        off D-4
+           |        A-4 off
+           |        off A-3
+           |        A-4 off
+           |        off A#3
+           |        A-4 off
+           |        off G-3
+           |        A-4 off
+           |        off A-3
+           |        A-4 off
+           |        off F-3
+           |        A-4 off
+           |        off G-3
+           |        A-4 off
+           |        off E-3
+           |        A-4 off
+           |        off F-3
+           |        A-4 off
+           |        off D-3
+           |        A-4 off
+           |        off G-3
+           |        A-4 off
+           |        off E-3
+           |        A-4 off
+           |        off F-3
+           |        A-4 off
+           |        off D-3
+           |        A-4 off
+           |        off E-3
+           |        A-4 off
+           |        off C#3
+           |        A-4 off
+# 16 ----------------------
+           |        off D-3
+           |
+           |
+           |
+           |        D-4 off
+           |        F-4
+           |        A#4
+           |        F-4
+           |        C-4
+           |        E-4
+           |        A-4
+           |        E-4
+           |        A#3
+           |        D-4
+           |        G-4
+           |        D-4
+           |        A-3
+           |        C#4
+           |        E-4
+           |        A-4
+           |D-3 D-4 off
+           |
+           |    off F-4 A#4
+           |
+           |C-3 A-3 off off
+           |
+           |    off E-4 A-4
+           |
+           |A#2 A#3 off off
+           |
+           |    off D-4 G-4
+           |
+# 17 ----------------------
+           |A-2 E-3 C#4 E-4 A-4
+           |
+           |
+           |
+           |off off D-4 off off
+           |        F-4
+           |        A#4
+           |        F-4
+           |        C-4
+           |        E-4
+           |        A-4
+           |        E-4
+           |        A#3
+           |        D-4
+           |        G-4
+           |        D-4
+           |        A-3
+           |        C#4
+           |        E-4
+           |        A-4
+           |D-3 D-4 off
+           |
+           |    off F-4 A#4
+           |
+           |C-3 A-3 off off
+           |
+           |    off E-4 A-4
+           |
+           |A#2 A#3 off off
+           |
+           |    off D-4 G-4
+           |
+# 18 ----------------------
+           |A-2 E-3 C#4 E-4 A-4
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+tempo 0.5  |off off off off
+tempo 1.0  |                G-4
+           |                F-4
+           |                E-4
+           |                D-4
+           |                C#4
+           |                B-3
+           |                C#4
+           |                A-3
+           |                B-3
+           |                C#4
+           |                D-4
+           |                E-4
+           |                F-4
+           |                G-4
+           |                A-4
+           |                G-4
+           |                F-4
+           |                E-4
+           |                F-4
+           |                D-4
+           |                F-4
+           |                A-4
+           |                C#5
+# 19 ----------------------
+           |                D-5
+           |                A-4
+           |                B-4
+           |                C#5
+           |                D-5
+           |                E-5
 rate 4.0
-|                F-5
-|                G-5
+           |                F-5
+           |                G-5
 rate 2.0
-|                A-5
-|                A#5
-|
-|
-|
-|D-3 D-5         off
-|
-|    off F-5 A#5
-|
-|C-3 A-4 off off
-|
-|    off E-5 A-5
-|
-|A#2 A#4 off off
-|
-|    off D-5 G-5
-|
-|A-2 E-4 C#5 E-5 A-5
-|
-|
-|
-|off off D-5 off off
-|        F-5
-|        A#5
-|        F-5
-
-# bar
-
-|        C-5
-|        E-5
-|        A-5
-|        E-5
-|        A#4
-|        D-5
-|        G-5
-|        D-5
-|        A-4
-|        C#5
-|        E-5
-|        A-5
-|D-3 D-5 off
-|
-|    off F-5 A#5
-|
-|C-3 A-4 off off
-|
-|    off E-5 A-5
-|
-|A#2 A#4 off off
-|
-|    off D-5 G-5
-|
-tempo 0.5
-|A-2 E-4 C#5 E-5 A-5
-|
-|
-|
-|G#2 B-3 D-4 F-4 B-4
-|
-|
-|
-
-# bar
-
-|G-2 A-3 E-4 A-4 C#5
-|
-|
-|
-|
-|
-|                B-4
-|
-tempo 0.666
-|off off off off A-4
-|
-|                C#5
-|
-|                E-5
-|                G-5
-tempo 0.25
-|                A#5
-|
-tempo 0.5
-|                A-5
-tempo 1.0
-|                G-5
-|                F-5
-|                E-5
-|                F-5
-|                E-5
-|                D-5
-|                C#5
-|                D-5
-|                C-5
-|                A#4
-|                A-4
-|                G-4
-|                F-4
-|                E-4
-|                D-4
-
-# bar
-
+           |                A-5
+           |                A#5
+           |
+           |
+           |
+           |D-3 D-5         off
+           |
+           |    off F-5 A#5
+           |
+           |C-3 A-4 off off
+           |
+           |    off E-5 A-5
+           |
+           |A#2 A#4 off off
+           |
+           |    off D-5 G-5
+           |
+           |A-2 E-4 C#5 E-5 A-5
+           |
+           |
+           |
+           |off off D-5 off off
+           |        F-5
+           |        A#5
+           |        F-5
+# 20 ----------------------
+           |        C-5
+           |        E-5
+           |        A-5
+           |        E-5
+           |        A#4
+           |        D-5
+           |        G-5
+           |        D-5
+           |        A-4
+           |        C#5
+           |        E-5
+           |        A-5
+           |D-3 D-5 off
+           |
+           |    off F-5 A#5
+           |
+           |C-3 A-4 off off
+           |
+           |    off E-5 A-5
+           |
+           |A#2 A#4 off off
+           |
+           |    off D-5 G-5
+           |
+tempo 0.5  |A-2 E-4 C#5 E-5 A-5
+           |
+           |
+           |
+           |G#2 B-3 D-4 F-4 B-4
+           |
+           |
+           |
+# 21 ----------------------
+           |G-2 A-3 E-4 A-4 C#5
+           |
+           |
+           |
+           |
+           |
+           |                B-4
+           |
+tempo 0.666|off off off off A-4
+           |
+           |                C#5
+           |
+           |                E-5
+           |                G-5
+tempo 0.25 |                A#5
+           |
+tempo 0.5  |                A-5
+tempo 1.0  |                G-5
+           |                F-5
+           |                E-5
+           |                F-5
+           |                E-5
+           |                D-5
+           |                C#5
+           |                D-5
+           |                C-5
+           |                A#4
+           |                A-4
+           |                G-4
+           |                F-4
+           |                E-4
+           |                D-4
+# 22 ----------------------
 rate 1.0
-tempo 0.666
-|G-3 C#4 E-4 G-4 A#4 C#5 E-5
-|
-|
-|
-|
-|
-|
-|
-tempo 1.5
-|off off         off off off
-|        G-4 E-5
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        G-4 E-5
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        C#4 A#4
-
-# bar
-
-|        E-4 C#5
-|        G-4 E-5
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        G-4 E-5
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        C#4 A#4
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-
-# bar
-
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        C#3 A#3
-
-# bar
-
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        C#3 A#3
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-
-# bar
-
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        E-3 C#4
-|        G-3 E-4
-|        A#3 G-4
-|        G-3 E-4
-|        E-3 G-4
-|        G-3 A#4
-|        E-3 G-4
-|        G-3 A#4
-|        E-3 G-4
-|        G-3 A#4
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        C#4 A#4
-|        A#3 G-4
-|        C#4 A#4
-
-# bar
-
-|        E-4 C#5
-|        C#4 A#4
-|        E-4 C#5
-|        C#4 E-5
-|        E-4 C#5
-|        C#4 E-5
-|        E-4 C#5
-|        C#4 E-5
-|        E-4 C#5
-|        C#4 E-5
-|        E-4 C#5
-|        C#4 E-5
-tempo 0.5
-|G-3 A-3 C#4 E-4 A-4 C#5 E-5 A-5
-|
-|
-|
-|F-3 A-3 D-4 F-4 A-4 D-5 F-5 A-5
-|
-|
-|
-
-# bar
-
-tempo 0.5
-|A#3 off D-4 F-4 off A#4 D-5 G-5
-|
-|
-|
-|        off off     off off off
-|
-tempo 0.75
-|A-3
-|G-3
-tempo 0.5
-|A-3     C#4 E-4 A-4 C#5 E-5 G-5
-|
-|
-|E-3
-tempo 0.75
-|F-3     off off off off off off
-|D-3
-|E-3
-|C#3
-
-# bar
-
-|D-3
-|B-2
-|C#3
-|A-2
-|A#2
-|G#2
-tempo 0.25
-|A-2
-|G-3     A-3 E-4 A-4 C#5
-|F-3     A-3 D-4 F-4 A-4 D-5
-|
-|D-3     A-3 D-4 F-4 off off
-|
-|A-2             E-4
-|
-|            C#4
-|        G-3
-
-# bar
-
-|D-2 D-3     A-3 D-4
-|
-|        F-3
-|        E-3
-|        F-3
-|
-|
-|
+tempo 0.666|G-3 C#4 E-4 G-4 A#4 C#5 E-5
+           |
+           |
+           |
+           |
+           |
+           |
+           |
+tempo 1.5  |off off         off off off
+           |        G-4 E-5
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        G-4 E-5
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        C#4 A#4
+# 23 ----------------------
+           |        E-4 C#5
+           |        G-4 E-5
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        G-4 E-5
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        C#4 A#4
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+# 24 ----------------------
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        C#3 A#3
+# 25 ----------------------
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        C#3 A#3
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+# 26 ----------------------
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        E-3 C#4
+           |        G-3 E-4
+           |        A#3 G-4
+           |        G-3 E-4
+           |        E-3 G-4
+           |        G-3 A#4
+           |        E-3 G-4
+           |        G-3 A#4
+           |        E-3 G-4
+           |        G-3 A#4
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        C#4 A#4
+           |        A#3 G-4
+           |        C#4 A#4
+# 27 ----------------------
+           |        E-4 C#5
+           |        C#4 A#4
+           |        E-4 C#5
+           |        C#4 E-5
+           |        E-4 C#5
+           |        C#4 E-5
+           |        E-4 C#5
+           |        C#4 E-5
+           |        E-4 C#5
+           |        C#4 E-5
+           |        E-4 C#5
+           |        C#4 E-5
+tempo 0.5  |G-3 A-3 C#4 E-4 A-4 C#5 E-5 A-5
+           |
+           |
+           |
+           |F-3 A-3 D-4 F-4 A-4 D-5 F-5 A-5
+           |
+           |
+           |
+# 28 ----------------------
+tempo 0.5  |A#3 off D-4 F-4 off A#4 D-5 G-5
+           |
+           |
+           |
+           |        off off     off off off
+           |
+tempo 0.75 |A-3
+           |G-3
+tempo 0.5  |A-3     C#4 E-4 A-4 C#5 E-5 G-5
+           |
+           |
+           |E-3
+tempo 0.75 |F-3     off off off off off off
+           |D-3
+           |E-3
+           |C#3
+# 29 ----------------------
+           |D-3
+           |B-2
+           |C#3
+           |A-2
+           |A#2
+           |G#2
+tempo 0.25 |A-2
+           |G-3     A-3 E-4 A-4 C#5
+           |F-3     A-3 D-4 F-4 A-4 D-5
+           |
+           |D-3     A-3 D-4 F-4 off off
+           |
+           |A-2             E-4
+           |
+           |            C#4
+           |        G-3
+# 30 ----------------------
+           |D-2 D-3     A-3 D-4
+           |
+           |        F-3
+           |        E-3
+           |        F-3
+           |
+           |
+           |
 
 
-# fugue
+#
+# FUGUE
+#
 
 
 rate 1.0
-tempo 1.0
-|off off off off off
-|
-|        A-4
-|        G-4
-|        A-4
-|        F-4
-|        A-4
-|        E-4
-|        A-4
-
-# bar
-
+tempo 1.0  |off off off off off
+           |
+           |        A-4
+           |        G-4
+           |        A-4
+           |        F-4
+           |        A-4
+           |        E-4
+           |        A-4
+# 31 ----------------------
 |        D-4
 |        A-4
 |        C#4
@@ -1469,6 +1378,9 @@ tempo 1.0
 |            A#4
 |            A-4
 |            G-4
+
+
+
 |        F-4 A-5
 |            F-5
 |        off E-5
@@ -1501,39 +1413,39 @@ tempo 1.0
 |            E-5
 |            D-5
 |            E-5
-|        F-4 A-5
-|            F-5
-|        off E-5
-|            F-5
-|            C-5
-|            F-5
-|            E-5
-|            F-5
-|        F-4 A-5
-|            F-5
-|        off E-5
-|            F-5
-|            C-5
-|            F-5
-|            E-5
-|            F-5
-|        E-4 G-5
-|            E-5
-|        off D-5
-|            E-5
-|            C-5
-|            E-5
-|            D-5
-|            E-5
-|        E-4 G-5
-|            E-5
-|        off D-5
-|            E-5
-|            C-5
-|            E-5
-|            D-5
-|            E-5
-|        D-4 F-5
+|            off                     F-4 A-5
+|                                        F-5
+|                                    off E-5
+|                                        F-5
+|                                        C-5
+|                                        F-5
+|                                        E-5
+|                                        F-5
+|                                    F-4 A-5
+|                                        F-5
+|                                    off E-5
+|                                        F-5
+|                                        C-5
+|                                        F-5
+|                                        E-5
+|                                        F-5
+|                                    E-4 G-5
+|                                        E-5
+|                                    off D-5
+|                                        E-5
+|                                        C-5
+|                                        E-5
+|                                        D-5
+|                                        E-5
+|                                    E-4 G-5
+|                                        E-5
+|                                    off D-5
+|                                        E-5
+|                                        C-5
+|                                        E-5
+|                                        D-5
+|                                        E-5
+|        D-4 F-5                         off
 |            G-5
 |        off F-5
 |            E-5
@@ -1549,23 +1461,15 @@ tempo 1.0
 |            A-5
 |            F-5
 |            D-5
-|            B-4
-|            G-4
-|            B-4
-|            D-5
-|            F-5
-|            A-5
-|            F-5
-|            D-5
-|            A#4
-|            G-4
-|            A#4
-|            C-5
-|            E-5
-|            G-5
-|            E-5
-|            C-5
-|            A#4
+|            off                         B-4
+|                                        G-4
+|                                        B-4
+|                                        D-5
+|                                        F-5
+|                                        A-5
+|                                        F-5
+|                                        D-5
+|            A#4                         off
 |            G-4
 |            A#4
 |            C-5
@@ -1573,7 +1477,15 @@ tempo 1.0
 |            G-5
 |            E-5
 |            C-5
-|            A-4
+|            off                         A#4
+|                                        G-4
+|                                        A#4
+|                                        C-5
+|                                        E-5
+|                                        G-5
+|                                        E-5
+|                                        C-5
+|            A-4                         off
 |            F-4
 |            A-4
 |            C-5
@@ -1581,15 +1493,15 @@ tempo 1.0
 |            F-5
 |            D-5
 |            A#4
-|            A-4
-|            F-4
-|            A-4
-|            C-5
-|            D-5
-|            F-5
-|            D-5
-|            A#4
-|            G-4
+|            off                         A-4
+|                                        F-4
+|                                        A-4
+|                                        C-5
+|                                        D-5
+|                                        F-5
+|                                        D-5
+|                                        A#4
+|            G-4                         off
 |            E-4
 |            G-4
 |            A#4
@@ -1597,15 +1509,15 @@ tempo 1.0
 |            E-5
 |            C#5
 |            A#4
-|            G-4
-|            E-4
-|            G-4
-|            A#4
-|            C#5
-|            E-5
-|            C#5
-|            A#4
-|        A-4 off
+|            off                         G-4
+|                                        E-4
+|                                        G-4
+|                                        A#4
+|                                        C#5
+|                                        E-5
+|                                        C#5
+|                                        A#4
+|        A-4                             off
 |            A-5
 |        C#5 G-5
 |            A-5
@@ -1661,7 +1573,31 @@ tempo 1.0
 |    A#3
 |    G-3
 |    E-3
-|    C#3
+|    off                                 C#3
+|                                        A-2
+|                                        C#3
+|                                        E-3
+|                                        G-3
+|                                        A#3
+|                                        G-3
+|                                        E-3
+|    D-3                                 off
+|    A-2
+|    D-3
+|    F-3
+|    A-3
+|    D-4
+|    A-3
+|    F-3
+|    off                                 D-3
+|                                        A-2
+|                                        D-3
+|                                        F-3
+|                                        A-3
+|                                        D-4
+|                                        A-3
+|                                        F-3
+|    C#3                                 off
 |    A-2
 |    C#3
 |    E-3
@@ -1669,7 +1605,15 @@ tempo 1.0
 |    A#3
 |    G-3
 |    E-3
-|    D-3
+|    off                                 C#3
+|                                        A-2
+|                                        C#3
+|                                        E-3
+|                                        G-3
+|                                        A#3
+|                                        G-3
+|                                        E-3
+|    D-3                                 off
 |    A-2
 |    D-3
 |    F-3
@@ -1677,47 +1621,15 @@ tempo 1.0
 |    D-4
 |    A-3
 |    F-3
-|    D-3
-|    A-2
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    A-3
-|    F-3
-|    C#3
-|    A-2
-|    C#3
-|    E-3
-|    G-3
-|    A#3
-|    G-3
-|    E-3
-|    C#3
-|    A-2
-|    C#3
-|    E-3
-|    G-3
-|    A#3
-|    G-3
-|    E-3
-|    D-3
-|    A-2
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    A-3
-|    F-3
-|    D-3
-|    A-2
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    A-3
-|    F-3
-|    E-3
+|    off                                 D-3
+|                                        A-2
+|                                        D-3
+|                                        F-3
+|                                        A-3
+|                                        D-4
+|                                        A-3
+|                                        F-3
+|    E-3                                 off
 |    C#3
 |    E-3
 |    G-3
@@ -1725,7 +1637,31 @@ tempo 1.0
 |    C#4
 |    A#3
 |    G-3
-|    E-3
+|    off                                 E-3
+|                                        C#3
+|                                        E-3
+|                                        G-3
+|                                        A#3
+|                                        C#4
+|                                        A#3
+|                                        G-3
+|    F-3                                 off
+|    D-3
+|    F-3
+|    A-3
+|    D-4
+|    F-4
+|    D-4
+|    A-3
+|    off                                 F-3
+|                                        D-3
+|                                        F-3
+|                                        A-3
+|                                        D-4
+|                                        F-4
+|                                        D-4
+|                                        A-3
+|    E-3                                 off
 |    C#3
 |    E-3
 |    G-3
@@ -1733,7 +1669,15 @@ tempo 1.0
 |    C#4
 |    A#3
 |    G-3
-|    F-3
+|    off                                 E-3
+|                                        C#3
+|                                        E-3
+|                                        G-3
+|                                        A#3
+|                                        C#4
+|                                        A#3
+|                                        G-3
+|    F-3                                 off
 |    D-3
 |    F-3
 |    A-3
@@ -1741,47 +1685,15 @@ tempo 1.0
 |    F-4
 |    D-4
 |    A-3
-|    F-3
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    F-4
-|    D-4
-|    A-3
-|    E-3
-|    C#3
-|    E-3
-|    G-3
-|    A#3
-|    C#4
-|    A#3
-|    G-3
-|    E-3
-|    C#3
-|    E-3
-|    G-3
-|    A#3
-|    C#4
-|    A#3
-|    G-3
-|    F-3
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    F-4
-|    D-4
-|    A-3
-|    F-3
-|    D-3
-|    F-3
-|    A-3
-|    D-4
-|    F-4
-|    D-4
-|    A-3
-|    G-3
+|    off                                 F-3
+|                                        D-3
+|                                        F-3
+|                                        A-3
+|                                        D-4
+|                                        F-4
+|                                        D-4
+|                                        A-3
+|    G-3                                 off
 |    E-3
 |    G-3
 |    A#3
@@ -1789,15 +1701,15 @@ tempo 1.0
 |    E-4
 |    C#4
 |    A#3
-|    G-3
-|    E-3
-|    G-3
-|    A#3
-|    C#4
-|    E-4
-|    C#4
-|    A#3
-|    A-3
+|    off                                 G-3
+|                                        E-3
+|                                        G-3
+|                                        A#3
+|                                        C#4
+|                                        E-4
+|                                        C#4
+|                                        A#3
+|    A-3                                 off
 |    F-3
 |    A-3
 |    C#4
@@ -2693,8 +2605,9 @@ tempo 0.5
 |
 |
 rate 2.0
-tempo 1.0
+tempo 0.2
 |off off off off off off off
+tempo 1.0
 |        F-5
 |        G-5
 |        A-5
@@ -2776,9 +2689,9 @@ tempo 1.0
 |        F#4
 |        G-4
 |        A-4
-|    A#4 off
+|        off A#4
 |        C-5
-|    G-3 D-5
+|        D-5     G-3
 |        G-4
 
 # bar
@@ -2876,7 +2789,7 @@ tempo 1.0
 |        D-4
 |        B-4
 |        A-4
-|        A-4
+|        B-4
 |        G-4
 |        G-4
 |        F-4
