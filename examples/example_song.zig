@@ -104,13 +104,13 @@ const Parser = struct {
         if (ch == '|') {
             parser.index += 1;
 
-            var notes = [1]Note { Note { .Idle = undefined } } ** TOTAL_TRACKS;
+            var notes = [1]Note { Note { .Idle = {} } } ** TOTAL_TRACKS;
 
             var col: usize = 0; while (true) : (col += 1) {
                 if (parseNote(parser)) |freq| {
                     notes[col] = Note { .Freq = freq };
                 } else if (parser.index + 3 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 3], "off")) {
-                    notes[col] = Note { .Off = undefined };
+                    notes[col] = Note { .Off = {} };
                     parser.index += 3;
                 } else if (parser.index + 3 <= parser.contents.len and std.mem.eql(u8, parser.contents[parser.index .. parser.index + 3], "   ")) {
                     parser.index += 3;
