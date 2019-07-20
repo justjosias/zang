@@ -69,7 +69,6 @@ pub const PhaseModOscillator = struct {
             .phase = zang.buffer(temps[1]),
             .colour = 0.5,
         });
-        zang.multiplyWithScalar(span, temps[2], 0.5);
         zang.addInto(span, outputs[0], temps[2]);
     }
 };
@@ -103,7 +102,7 @@ pub const PMOscInstrument = struct {
             .freq = params.freq,
             .relative = true,
             .ratio = zang.constant(1.0),
-            .multiplier = zang.constant(2.0),
+            .multiplier = zang.constant(1.0),
         });
         zang.zero(span, temps[1]);
         self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {

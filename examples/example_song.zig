@@ -19,9 +19,7 @@ pub const DESCRIPTION =
 
 const A4 = 440.0;
 const NOTE_DURATION = 0.15;
-const NUM_TRACKS_1 = 9; // normal keys
-const NUM_TRACKS_2 = 2; // weird keys
-const TOTAL_TRACKS = NUM_TRACKS_1 + NUM_TRACKS_2;
+const TOTAL_TRACKS = @typeInfo(Voices).Struct.fields.len;
 
 const Note = union(enum) {
     Idle: void,
@@ -119,7 +117,7 @@ const Parser = struct {
                 } else {
                     break;
                 }
-                if (parser.index < parser.contents.len and parser.contents[parser.index] == ' ') {
+                if (parser.index < parser.contents.len and (parser.contents[parser.index] == ' ' or parser.contents[parser.index] == '|')) {
                     parser.index += 1;
                 } else {
                     break;
@@ -301,8 +299,6 @@ fn parse() void {
     };
 }
 
-const modules = @import("modules.zig");
-
 const SupportedInstrument = enum {
     HardSquare,
     Organ,
@@ -312,81 +308,79 @@ const SupportedInstrument = enum {
     PMOsc,
 };
 
-fn getInstrumentModule(comptime instr: SupportedInstrument) type {
-    return switch (instr) {
-        .HardSquare => modules.HardSquareInstrument,
-        .Organ => modules.SquareWithEnvelope,
-        .WeirdOrgan => modules.SquareWithEnvelope,
-        .Nice => modules.NiceInstrument,
-        .FltSaw => modules.FilteredSawtoothInstrument,
-        .PMOsc => modules.PMOscInstrument,
-    };
-}
+fn Voice(comptime si: SupportedInstrument, comptime freq_mul: f32) type {
+    const modules = @import("modules.zig");
 
-fn Voice(comptime si_: SupportedInstrument) type {
     return struct {
-        const T = getInstrumentModule(si_);
-        const si = si_;
+        const Instrument = switch (si) {
+            .HardSquare => modules.HardSquareInstrument,
+            .Organ => modules.SquareWithEnvelope,
+            .WeirdOrgan => modules.SquareWithEnvelope,
+            .Nice => modules.NiceInstrument,
+            .FltSaw => modules.FilteredSawtoothInstrument,
+            .PMOsc => modules.PMOscInstrument,
+        };
 
-        instrument: T,
+        instrument: Instrument,
         trigger: zang.Trigger(MyNoteParams),
         tracker: zang.Notes(MyNoteParams).NoteTracker,
-    };
-}
 
-fn initVoice(comptime si: SupportedInstrument, track_index: usize) Voice(si) {
-    return Voice(si) {
-        .instrument = switch (si) {
-            .HardSquare => modules.HardSquareInstrument.init(),
-            .Organ => modules.SquareWithEnvelope.init(false),
-            .WeirdOrgan => modules.SquareWithEnvelope.init(true),
-            .Nice => modules.NiceInstrument.init(),
-            .FltSaw => modules.FilteredSawtoothInstrument.init(),
-            .PMOsc => modules.PMOscInstrument.init(0.15),
-        },
-        .trigger = zang.Trigger(MyNoteParams).init(),
-        .tracker = zang.Notes(MyNoteParams).NoteTracker.init(tracks[track_index]),
-    };
-}
+        fn init(track_index: usize) @This() {
+            return @This() {
+                .instrument = switch (si) {
+                    .HardSquare => modules.HardSquareInstrument.init(),
+                    .Organ => modules.SquareWithEnvelope.init(false),
+                    .WeirdOrgan => modules.SquareWithEnvelope.init(true),
+                    .Nice => modules.NiceInstrument.init(),
+                    .FltSaw => modules.FilteredSawtoothInstrument.init(),
+                    .PMOsc => modules.PMOscInstrument.init(0.15),
+                },
+                .trigger = zang.Trigger(MyNoteParams).init(),
+                .tracker = zang.Notes(MyNoteParams).NoteTracker.init(tracks[track_index]),
+            };
+        }
 
-fn makeParams(comptime si: SupportedInstrument, sample_rate: f32, source_params: MyNoteParams) getInstrumentModule(si).Params {
-    const T = getInstrumentModule(si);
-
-    return switch (si) {
-        .HardSquare,
-        .Organ,
-        .WeirdOrgan,
-        .Nice,
-        .FltSaw,
-        .PMOsc => T.Params {
-            .sample_rate = sample_rate,
-            .freq = source_params.freq,
-            .note_on = source_params.note_on,
-        },
+        fn makeParams(voice: *const @This(), sample_rate: f32, source_params: MyNoteParams) Instrument.Params {
+            return switch (si) {
+                .HardSquare,
+                .Organ,
+                .WeirdOrgan,
+                .Nice,
+                .FltSaw,
+                .PMOsc => Instrument.Params {
+                    .sample_rate = sample_rate,
+                    .freq = source_params.freq * freq_mul,
+                    .note_on = source_params.note_on,
+                },
+            };
+        }
     };
 }
 
 const InstrumentOrgan = .Organ;
+const InstrumentPedal = .PMOsc;
 const InstrumentWeirdOrgan = .WeirdOrgan;
 const Voices = struct {
-    voice0: Voice(InstrumentOrgan),
-    voice1: Voice(InstrumentOrgan),
-    voice2: Voice(InstrumentOrgan),
-    voice3: Voice(InstrumentOrgan),
-    voice4: Voice(InstrumentOrgan),
-    voice5: Voice(InstrumentOrgan),
-    voice6: Voice(InstrumentOrgan),
-    voice7: Voice(InstrumentOrgan),
-    voice8: Voice(InstrumentOrgan),
-    voice9: Voice(InstrumentWeirdOrgan),
-    voice10: Voice(InstrumentWeirdOrgan),
+    pedal0: Voice(InstrumentPedal, 0.5),
+    pedal1: Voice(InstrumentPedal, 0.5),
+    voice0: Voice(InstrumentOrgan, 1.0),
+    voice1: Voice(InstrumentOrgan, 1.0),
+    voice2: Voice(InstrumentOrgan, 1.0),
+    voice3: Voice(InstrumentOrgan, 1.0),
+    voice4: Voice(InstrumentOrgan, 1.0),
+    voice5: Voice(InstrumentOrgan, 1.0),
+    voice6: Voice(InstrumentOrgan, 1.0),
+    voice7: Voice(InstrumentOrgan, 1.0),
+    voice8: Voice(InstrumentOrgan, 1.0),
+    voice9: Voice(InstrumentWeirdOrgan, 1.0),
+    voice10: Voice(InstrumentWeirdOrgan, 1.0),
 };
 
 fn getNumTemps() usize {
     comptime var num_temps: usize = 0;
 
     inline for (@typeInfo(Voices).Struct.fields) |field| {
-        const n = @field(field.field_type, "T").NumTemps;
+        const n = @field(field.field_type, "Instrument").NumTemps;
 
         if (n > num_temps) {
             num_temps = n;
@@ -410,7 +404,7 @@ pub const MainModule = struct {
         };
 
         inline for (@typeInfo(Voices).Struct.fields) |field, track_index| {
-            @field(mod.voices, field.name) = initVoice(@field(field.field_type, "si"), track_index);
+            @field(mod.voices, field.name) = field.field_type.init(track_index);
         }
 
         return mod;
@@ -418,14 +412,14 @@ pub const MainModule = struct {
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
         inline for (@typeInfo(Voices).Struct.fields) |field| {
+            const Instrument = @field(field.field_type, "Instrument");
             const voice = &@field(self.voices, field.name);
+
             var ctr = voice.trigger.counter(span, voice.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start));
             while (voice.trigger.next(&ctr)) |result| {
-                const T = @field(field.field_type, "T");
-                const si = @field(field.field_type, "si");
-                const params = makeParams(si, AUDIO_SAMPLE_RATE, result.params);
-                var inner_temps: [T.NumTemps][]f32 = undefined;
-                var i: usize = 0; while (i < T.NumTemps) : (i += 1) {
+                const params = voice.makeParams(AUDIO_SAMPLE_RATE, result.params);
+                var inner_temps: [Instrument.NumTemps][]f32 = undefined;
+                var i: usize = 0; while (i < Instrument.NumTemps) : (i += 1) {
                     inner_temps[i] = temps[i];
                 }
                 voice.instrument.paint(result.span, outputs, inner_temps, result.note_id_changed, params);
