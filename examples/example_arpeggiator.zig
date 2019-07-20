@@ -94,7 +94,7 @@ const Arpeggiator = struct {
 
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.instrument.paint(result.span, outputs, temps, result.params);
+            self.instrument.paint(result.span, outputs, temps, result.note_id_changed, result.params);
         }
     }
 };

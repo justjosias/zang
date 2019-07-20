@@ -45,7 +45,7 @@ pub const MainModule = struct {
         }
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.instr.paint(result.span, [1][]f32{temps[0]}, instr_temps, result.params);
+            self.instr.paint(result.span, [1][]f32{temps[0]}, instr_temps, result.note_id_changed, result.params);
         }
 
         self.echoes.paint(span, outputs, [4][]f32{temps[1], temps[2], temps[3], temps[4]}, StereoEchoes.Params {
