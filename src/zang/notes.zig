@@ -115,7 +115,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     const note_t = song_note.t;
                     if (note_t < end_t) {
                         const f = (note_t - self.t) / buf_time; // 0 to 1
-                        const rel_frame_index = min(usize, @floatToInt(usize, f * @intToFloat(f32, out_len)), out_len - 1);
+                        const rel_frame_index = std.math.min(@floatToInt(usize, f * @intToFloat(f32, out_len)), out_len - 1);
                         // TODO - do something graceful-ish when count >= self.impulse_array.len
                         self.impulses_array[count] = Impulse {
                             .frame = rel_frame_index,
@@ -138,12 +138,4 @@ pub fn Notes(comptime NoteParamsType: type) type {
             }
         };
     };
-}
-
-fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
-}
-
-fn max(comptime T: type, a: T, b: T) T {
-    return if (a > b) a else b;
 }

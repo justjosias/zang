@@ -1,3 +1,4 @@
+const std = @import("std");
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 
@@ -236,7 +237,7 @@ pub const HardSquareInstrument = struct {
         };
     }
 
-    pub fn paint(self: *HardSquareInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *HardSquareInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
