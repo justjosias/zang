@@ -16,6 +16,11 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             };
         }
 
+        pub fn reset(self: *@This()) void {
+            std.mem.set(f32, self.delay_buffer[0..], 0.0);
+            self.delay_buffer_index = 0.0;
+        }
+
         // caller calls this first. returns the number of samples actually
         // written, which might be less than out.len. caller is responsible for
         // calling this function repeatedly with the remaining parts of `out`,
@@ -27,7 +32,7 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
                 else
                     out;
 
-            const len = min(usize, DELAY_SAMPLES - self.delay_buffer_index, actual_out.len);
+            const len = std.math.min(DELAY_SAMPLES - self.delay_buffer_index, actual_out.len);
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from delay buffer to output
@@ -44,7 +49,6 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
                 i = 0; while (i < b_len) : (i += 1) {
                     actual_out[len + i] += self.delay_buffer[i];
                 }
-                // addInto(actual_out[len..], self.delay_buffer[0..b_len]);
             }
 
             return actual_out.len;
@@ -59,7 +63,7 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             // copy input to delay buffer and increment delay_buffer_index.
             // we'll have to do this in up to two steps (in case we are
             // wrapping around the delay buffer)
-            const len = min(usize, DELAY_SAMPLES - self.delay_buffer_index, input.len);
+            const len = std.math.min(DELAY_SAMPLES - self.delay_buffer_index, input.len);
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from input into delay buffer
@@ -81,8 +85,4 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             }
         }
     };
-}
-
-inline fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
 }

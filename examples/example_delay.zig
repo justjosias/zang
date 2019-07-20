@@ -9,6 +9,8 @@ pub const DESCRIPTION =
     c\\
     c\\Play a square-wave instrument with the keyboard. There
     c\\is a stereo echo effect.
+    c\\
+    c\\Press spacebar to reset the delay effect.
 ;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
@@ -56,7 +58,9 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        if (common.getKeyRelFreq(key)) |rel_freq| {
+        if (key == c.SDLK_SPACE) {
+            self.echoes.reset();
+        } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, Instrument.Params {

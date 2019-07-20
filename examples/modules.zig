@@ -310,6 +310,10 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
             };
         }
 
+        pub fn reset(self: *@This()) void {
+            self.delay.reset();
+        }
+
         pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
             var start = span.start;
             const end = span.end;
@@ -345,6 +349,10 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
                 .delay = zang.Delay(DELAY_SAMPLES).init(),
                 .filter = zang.Filter.init(),
             };
+        }
+
+        pub fn reset(self: *@This()) void {
+            self.delay.reset();
         }
 
         pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
@@ -412,6 +420,12 @@ pub const StereoEchoes = struct {
             .delay1 = SimpleDelay(HALF_DELAY).init(),
             .echoes = FilteredEchoes(MAIN_DELAY).init(),
         };
+    }
+
+    pub fn reset(self: *StereoEchoes) void {
+        self.delay0.reset();
+        self.delay1.reset();
+        self.echoes.reset();
     }
 
     pub fn paint(self: *StereoEchoes, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
