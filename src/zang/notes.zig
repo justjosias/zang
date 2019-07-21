@@ -13,11 +13,6 @@ pub fn Notes(comptime NoteParamsType: type) type {
             paramses: []const NoteParamsType,
         };
 
-        pub const SongNote = struct {
-            params: NoteParamsType,
-            t: f32,
-        };
-
         pub const ImpulseQueue = struct {
             impulses_array: [32]Impulse,
             paramses_array: [32]NoteParamsType,
@@ -79,6 +74,11 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.paramses_array[self.length] = params;
                 self.length += 1;
             }
+        };
+
+        pub const SongNote = struct {
+            params: NoteParamsType,
+            t: f32,
         };
 
         // follow a canned melody, creating impulses from it, one mix buffer at a time

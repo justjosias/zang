@@ -64,7 +64,7 @@ pub fn Trigger(comptime ParamsType: type) type {
 
         pub fn next(self: *@This(), ctr: *Counter) ?NewPaintReturnValue {
             while (ctr.start < ctr.end) {
-                const note_span = carryOver(ctr, self.note) orelse getNextNoteSpan(ctr, self.note);
+                const note_span = carryOver(ctr, self.note) orelse getNextNoteSpan(ctr);
 
                 ctr.start = note_span.end;
 
@@ -115,7 +115,7 @@ pub fn Trigger(comptime ParamsType: type) type {
             }
         }
 
-        fn getNextNoteSpan(ctr: *Counter, current_note: ?NoteSpanNote) NoteSpan {
+        fn getNextNoteSpan(ctr: *Counter) NoteSpan {
             const impulses = ctr.iap.impulses[ctr.impulse_index..];
             const paramses = ctr.iap.paramses[ctr.impulse_index..];
 
