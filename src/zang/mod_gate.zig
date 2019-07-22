@@ -3,8 +3,8 @@ const addScalarInto = @import("basics.zig").addScalarInto;
 
 // this is a simple version of the Envelope
 pub const Gate = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         note_on: bool,
     };
@@ -13,7 +13,7 @@ pub const Gate = struct {
         return Gate {};
     }
 
-    pub fn paint(self: *Gate, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Gate, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         if (params.note_on) {
             addScalarInto(span, outputs[0], 1.0);
         }

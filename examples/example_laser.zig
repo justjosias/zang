@@ -37,8 +37,8 @@ const volume_curve = [_]zang.CurveNode {
 };
 
 const LaserPlayer = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq_mul: f32,
@@ -63,7 +63,7 @@ const LaserPlayer = struct {
         };
     }
 
-    fn paint(self: *LaserPlayer, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    fn paint(self: *LaserPlayer, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         const out = outputs[0];
 
         zang.zero(span, temps[0]);
@@ -109,8 +109,8 @@ const LaserPlayer = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
 
     iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
     player: LaserPlayer,
@@ -127,7 +127,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
             self.player.paint(result.span, outputs, temps, result.note_id_changed, result.params);

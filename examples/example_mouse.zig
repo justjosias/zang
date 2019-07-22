@@ -1,5 +1,4 @@
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const PhaseModOscillator = @import("modules.zig").PhaseModOscillator;
@@ -19,11 +18,11 @@ pub const DESCRIPTION =
     c\\default) and absolute modulator frequency.
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 const PMOscInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const num_outputs = 1;
+    pub const num_temps = 4;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -43,7 +42,7 @@ const PMOscInstrument = struct {
         };
     }
 
-    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .sample_rate = params.sample_rate,
@@ -66,8 +65,8 @@ const PMOscInstrument = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 6;
+    pub const num_outputs = 1;
+    pub const num_temps = 6;
 
     const Instr = struct {
         const Params = struct { freq: f32, note_on: bool };
@@ -117,7 +116,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
             self.mode_iq.push(0, self.mode);
@@ -183,7 +182,7 @@ pub const MainModule = struct {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
                 self.instr.iq.push(impulse_frame, Instr.Params {
-                    .freq = A4 * rel_freq,
+                    .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }

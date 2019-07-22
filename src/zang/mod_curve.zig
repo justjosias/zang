@@ -30,8 +30,8 @@ const CurveSpan = struct {
 };
 
 pub const Curve = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         function: InterpolationFunction,
@@ -60,7 +60,7 @@ pub const Curve = struct {
         };
     }
 
-    pub fn paint(self: *Curve, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *Curve, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         if (note_id_changed) {
             self.current_song_note = 0;
             self.current_song_note_offset = 0;
@@ -196,7 +196,7 @@ fn getNextCurveSpan(curve_nodes: []const CurveSpanNode, dest_start_: usize, dest
         // end of the buffer, whichever comes first
         const end_pos =
             if (i < curve_nodes.len - 1)
-                min(i32, dest_end, curve_nodes[i + 1].frame)
+                std.math.min(dest_end, curve_nodes[i + 1].frame)
             else
                 dest_end;
 
@@ -248,8 +248,4 @@ fn getNextCurveSpan(curve_nodes: []const CurveSpanNode, dest_start_: usize, dest
         .end = @intCast(usize, dest_end),
         .values = null,
     };
-}
-
-fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
 }

@@ -26,10 +26,10 @@ fn writeWav(comptime Error: type, stream: *std.io.OutStream(Error), data: []cons
     try stream.write("fmt ");
     try stream.writeIntLittle(u32, 16); // PCM
     try stream.writeIntLittle(u16, 1); // uncompressed
-    try stream.writeIntLittle(u16, example.MainModule.NumOutputs);
+    try stream.writeIntLittle(u16, example.MainModule.num_outputs);
     try stream.writeIntLittle(u32, example.AUDIO_SAMPLE_RATE);
-    try stream.writeIntLittle(u32, example.AUDIO_SAMPLE_RATE * example.MainModule.NumOutputs * bytes_per_sample);
-    try stream.writeIntLittle(u16, example.MainModule.NumOutputs * bytes_per_sample);
+    try stream.writeIntLittle(u32, example.AUDIO_SAMPLE_RATE * example.MainModule.num_outputs * bytes_per_sample);
+    try stream.writeIntLittle(u16, example.MainModule.num_outputs * bytes_per_sample);
     try stream.writeIntLittle(u16, bytes_per_sample * 8);
 
     try stream.write("data");
@@ -46,10 +46,10 @@ fn writeWav(comptime Error: type, stream: *std.io.OutStream(Error), data: []cons
     }
 }
 
-var g_outputs: [example.MainModule.NumOutputs][example.AUDIO_BUFFER_SIZE]f32 = undefined;
-var g_temps: [example.MainModule.NumTemps][example.AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_outputs: [example.MainModule.num_outputs][example.AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_temps: [example.MainModule.num_temps][example.AUDIO_BUFFER_SIZE]f32 = undefined;
 
-var g_big_buffer: [TOTAL_TIME * bytes_per_sample * example.MainModule.NumOutputs]u8 = undefined;
+var g_big_buffer: [TOTAL_TIME * bytes_per_sample * example.MainModule.num_outputs]u8 = undefined;
 
 pub fn main() !void {
     var main_module = example.MainModule.init();
@@ -64,25 +64,25 @@ pub fn main() !void {
             .end = len,
         };
 
-        var outputs: [example.MainModule.NumOutputs][]f32 = undefined;
-        var temps: [example.MainModule.NumTemps][]f32 = undefined;
+        var outputs: [example.MainModule.num_outputs][]f32 = undefined;
+        var temps: [example.MainModule.num_temps][]f32 = undefined;
         var i: usize = undefined;
-        i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+        i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
             outputs[i] = g_outputs[i][0..];
             zang.zero(span, outputs[i]);
         }
-        i = 0; while (i < example.MainModule.NumTemps) : (i += 1) {
+        i = 0; while (i < example.MainModule.num_temps) : (i += 1) {
             temps[i] = g_temps[i][0..];
         }
         main_module.paint(span, outputs, temps);
 
-        i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
-            const m = bytes_per_sample * example.MainModule.NumOutputs;
+        i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
+            const m = bytes_per_sample * example.MainModule.num_outputs;
             zang.mixDown(
                 g_big_buffer[start * m .. (start + len) * m],
                 outputs[i][span.start .. span.end],
                 example.AUDIO_FORMAT,
-                example.MainModule.NumOutputs,
+                example.MainModule.num_outputs,
                 i,
                 0.25,
             );

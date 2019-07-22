@@ -18,11 +18,11 @@ pub const DESCRIPTION =
     c\\Press spacebar to create a low drone in another voice.
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const num_outputs = 1;
+    pub const num_temps = 4;
 
     key0: ?i32,
     iq0: zang.Notes(PMOscInstrument.Params).ImpulseQueue,
@@ -33,7 +33,7 @@ pub const MainModule = struct {
     trig1: zang.Trigger(FilteredSawtoothInstrument.Params),
 
     pub fn init() MainModule {
-        return MainModule{
+        return MainModule {
             .key0 = null,
             .iq0 = zang.Notes(PMOscInstrument.Params).ImpulseQueue.init(),
             .instr0 = PMOscInstrument.init(1.0),
@@ -44,7 +44,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         {
             var ctr = self.trig0.counter(span, self.iq0.consume());
             while (self.trig0.next(&ctr)) |result| {
@@ -63,7 +63,7 @@ pub const MainModule = struct {
         if (key == c.SDLK_SPACE) {
             self.iq1.push(impulse_frame, FilteredSawtoothInstrument.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = A4 * note_frequencies.C4 / 4.0,
+                .freq = a4 * note_frequencies.c4 / 4.0,
                 .note_on = down,
             });
         } else if (common.getKeyRelFreq(key)) |rel_freq| {
@@ -71,7 +71,7 @@ pub const MainModule = struct {
                 self.key0 = if (down) key else null;
                 self.iq0.push(impulse_frame, PMOscInstrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = A4 * rel_freq,
+                    .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }

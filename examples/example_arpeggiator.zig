@@ -2,7 +2,6 @@
 // impulses to impulses (somehow), then you could use it with anything...
 
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
@@ -19,11 +18,11 @@ pub const DESCRIPTION =
     c\\through them lowest to highest.
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 const Arpeggiator = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = Instrument.NumTemps;
+    pub const num_outputs = 1;
+    pub const num_temps = Instrument.num_temps;
     pub const Params = struct {
         sample_rate: f32,
         note_held: [common.key_bindings.len]bool,
@@ -45,7 +44,7 @@ const Arpeggiator = struct {
         };
     }
 
-    fn paint(self: *Arpeggiator, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *Arpeggiator, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const note_duration = @floatToInt(usize, 0.03 * params.sample_rate);
 
         // TODO - if only one key is held, try to reuse the previous impulse id
@@ -71,7 +70,7 @@ const Arpeggiator = struct {
             };
 
             if (next_note_index) |index| {
-                const freq = A4 * common.key_bindings[index].rel_freq;
+                const freq = a4 * common.key_bindings[index].rel_freq;
                 self.iq.push(self.next_frame, Instrument.Params {
                     .sample_rate = params.sample_rate,
                     .freq = freq,
@@ -79,7 +78,7 @@ const Arpeggiator = struct {
                 });
                 self.last_note = index;
             } else if (self.last_note) |last_note| {
-                const freq = A4 * common.key_bindings[last_note].rel_freq;
+                const freq = a4 * common.key_bindings[last_note].rel_freq;
                 self.iq.push(self.next_frame, Instrument.Params {
                     .sample_rate = params.sample_rate,
                     .freq = freq,
@@ -100,8 +99,8 @@ const Arpeggiator = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = Arpeggiator.NumTemps;
+    pub const num_outputs = 1;
+    pub const num_temps = Arpeggiator.num_temps;
 
     current_params: Arpeggiator.Params,
     iq: zang.Notes(Arpeggiator.Params).ImpulseQueue,
@@ -120,7 +119,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
             self.arpeggiator.paint(result.span, outputs, temps, result.params);

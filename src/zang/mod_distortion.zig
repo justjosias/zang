@@ -11,11 +11,11 @@ pub const DistortionType = enum{
 };
 
 pub const Distortion = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         input: []const f32,
-        distortionType: DistortionType,
+        distortion_type: DistortionType,
         ingain: f32, // 0 to 1. 0.25 is even, anything above is amplification
         outgain: f32, // 0 to 1
         offset: f32, // -1 to +1
@@ -25,12 +25,12 @@ pub const Distortion = struct {
         return Distortion {};
     }
 
-    pub fn paint(self: *Distortion, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Distortion, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const output = outputs[0];
 
         const gain1 = std.math.pow(f32, 2.0, params.ingain * 8.0 - 2.0);
 
-        switch (params.distortionType) {
+        switch (params.distortion_type) {
             .Overdrive => {
                 const gain2 = params.outgain / std.math.atan(gain1);
                 const offs = gain1 * params.offset;

@@ -17,11 +17,11 @@ pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 pub const MainModule = struct {
-    pub const NumOutputs = 2;
-    pub const NumTemps = 3 + Instrument.NumTemps;
+    pub const num_outputs = 2;
+    pub const num_temps = 3 + Instrument.num_temps;
 
     key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
@@ -39,10 +39,10 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         zang.zero(span, temps[0]);
-        var instr_temps: [Instrument.NumTemps][]f32 = undefined;
-        var i: usize = 0; while (i < Instrument.NumTemps) : (i += 1) {
+        var instr_temps: [Instrument.num_temps][]f32 = undefined;
+        var i: usize = 0; while (i < Instrument.num_temps) : (i += 1) {
             instr_temps[i] = temps[3 + i];
         }
         var ctr = self.trigger.counter(span, self.iq.consume());
@@ -65,7 +65,7 @@ pub const MainModule = struct {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, Instrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = A4 * rel_freq,
+                    .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }

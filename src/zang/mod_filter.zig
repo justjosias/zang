@@ -8,7 +8,7 @@ const Span = @import("basics.zig").Span;
 
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
-pub const FilterType = enum{
+pub const FilterType = enum {
     Bypass,
     LowPass,
     BandPass,
@@ -27,11 +27,11 @@ pub fn cutoffFromFrequency(frequency: f32, sample_rate: f32) f32 {
 }
 
 pub const Filter = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         input: []const f32,
-        filterType: FilterType,
+        filter_type: FilterType,
         cutoff: ConstantOrBuffer, // 0-1
         resonance: f32, // 0-1
     };
@@ -40,22 +40,22 @@ pub const Filter = struct {
     b: f32,
 
     pub fn init() Filter {
-        return Filter{
+        return Filter {
             .l = 0.0,
             .b = 0.0,
         };
     }
 
-    pub fn paint(self: *Filter, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Filter, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         // TODO make resonance a ConstantOrBuffer as well
         const output = outputs[0][span.start..span.end];
         const input = params.input[span.start..span.end];
 
         switch (params.cutoff) {
             .Constant => |cutoff|
-                self.paintSimple(output, input, params.filterType, cutoff, params.resonance),
+                self.paintSimple(output, input, params.filter_type, cutoff, params.resonance),
             .Buffer => |cutoff|
-                self.paintControlledCutoff(output, input, params.filterType, cutoff[span.start..span.end], params.resonance),
+                self.paintControlledCutoff(output, input, params.filter_type, cutoff[span.start..span.end], params.resonance),
         }
     }
 
@@ -63,7 +63,7 @@ pub const Filter = struct {
         self: *Filter,
         buf: []f32,
         input: []const f32,
-        filterType: FilterType,
+        filter_type: FilterType,
         cutoff: f32,
         resonance: f32,
     ) void {
@@ -71,7 +71,7 @@ pub const Filter = struct {
         var b_mul: f32 = 0.0;
         var h_mul: f32 = 0.0;
 
-        switch (filterType) {
+        switch (filter_type) {
             .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
@@ -133,7 +133,7 @@ pub const Filter = struct {
         self: *Filter,
         buf: []f32,
         input: []const f32,
-        filterType: FilterType,
+        filter_type: FilterType,
         input_cutoff: []const f32,
         resonance: f32,
     ) void {
@@ -143,7 +143,7 @@ pub const Filter = struct {
         var b_mul: f32 = 0.0;
         var h_mul: f32 = 0.0;
 
-        switch (filterType) {
+        switch (filter_type) {
             .Bypass => {
                 std.mem.copy(f32, buf, input);
                 return;

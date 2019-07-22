@@ -1,6 +1,5 @@
 const std = @import("std");
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
@@ -18,11 +17,11 @@ pub const DESCRIPTION =
     c\\trigger the envelope.
 ;
 
-const A4 = 880.0;
+const a4 = 880.0;
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
 
     pub const Params0 = struct { freq: f32, note_on: bool };
     pub const Params1 = struct { colour: f32, note_on: bool };
@@ -54,10 +53,10 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
-            self.iq0.push(0, Params0 { .freq = A4 * 0.5, .note_on = false });
+            self.iq0.push(0, Params0 { .freq = a4 * 0.5, .note_on = false });
             self.iq1.push(0, Params1 { .colour = 0.5, .note_on = false });
         }
 
@@ -139,7 +138,7 @@ pub const MainModule = struct {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
                 self.iq0.push(impulse_frame, Params0 {
-                    .freq = A4 * rel_freq,
+                    .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }

@@ -28,8 +28,8 @@ fn getSample(data: []const u8, index1: i32, loop: bool) f32 {
 }
 
 pub const Sampler = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         wav: WavContents,
@@ -44,7 +44,7 @@ pub const Sampler = struct {
         };
     }
 
-    pub fn paint(self: *Sampler, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *Sampler, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         if (note_id_changed) {
             self.t = 0.0;
         }

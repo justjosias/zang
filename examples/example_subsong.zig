@@ -18,11 +18,11 @@ pub const DESCRIPTION =
     c\\notes".
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 const InnerInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -39,7 +39,7 @@ const InnerInstrument = struct {
         };
     }
 
-    fn paint(self: *InnerInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    fn paint(self: *InnerInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
@@ -68,15 +68,15 @@ const MyNoteParams = struct {
 
 // an example of a custom "module"
 const SubtrackPlayer = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
         note_on: bool,
     };
 
-    pub const BaseFrequency = A4 * note_frequencies.C4;
+    pub const BaseFrequency = a4 * note_frequencies.c4;
 
     tracker: zang.Notes(MyNoteParams).NoteTracker,
     instr: InnerInstrument,
@@ -89,19 +89,19 @@ const SubtrackPlayer = struct {
 
         return SubtrackPlayer {
             .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongNote {
-                SongNote { .t = 0.0 * t, .params = MyNoteParams { .freq = A4 * f.C4, .note_on = true }},
-                SongNote { .t = 1.0 * t, .params = MyNoteParams { .freq = A4 * f.Ab3, .note_on = true }},
-                SongNote { .t = 2.0 * t, .params = MyNoteParams { .freq = A4 * f.G3, .note_on = true }},
-                SongNote { .t = 3.0 * t, .params = MyNoteParams { .freq = A4 * f.Eb3, .note_on = true }},
-                SongNote { .t = 4.0 * t, .params = MyNoteParams { .freq = A4 * f.C3, .note_on = true }},
-                SongNote { .t = 5.0 * t, .params = MyNoteParams { .freq = A4 * f.C3, .note_on = false }},
+                SongNote { .t = 0.0 * t, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
+                SongNote { .t = 1.0 * t, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
+                SongNote { .t = 2.0 * t, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
+                SongNote { .t = 3.0 * t, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
+                SongNote { .t = 4.0 * t, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
+                SongNote { .t = 5.0 * t, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
             }),
             .instr = InnerInstrument.init(),
             .trigger = zang.Trigger(MyNoteParams).init(),
         };
     }
 
-    fn paint(self: *SubtrackPlayer, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    fn paint(self: *SubtrackPlayer, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         if (params.note_on and note_id_changed) {
             self.tracker.reset();
             self.trigger.reset();
@@ -119,8 +119,8 @@ const SubtrackPlayer = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
 
     key: ?i32,
     iq: zang.Notes(SubtrackPlayer.Params).ImpulseQueue,
@@ -136,7 +136,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
             self.player.paint(result.span, outputs, temps, result.note_id_changed, result.params);
@@ -149,7 +149,7 @@ pub const MainModule = struct {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, SubtrackPlayer.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = A4 * rel_freq,
+                    .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }

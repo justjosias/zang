@@ -14,10 +14,10 @@ pub fn mixDown(
     vol: f32,
 ) void {
     switch (audio_format) {
-        AudioFormat.S8 => {
+        .S8 => {
             mixDownS8(dst, mix_buffer, num_channels, channel_index, vol);
         },
-        AudioFormat.S16LSB => {
+        .S16LSB => {
             mixDownS16LSB(dst, mix_buffer, num_channels, channel_index, vol);
         },
     }

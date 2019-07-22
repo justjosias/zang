@@ -3,8 +3,8 @@ const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 const Span = @import("basics.zig").Span;
 
 pub const Portamento = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         mode: Mode,
@@ -29,7 +29,7 @@ pub const Portamento = struct {
         };
     }
 
-    pub fn paint(self: *Portamento, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Portamento, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const output = outputs[0][span.start..span.end];
 
         if (params.note_on) {

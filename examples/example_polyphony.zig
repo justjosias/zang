@@ -2,7 +2,6 @@
 // own voice that is always running. well, it works
 
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").NiceInstrument;
@@ -21,11 +20,11 @@ pub const DESCRIPTION =
     c\\decimation (artificial sample rate reduction).
 ;
 
-const A4 = 220.0;
+const a4 = 220.0;
 
 const Polyphony = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         note_held: [common.key_bindings.len]bool,
@@ -55,12 +54,12 @@ const Polyphony = struct {
         return self;
     }
 
-    fn paint(self: *Polyphony, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *Polyphony, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
                 self.voices[i].iq.push(0, Instrument.Params {
                     .sample_rate = params.sample_rate,
-                    .freq = A4 * common.key_bindings[i].rel_freq,
+                    .freq = a4 * common.key_bindings[i].rel_freq,
                     .note_on = params.note_held[i],
                 });
                 self.voices[i].down = params.note_held[i];
@@ -81,8 +80,8 @@ const MyDecimatorParams = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
 
     current_params: Polyphony.Params,
     iq: zang.Notes(Polyphony.Params).ImpulseQueue,
@@ -105,7 +104,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         zang.zero(span, temps[2]);
         {
             var ctr = self.trigger.counter(span, self.iq.consume());

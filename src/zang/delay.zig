@@ -4,14 +4,14 @@ const std = @import("std");
 // in the delay time, so it's not quite ready for prime time. i need to figure
 // out how to deal with reallocating(?) the delay buffer when the sample rate
 // or delay time changes.
-pub fn Delay(comptime DELAY_SAMPLES: usize) type {
+pub fn Delay(comptime delay_samples: usize) type {
     return struct {
-        delay_buffer: [DELAY_SAMPLES]f32,
-        delay_buffer_index: usize, // this will wrap around. always < DELAY_SAMPLES
+        delay_buffer: [delay_samples]f32,
+        delay_buffer_index: usize, // this will wrap around. always < delay_samples
 
         pub fn init() @This() {
             return @This() {
-                .delay_buffer = [1]f32{0.0} ** DELAY_SAMPLES,
+                .delay_buffer = [1]f32{0.0} ** delay_samples,
                 .delay_buffer_index = 0,
             };
         }
@@ -27,12 +27,12 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
         // until the function returns out.len.
         pub fn readDelayBuffer(self: *@This(), out: []f32) usize {
             const actual_out =
-                if (out.len > DELAY_SAMPLES)
-                    out[0..DELAY_SAMPLES]
+                if (out.len > delay_samples)
+                    out[0..delay_samples]
                 else
                     out;
 
-            const len = std.math.min(DELAY_SAMPLES - self.delay_buffer_index, actual_out.len);
+            const len = std.math.min(delay_samples - self.delay_buffer_index, actual_out.len);
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from delay buffer to output
@@ -58,12 +58,12 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
         // a slice corresponding to the number of samples returned by
         // readDelayBuffer.
         pub fn writeDelayBuffer(self: *@This(), input: []const f32) void {
-            std.debug.assert(input.len <= DELAY_SAMPLES);
+            std.debug.assert(input.len <= delay_samples);
 
             // copy input to delay buffer and increment delay_buffer_index.
             // we'll have to do this in up to two steps (in case we are
             // wrapping around the delay buffer)
-            const len = std.math.min(DELAY_SAMPLES - self.delay_buffer_index, input.len);
+            const len = std.math.min(delay_samples - self.delay_buffer_index, input.len);
             const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
 
             // paint from input into delay buffer
@@ -79,7 +79,7 @@ pub fn Delay(comptime DELAY_SAMPLES: usize) type {
             } else {
                 // wrapping not needed
                 self.delay_buffer_index += len;
-                if (self.delay_buffer_index == DELAY_SAMPLES) {
+                if (self.delay_buffer_index == delay_samples) {
                     self.delay_buffer_index = 0;
                 }
             }

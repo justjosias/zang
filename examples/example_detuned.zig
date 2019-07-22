@@ -25,11 +25,11 @@ pub const DESCRIPTION =
     c\\     the echo)
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 pub const Instrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -51,7 +51,7 @@ pub const Instrument = struct {
         };
     }
 
-    pub fn paint(self: *Instrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *Instrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         var i: usize = span.start; while (i < span.end) : (i += 1) {
             temps[0][i] = params.freq * std.math.pow(f32, 2.0, params.freq_warble[i]);
         }
@@ -81,7 +81,7 @@ pub const Instrument = struct {
         // add main filter
         self.main_filter.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[2],
-            .filterType = .LowPass,
+            .filter_type = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(880.0, params.sample_rate)),
             // .cutoff = zang.constant(zang.cutoffFromFrequency(params.freq + 400.0, params.sample_rate)),
             .resonance = 0.8,
@@ -90,8 +90,8 @@ pub const Instrument = struct {
 };
 
 pub const OuterInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const num_outputs = 1;
+    pub const num_temps = 4;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -111,7 +111,7 @@ pub const OuterInstrument = struct {
         };
     }
 
-    pub fn paint(self: *OuterInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *OuterInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         // temps[0] = filtered noise
         // note: filter frequency is set to 4hz. i wanted to go slower but
         // unfortunately at below 4, the filter degrades and the output
@@ -123,7 +123,7 @@ pub const OuterInstrument = struct {
         zang.zero(span, temps[0]);
         self.noise_filter.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
-            .filterType = .LowPass,
+            .filter_type = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(4.0, params.sample_rate)),
             .resonance = 0.0,
         });
@@ -142,8 +142,8 @@ pub const OuterInstrument = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 2;
-    pub const NumTemps = 5;
+    pub const num_outputs = 2;
+    pub const num_temps = 5;
 
     key: ?i32,
     iq: zang.Notes(OuterInstrument.Params).ImpulseQueue,
@@ -163,7 +163,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         // FIXME - here's something missing in the API... what if i want to
         // pass some "global" params to paintFromImpulses? in other words,
         // saw that of the fields in OuterInstrument.Params, i only want to set
@@ -200,7 +200,7 @@ pub const MainModule = struct {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, OuterInstrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = A4 * rel_freq * 0.5,
+                    .freq = a4 * rel_freq * 0.5,
                     .note_on = down,
                     // note: because i'm passing mode here, a change to mode
                     // take effect until you press a new key

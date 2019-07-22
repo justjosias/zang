@@ -17,7 +17,7 @@ pub const DESCRIPTION =
     c\\Press spacebar to restart the song.
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 const NOTE_DURATION = 0.15;
 const TOTAL_TRACKS = @typeInfo(Voices).Struct.fields.len;
 
@@ -71,7 +71,7 @@ const Parser = struct {
 
         parser.index += 3;
 
-        return A4 * std.math.pow(f32, 2.0, @intToFloat(f32, offset + semitone) / 12.0);
+        return a4 * std.math.pow(f32, 2.0, @intToFloat(f32, offset + semitone) / 12.0);
     }
 
     fn parseToken(parser: *Parser) !?Token {
@@ -380,7 +380,7 @@ fn getNumTemps() usize {
     comptime var num_temps: usize = 0;
 
     inline for (@typeInfo(Voices).Struct.fields) |field| {
-        const n = @field(field.field_type, "Instrument").NumTemps;
+        const n = @field(field.field_type, "Instrument").num_temps;
 
         if (n > num_temps) {
             num_temps = n;
@@ -391,8 +391,8 @@ fn getNumTemps() usize {
 }
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = getNumTemps();
+    pub const num_outputs = 1;
+    pub const num_temps = getNumTemps();
 
     voices: Voices,
 
@@ -410,7 +410,7 @@ pub const MainModule = struct {
         return mod;
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         inline for (@typeInfo(Voices).Struct.fields) |field| {
             const Instrument = @field(field.field_type, "Instrument");
             const voice = &@field(self.voices, field.name);
@@ -418,8 +418,8 @@ pub const MainModule = struct {
             var ctr = voice.trigger.counter(span, voice.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start));
             while (voice.trigger.next(&ctr)) |result| {
                 const params = voice.makeParams(AUDIO_SAMPLE_RATE, result.params);
-                var inner_temps: [Instrument.NumTemps][]f32 = undefined;
-                var i: usize = 0; while (i < Instrument.NumTemps) : (i += 1) {
+                var inner_temps: [Instrument.num_temps][]f32 = undefined;
+                var i: usize = 0; while (i < Instrument.num_temps) : (i += 1) {
                     inner_temps[i] = temps[i];
                 }
                 voice.instrument.paint(result.span, outputs, inner_temps, result.note_id_changed, params);

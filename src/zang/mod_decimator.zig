@@ -2,8 +2,8 @@ const Span = @import("basics.zig").Span;
 const addInto = @import("basics.zig").addInto;
 
 pub const Decimator = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         input: []const f32,
@@ -20,7 +20,7 @@ pub const Decimator = struct {
         };
     }
 
-    pub fn paint(self: *Decimator, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Decimator, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const output = outputs[0];
 
         if (params.fake_sample_rate >= params.sample_rate) {

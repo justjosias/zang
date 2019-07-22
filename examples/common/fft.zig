@@ -1,6 +1,6 @@
 const std = @import("std");
 
-fn fft_bit_reverse(N: usize, re: []f32, im: []f32) void {
+fn fftBitReverse(N: usize, re: []f32, im: []f32) void {
     const i_2 = N >> 1;
     var j: usize = 0;
 
@@ -21,7 +21,7 @@ pub fn fft(N: usize, re: []f32, im: []f32) void {
     var c: f32 = -1.0;
     var s: f32 = 0.0;
 
-    fft_bit_reverse(N, re, im);
+    fftBitReverse(N, re, im);
 
     var k: usize = 1; while (k < N) : (k <<= 1) {
         const l1 = l2;

@@ -25,8 +25,8 @@ inline fn ftou32(v: f32) u32 {
 // each sample. however it doesn't support sweeping the input params (frequency
 // etc.)
 pub const PulseOsc = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -39,7 +39,7 @@ pub const PulseOsc = struct {
         return PulseOsc { .cnt = 0 };
     }
 
-    pub fn paint(self: *PulseOsc, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *PulseOsc, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         if (params.freq < 0 or params.freq > params.sample_rate / 8.0) {
             return;
         }

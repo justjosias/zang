@@ -1,5 +1,4 @@
 const zang = @import("zang");
-const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
@@ -17,11 +16,11 @@ pub const DESCRIPTION =
     c\\toward the highest held key.
 ;
 
-const A4 = 440.0;
+const a4 = 440.0;
 
 pub const Instrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -42,7 +41,7 @@ pub const Instrument = struct {
         };
     }
 
-    pub fn paint(self: *Instrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *Instrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.noise.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
         zang.zero(span, temps[1]);
@@ -56,7 +55,7 @@ pub const Instrument = struct {
         zang.zero(span, temps[2]);
         self.flt.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[0],
-            .filterType = .LowPass,
+            .filter_type = .LowPass,
             .cutoff = zang.buffer(temps[1]),
             .resonance = 0.985,
         });
@@ -74,8 +73,8 @@ pub const Instrument = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
 
     keys_held: u64,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
@@ -91,7 +90,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
             self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
@@ -118,7 +117,7 @@ pub const MainModule = struct {
                 if (key_flag > prev_keys_held) {
                     self.iq.push(impulse_frame, Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = A4 * kb.rel_freq,
+                        .freq = a4 * kb.rel_freq,
                         .note_on = true,
                     });
                 }
@@ -128,14 +127,14 @@ pub const MainModule = struct {
                 if (self.keys_held == 0) {
                     self.iq.push(impulse_frame, Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = A4 * kb.rel_freq,
+                        .freq = a4 * kb.rel_freq,
                         .note_on = false,
                     });
                 } else {
                     const rel_freq = common.key_bindings[63 - @clz(u64, self.keys_held)].rel_freq;
                     self.iq.push(impulse_frame, Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = A4 * rel_freq,
+                        .freq = a4 * rel_freq,
                         .note_on = true,
                     });
                 }

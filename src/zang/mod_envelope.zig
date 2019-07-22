@@ -2,8 +2,8 @@ const paintLineTowards = @import("paint_line.zig").paintLineTowards;
 const Span = @import("basics.zig").Span;
 
 pub const Envelope = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         // durations: these are how long it would take to go from zero.
@@ -86,7 +86,7 @@ pub const Envelope = struct {
         }
     }
 
-    pub fn paint(self: *Envelope, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *Envelope, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         const output = outputs[0][span.start..span.end];
 
         if (params.note_on) {

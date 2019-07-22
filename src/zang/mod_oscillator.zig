@@ -48,8 +48,8 @@ fn osc(waveform: Waveform, t: f32) f32 {
 }
 
 pub const Oscillator = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 0;
+    pub const num_outputs = 1;
+    pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
         waveform: Waveform,
@@ -66,7 +66,7 @@ pub const Oscillator = struct {
         };
     }
 
-    pub fn paint(self: *Oscillator, span: Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *Oscillator, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const output = outputs[0][span.start..span.end];
 
         // TODO - make params.colour ConstantOrBuffer as well...

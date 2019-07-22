@@ -3,8 +3,8 @@ const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 
 pub const PhaseModOscillator = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -30,7 +30,7 @@ pub const PhaseModOscillator = struct {
         };
     }
 
-    pub fn paint(self: *PhaseModOscillator, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *PhaseModOscillator, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         zang.set(span, temps[0], params.freq);
         switch (params.ratio) {
             .Constant => |ratio| {
@@ -75,8 +75,8 @@ pub const PhaseModOscillator = struct {
 
 // PhaseModOscillator packaged with an envelope
 pub const PMOscInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 4;
+    pub const num_outputs = 1;
+    pub const num_temps = 4;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -95,7 +95,7 @@ pub const PMOscInstrument = struct {
         };
     }
 
-    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
             .sample_rate = params.sample_rate,
@@ -118,8 +118,8 @@ pub const PMOscInstrument = struct {
 };
 
 pub const FilteredSawtoothInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 3;
+    pub const num_outputs = 1;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -138,7 +138,7 @@ pub const FilteredSawtoothInstrument = struct {
         };
     }
 
-    pub fn paint(self: *FilteredSawtoothInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *FilteredSawtoothInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
             .sample_rate = params.sample_rate,
@@ -161,16 +161,16 @@ pub const FilteredSawtoothInstrument = struct {
         zang.multiply(span, temps[2], temps[0], temps[1]);
         self.flt.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[2],
-            .filterType = .LowPass,
-            .cutoff = zang.constant(zang.cutoffFromFrequency(440.0 * note_frequencies.C5, params.sample_rate)),
+            .filter_type = .LowPass,
+            .cutoff = zang.constant(zang.cutoffFromFrequency(440.0 * note_frequencies.c5, params.sample_rate)),
             .resonance = 0.7,
         });
     }
 };
 
 pub const NiceInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -189,7 +189,7 @@ pub const NiceInstrument = struct {
         };
     }
 
-    pub fn paint(self: *NiceInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *NiceInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
@@ -200,7 +200,7 @@ pub const NiceInstrument = struct {
         zang.zero(span, temps[1]);
         self.flt.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[0],
-            .filterType = .LowPass,
+            .filter_type = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(params.freq * 8.0, params.sample_rate)),
             .resonance = 0.7,
         });
@@ -218,8 +218,8 @@ pub const NiceInstrument = struct {
 };
 
 pub const HardSquareInstrument = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -236,7 +236,7 @@ pub const HardSquareInstrument = struct {
         };
     }
 
-    pub fn paint(self: *HardSquareInstrument, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *HardSquareInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
@@ -252,8 +252,8 @@ pub const HardSquareInstrument = struct {
 };
 
 pub const SquareWithEnvelope = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 2;
+    pub const num_outputs = 1;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -272,7 +272,7 @@ pub const SquareWithEnvelope = struct {
         };
     }
 
-    pub fn paint(self: *SquareWithEnvelope, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(self: *SquareWithEnvelope, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
@@ -296,8 +296,8 @@ pub const SquareWithEnvelope = struct {
 // and no feedback (echoes)
 pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
     return struct {
-        pub const NumOutputs = 1;
-        pub const NumTemps = 0;
+        pub const num_outputs = 1;
+        pub const num_temps = 0;
         pub const Params = struct {
             input: []const f32,
         };
@@ -314,7 +314,7 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
             self.delay.reset();
         }
 
-        pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        pub fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
             var start = span.start;
             const end = span.end;
 
@@ -333,8 +333,8 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
 // meant to be used after SimpleDelay (which provides the initial delay)
 pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
     return struct {
-        pub const NumOutputs = 1;
-        pub const NumTemps = 2;
+        pub const num_outputs = 1;
+        pub const num_temps = 2;
         pub const Params = struct {
             input: []const f32,
             feedback_volume: f32,
@@ -355,7 +355,7 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
             self.delay.reset();
         }
 
-        pub fn paint(self: *@This(), span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+        pub fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
             const output = outputs[0];
             const input = params.input;
             const temp0 = temps[0];
@@ -381,7 +381,7 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
                 zang.zero(span1, temp1);
                 self.filter.paint(span1, [1][]f32{temp1}, [0][]f32{}, zang.Filter.Params {
                     .input = temp0,
-                    .filterType = .LowPass,
+                    .filter_type = .LowPass,
                     .cutoff = zang.constant(params.cutoff),
                     .resonance = 0.0,
                 });
@@ -402,8 +402,8 @@ const MAIN_DELAY = 15000;
 const HALF_DELAY = MAIN_DELAY / 2;
 
 pub const StereoEchoes = struct {
-    pub const NumOutputs = 2;
-    pub const NumTemps = 4;
+    pub const num_outputs = 2;
+    pub const num_temps = 4;
     pub const Params = struct {
         input: []const f32,
         feedback_volume: f32,
@@ -428,7 +428,7 @@ pub const StereoEchoes = struct {
         self.echoes.reset();
     }
 
-    pub fn paint(self: *StereoEchoes, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    pub fn paint(self: *StereoEchoes, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         // output dry signal to center channel
         zang.addInto(span, outputs[0], params.input);
         zang.addInto(span, outputs[1], params.input);

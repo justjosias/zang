@@ -31,8 +31,8 @@ fn invertWaveInPlace(span: zang.Span, out: []f32, tmp0: []f32) void {
 }
 
 const NoiseModule = struct {
-    pub const NumOutputs = 2;
-    pub const NumTemps = 3;
+    pub const num_outputs = 2;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         pan: []const f32,
@@ -51,14 +51,14 @@ const NoiseModule = struct {
         };
     }
 
-    fn paint(self: *NoiseModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32, params: Params) void {
+    fn paint(self: *NoiseModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         // temps[0] = filtered noise
         zang.zero(span, temps[0]);
         zang.zero(span, temps[1]);
         self.noise.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Noise.Params {});
         self.flt.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Filter.Params {
             .input = temps[1],
-            .filterType = .LowPass,
+            .filter_type = .LowPass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(params.cutoff_frequency, params.sample_rate)),
             .resonance = 0.4,
         });
@@ -82,8 +82,8 @@ const NoiseModule = struct {
 };
 
 pub const MainModule = struct {
-    pub const NumOutputs = 2;
-    pub const NumTemps = 4;
+    pub const num_outputs = 2;
+    pub const num_temps = 4;
 
     osc: zang.Oscillator,
     noisem0: NoiseModule,
@@ -97,7 +97,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         const sample_rate = AUDIO_SAMPLE_RATE;
 
         // temps[0] = slow oscillator representing left/right pan (-1 to +1)

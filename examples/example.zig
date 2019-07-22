@@ -11,8 +11,8 @@ const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;
 const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
 
-var g_outputs: [example.MainModule.NumOutputs][AUDIO_BUFFER_SIZE]f32 = undefined;
-var g_temps: [example.MainModule.NumTemps][AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_outputs: [example.MainModule.num_outputs][AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_temps: [example.MainModule.num_temps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
 var g_redraw_event: c.Uint32 = undefined;
 
@@ -38,8 +38,8 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
-    var outputs: [example.MainModule.NumOutputs][]f32 = undefined;
-    var temps: [example.MainModule.NumTemps][]f32 = undefined;
+    var outputs: [example.MainModule.num_outputs][]f32 = undefined;
+    var temps: [example.MainModule.num_temps][]f32 = undefined;
     var i: usize = undefined;
 
     const span = zang.Span {
@@ -47,11 +47,11 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
         .end = AUDIO_BUFFER_SIZE,
     };
 
-    i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+    i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
         outputs[i] = g_outputs[i][0..];
         zang.zero(span, outputs[i]);
     }
-    i = 0; while (i < example.MainModule.NumTemps) : (i += 1) {
+    i = 0; while (i < example.MainModule.num_temps) : (i += 1) {
         temps[i] = g_temps[i][0..];
     }
 
@@ -59,15 +59,15 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
 
     const mul = 0.25;
 
-    i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
-        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.NumOutputs, i, mul);
+    i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
+        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
     }
 
     if (!g_drawing) {
         return;
     }
 
-    // i = 0; while (i < example.MainModule.NumOutputs) : (i += 1) {
+    // i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
     i = 0; {
         var j: usize = 0; while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
             const output = outputs[i][j * 1024 .. j * 1024 + 1024];
@@ -121,7 +121,7 @@ pub fn main() !void {
         zang.AudioFormat.S8 => u16(c.AUDIO_S8),
         zang.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
     };
-    want.channels = example.MainModule.NumOutputs;
+    want.channels = example.MainModule.num_outputs;
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
     want.userdata = &main_module;

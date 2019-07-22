@@ -22,8 +22,8 @@ pub const DESCRIPTION =
 ;
 
 pub const MainModule = struct {
-    pub const NumOutputs = 1;
-    pub const NumTemps = 1;
+    pub const num_outputs = 1;
+    pub const num_temps = 1;
 
     wav: zang.WavContents,
     iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
@@ -47,7 +47,7 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [NumOutputs][]f32, temps: [NumTemps][]f32) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
             self.iq.push(0, zang.Sampler.Params {
@@ -68,7 +68,7 @@ pub const MainModule = struct {
         if (self.distort) {
             self.distortion.paint(span, [1][]f32{outputs[0]}, [0][]f32{}, zang.Distortion.Params {
                 .input = temps[0],
-                .distortionType = .Overdrive,
+                .distortion_type = .Overdrive,
                 .ingain = 0.9,
                 .outgain = 0.5,
                 .offset = 0.0,
