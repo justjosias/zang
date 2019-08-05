@@ -177,12 +177,14 @@ pub const NiceInstrument = struct {
         note_on: bool,
     };
 
+    color: f32,
     osc: zang.PulseOsc,
     flt: zang.Filter,
     env: zang.Envelope,
 
-    pub fn init() NiceInstrument {
+    pub fn init(color: f32) NiceInstrument {
         return NiceInstrument {
+            .color = color,
             .osc = zang.PulseOsc.init(),
             .flt = zang.Filter.init(),
             .env = zang.Envelope.init(),
@@ -194,7 +196,7 @@ pub const NiceInstrument = struct {
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
-            .color = 0.3,
+            .color = self.color,
         });
         zang.multiplyWithScalar(span, temps[0], 0.5);
         zang.zero(span, temps[1]);

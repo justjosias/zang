@@ -47,7 +47,7 @@ const Polyphony = struct {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
-                .instrument = Instrument.init(),
+                .instrument = Instrument.init(0.3),
                 .trigger = zang.Trigger(Instrument.Params).init(),
             };
         }

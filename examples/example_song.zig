@@ -331,7 +331,7 @@ fn Voice(comptime si: SupportedInstrument, comptime freq_mul: f32) type {
                     .HardSquare => modules.HardSquareInstrument.init(),
                     .Organ => modules.SquareWithEnvelope.init(false),
                     .WeirdOrgan => modules.SquareWithEnvelope.init(true),
-                    .Nice => modules.NiceInstrument.init(),
+                    .Nice => modules.NiceInstrument.init(0.3),
                     .FltSaw => modules.FilteredSawtoothInstrument.init(),
                     .PMOsc => modules.PMOscInstrument.init(0.15),
                 },
