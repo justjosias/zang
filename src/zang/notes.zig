@@ -163,6 +163,52 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     };
                 }
 
+                fn chooseSlot(self: *const @This(), note_id: usize) usize {
+                    // first, try to reuse a slot that's already assigned to this note_id
+                    for (self.slots) |maybe_slot, slot_index| {
+                        if (maybe_slot) |slot| {
+                            if (slot.note_id == note_id) {
+                                return slot_index;
+                            }
+                        }
+                    }
+                    // otherwise pick the note-off slot with the oldest note_id
+                    // FIXME! this is flawed because the note_id is assigned at note-on, which has no correlation to when the note-off happened.
+                    // we need an 'age' based on time.
+                    {
+                        var maybe_best: ?usize = null;
+                        for (self.slots) |maybe_slot, slot_index| {
+                            if (maybe_slot) |slot| {
+                                if (!slot.note_on) {
+                                    if (maybe_best) |best| {
+                                        if (slot.note_id < self.slots[best].?.note_id) {
+                                            maybe_best = slot_index;
+                                        }
+                                    } else { // maybe_best == null
+                                        maybe_best = slot_index;
+                                    }
+                                }
+                            } else { // maybe_slot == null
+                                // if there's still an empty slot, jump on that right now
+                                return slot_index;
+                            }
+                        }
+                        if (maybe_best) |best| {
+                            return best;
+                        }
+                    }
+                    // otherwise, we have no choice but to take over a track
+                    // that's still in note-on state. pick the slot with the
+                    // oldest note_id.
+                    var best: usize = 0;
+                    var slot_index: usize = 1; while (slot_index < polyphony) : (slot_index += 1) {
+                        if (self.slots[slot_index].?.note_id < self.slots[best].?.note_id) {
+                            best = slot_index;
+                        }
+                    }
+                    return best;
+                }
+
                 // FIXME can this be changed to a generator pattern so we don't need the static arrays?
                 pub fn dispatch(self: *@This(), iap: ImpulsesAndParamses) [polyphony]ImpulsesAndParamses {
                     var counts = [1]usize{0} ** polyphony;
@@ -171,50 +217,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         const impulse = iap.impulses[i];
                         const params = iap.paramses[i];
 
-                        const slot_index = blk: {
-                            // first, try to reuse a slot that's already assigned to this note_id
-                            var j: usize = 0; while (j < polyphony) : (j += 1) {
-                                if (self.slots[j]) |slot| {
-                                    if (slot.note_id == impulse.note_id) {
-                                        break :blk j;
-                                    }
-                                }
-                            }
-                            // otherwise pick an empty slot
-                            j = 0; while (j < polyphony) : (j += 1) {
-                                if (self.slots[j] == null) {
-                                    break :blk j;
-                                }
-                            }
-                            // otherwise pick the note-off slot with the oldest note_id
-                            // FIXME! this is flawed because the note_id is assigned at note-on, which has no correlation to when the note-off happened.
-                            // we need an 'age' based on time.
-                            var maybe_best: ?usize = null;
-                            j = 0; while (j < polyphony) : (j += 1) {
-                                const slot = self.slots[j].?;
-                                if (!slot.note_on) {
-                                    if (maybe_best) |best| {
-                                        if (slot.note_id < self.slots[best].?.note_id) {
-                                            maybe_best = j;
-                                        }
-                                    } else { // maybe_best == null
-                                        maybe_best = j;
-                                    }
-                                }
-                            }
-                            if (maybe_best) |best| {
-                                break :blk best;
-                            }
-                            // otherwise pick the note-on slot with the oldest note_id
-                            var best: usize = 0;
-                            j = 1; while (j < polyphony) : (j += 1) {
-                                const slot = self.slots[j].?;
-                                if (slot.note_id < self.slots[best].?.note_id) {
-                                    best = j;
-                                }
-                            }
-                            break :blk best;
-                        };
+                        const slot_index = self.chooseSlot(impulse.note_id);
 
                         // std.debug.warn("slot_index={}\n", slot_index);
 
