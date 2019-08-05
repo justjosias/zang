@@ -175,7 +175,7 @@ static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fon
     const int fontchar_h = 13;
     const int start_x = 12;
     const int start_y = 13;
-    const unsigned int colour = 0xAAAAAAAA;
+    const unsigned int color = 0xAAAAAAAA;
 
     /* warning: does no checking for drawing off screen */
     int x = start_x, y = start_y;
@@ -188,7 +188,7 @@ static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fon
             for (sy = 0; sy < fontchar_h; sy++) {
                 for (sx = 0; sx < fontchar_w; sx++) {
                     if ((fontdata[index + sy]) & (1 << sx)) {
-                        pixels[(y + sy) * pitch + x + sx] = colour;
+                        pixels[(y + sy) * pitch + x + sx] = color;
                     }
                 }
             }

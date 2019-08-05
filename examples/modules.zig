@@ -54,7 +54,7 @@ pub const PhaseModOscillator = struct {
             .waveform = .Sine,
             .freq = zang.buffer(temps[1]),
             .phase = zang.constant(0.0),
-            .colour = 0.5,
+            .color = 0.5,
         });
         zang.zero(span, temps[1]);
         switch (params.multiplier) {
@@ -67,7 +67,7 @@ pub const PhaseModOscillator = struct {
             .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
-            .colour = 0.5,
+            .color = 0.5,
         });
         zang.addInto(span, outputs[0], temps[2]);
     }
@@ -145,7 +145,7 @@ pub const FilteredSawtoothInstrument = struct {
             .waveform = .Sawtooth,
             .freq = zang.constant(params.freq),
             .phase = zang.constant(0.0),
-            .colour = 0.5,
+            .color = 0.5,
         });
         zang.multiplyWithScalar(span, temps[0], 1.5); // boost sawtooth volume
         zang.zero(span, temps[1]);
@@ -194,7 +194,7 @@ pub const NiceInstrument = struct {
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
-            .colour = 0.3,
+            .color = 0.3,
         });
         zang.multiplyWithScalar(span, temps[0], 0.5);
         zang.zero(span, temps[1]);
@@ -241,7 +241,7 @@ pub const HardSquareInstrument = struct {
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
-            .colour = 0.5,
+            .color = 0.5,
         });
         zang.zero(span, temps[1]);
         self.gate.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Gate.Params {
@@ -277,7 +277,7 @@ pub const SquareWithEnvelope = struct {
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
             .freq = params.freq,
-            .colour = if (self.weird) f32(0.3) else f32(0.5),
+            .color = if (self.weird) f32(0.3) else f32(0.5),
         });
         zang.zero(span, temps[1]);
         self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {

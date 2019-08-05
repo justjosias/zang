@@ -25,9 +25,9 @@ pub fn saw(t: f32) f32 {
     return frac;
 }
 
-pub fn square(t: f32, colour: f32) f32 {
+pub fn square(t: f32, color: f32) f32 {
     const frac = t - std.math.floor(t);
-    return if (frac < colour) f32(0.7) else f32(-0.7);
+    return if (frac < color) f32(0.7) else f32(-0.7);
 }
 
 pub fn sin(t: f32) f32 {
@@ -55,7 +55,7 @@ pub const Oscillator = struct {
         waveform: Waveform,
         freq: ConstantOrBuffer,
         phase: ConstantOrBuffer,
-        colour: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
+        color: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
     };
 
     t: f32,
@@ -69,26 +69,26 @@ pub const Oscillator = struct {
     pub fn paint(self: *Oscillator, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         const output = outputs[0][span.start..span.end];
 
-        // TODO - make params.colour ConstantOrBuffer as well...
+        // TODO - make params.color ConstantOrBuffer as well...
         switch (params.freq) {
             .Constant => |freq|
                 switch (params.phase) {
                     .Constant => |phase|
-                        self.paintSimple(params.sample_rate, output, params.waveform, freq, params.colour),
+                        self.paintSimple(params.sample_rate, output, params.waveform, freq, params.color),
                     .Buffer =>
                         @panic("TODO"), // FIXME
                 },
             .Buffer => |freq|
                 switch (params.phase) {
                     .Constant => |phase| // FIXME - ignores phase
-                        self.paintControlledFrequency(params.sample_rate, output, params.waveform, freq[span.start..span.end], params.colour),
+                        self.paintControlledFrequency(params.sample_rate, output, params.waveform, freq[span.start..span.end], params.color),
                     .Buffer => |phase|
-                        self.paintControlledPhaseAndFrequency(params.sample_rate, output, params.waveform, phase[span.start..span.end], freq[span.start..span.end], params.colour),
+                        self.paintControlledPhaseAndFrequency(params.sample_rate, output, params.waveform, phase[span.start..span.end], freq[span.start..span.end], params.color),
                 },
         }
     }
 
-    fn paintSimple(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq: f32, colour: f32) void {
+    fn paintSimple(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq: f32, color: f32) void {
         const step = freq / sample_rate;
         var t = self.t;
         var i: usize = 0;
@@ -108,7 +108,7 @@ pub const Oscillator = struct {
             },
             .Square => {
                 while (i < buf.len) : (i += 1) {
-                    buf[i] += square(t, colour);
+                    buf[i] += square(t, color);
                     t += step;
                 }
             },
@@ -125,7 +125,7 @@ pub const Oscillator = struct {
         self.t = t;
     }
 
-    fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq_buf: []const f32, colour: f32) void {
+    fn paintControlledFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq_buf: []const f32, color: f32) void {
         const inv = 1.0 / sample_rate;
         var t = self.t;
         var i: usize = 0;
@@ -148,7 +148,7 @@ pub const Oscillator = struct {
             .Square => {
                 while (i < buf.len) : (i += 1) {
                     const freq = freq_buf[i];
-                    buf[i] += square(t, colour);
+                    buf[i] += square(t, color);
                     t += freq * inv;
                 }
             },
@@ -173,7 +173,7 @@ pub const Oscillator = struct {
         waveform: Waveform,
         input_phase: []const f32,
         input_frequency: []const f32,
-        colour: f32,
+        color: f32,
     ) void {
         const inv = 1.0 / sample_rate;
         var t = self.t;
@@ -200,7 +200,7 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const phase = input_phase[i];
                     const freq = input_frequency[i];
-                    buf[i] += square(t + phase, colour);
+                    buf[i] += square(t + phase, color);
                     t += freq * inv;
                 }
             },

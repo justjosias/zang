@@ -24,7 +24,7 @@ pub const MainModule = struct {
     pub const num_temps = 2;
 
     pub const Params0 = struct { freq: f32, note_on: bool };
-    pub const Params1 = struct { colour: f32, note_on: bool };
+    pub const Params1 = struct { color: f32, note_on: bool };
 
     first: bool,
 
@@ -57,7 +57,7 @@ pub const MainModule = struct {
         if (self.first) {
             self.first = false;
             self.iq0.push(0, Params0 { .freq = a4 * 0.5, .note_on = false });
-            self.iq1.push(0, Params1 { .colour = 0.5, .note_on = false });
+            self.iq1.push(0, Params1 { .color = 0.5, .note_on = false });
         }
 
         zang.zero(span, temps[0]);
@@ -94,7 +94,7 @@ pub const MainModule = struct {
                     zang.PulseOsc.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = result0.params.freq,
-                        .colour = result1.params.colour,
+                        .color = result1.params.color,
                     },
                 );
                 self.env.paint(
@@ -149,7 +149,7 @@ pub const MainModule = struct {
             if (down or (if (self.key1) |nh| nh == key else false)) {
                 self.key1 = if (down) key else null;
                 self.iq1.push(impulse_frame, Params1 {
-                    .colour = 0.5 + std.math.sqrt(f) * 0.49,
+                    .color = 0.5 + std.math.sqrt(f) * 0.49,
                     .note_on = down,
                 });
             }

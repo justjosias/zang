@@ -62,7 +62,7 @@ pub const Instrument = struct {
             .waveform = .Sawtooth,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
-            .colour = 0.5,
+            .color = 0.5,
         });
         // slight volume reduction
         zang.multiplyWithScalar(span, temps[1], 0.75);

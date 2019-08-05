@@ -107,7 +107,7 @@ pub const MainModule = struct {
             .waveform = .Sine,
             .freq = zang.constant(0.1),
             .phase = zang.constant(0.0),
-            .colour = 0.5,
+            .color = 0.5,
         });
 
         // paint two noise voices

@@ -30,7 +30,7 @@ pub const PulseOsc = struct {
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
-        colour: f32,
+        color: f32,
     };
 
     cnt: u32,
@@ -49,7 +49,7 @@ pub const PulseOsc = struct {
         var cnt = self.cnt;
         const SRfcobasefrq = fc32bit / params.sample_rate;
         const freq = @floatToInt(u32, SRfcobasefrq * params.freq);
-        const brpt = ftou32(clamp01(params.colour));
+        const brpt = ftou32(clamp01(params.color));
         const gain = 0.7;
         const gdf = gain / utof23(freq);
         const col = utof23(brpt);

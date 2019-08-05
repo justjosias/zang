@@ -46,7 +46,7 @@ const InnerInstrument = struct {
             .waveform = .Sawtooth,
             .freq = zang.constant(params.freq),
             .phase = zang.constant(0.0),
-            .colour = 0.5,
+            .color = 0.5,
         });
         zang.zero(span, temps[1]);
         self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
