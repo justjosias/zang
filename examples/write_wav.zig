@@ -57,7 +57,7 @@ pub fn main() !void {
     var start: usize = 0;
 
     while (start < TOTAL_TIME) {
-        const len = min(usize, example.AUDIO_BUFFER_SIZE, TOTAL_TIME - start);
+        const len = std.math.min(example.AUDIO_BUFFER_SIZE, TOTAL_TIME - start);
 
         const span = zang.Span {
             .start = 0,
@@ -95,8 +95,4 @@ pub fn main() !void {
     var fileOutStream = file.outStream();
     try writeWav(std.fs.File.OutStream.Error, &fileOutStream.stream, g_big_buffer[0..]);
     file.close();
-}
-
-fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
 }

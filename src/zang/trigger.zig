@@ -1,3 +1,4 @@
+const std = @import("std");
 const Impulse = @import("notes.zig").Impulse;
 const Notes = @import("notes.zig").Notes;
 const Span = @import("basics.zig").Span;
@@ -95,7 +96,7 @@ pub fn Trigger(comptime ParamsType: type) type {
                         // next impulse starts later, so play the current note for now
                         return NoteSpan {
                             .start = ctr.start,
-                            .end = min(usize, ctr.end, next_impulse_frame),
+                            .end = std.math.min(ctr.end, next_impulse_frame),
                             .note = note,
                         };
                     } else {
@@ -143,7 +144,7 @@ pub fn Trigger(comptime ParamsType: type) type {
                 // end of the buffer, whichever comes first
                 const note_end_clipped =
                     if (i + 1 < impulses.len)
-                        min(usize, ctr.end, impulses[i + 1].frame)
+                        std.math.min(ctr.end, impulses[i + 1].frame)
                     else
                         ctr.end;
 
@@ -170,8 +171,4 @@ pub fn Trigger(comptime ParamsType: type) type {
             };
         }
     };
-}
-
-fn min(comptime T: type, a: T, b: T) T {
-    return if (a < b) a else b;
 }
