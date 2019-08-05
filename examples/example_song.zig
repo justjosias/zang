@@ -21,14 +21,57 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 const NOTE_DURATION = 0.15;
 
-const Voices = struct {
-    voice0: Voice(.PMOsc, 2, 0.5),
-    voice1: Voice(.Nice, 8, 1.0),
-    voice2: Voice(.WeirdNice, 2, 1.0),
+// everything comes out of the text file in this format
+const MyNoteParams = struct {
+    freq: f32,
+    note_on: bool,
 };
 
-// these values are not necessarily the same as the polyphony amount. they're
-// just a parsing detail
+// note: i would prefer for this to be an array of types (so i don't have to
+// give meaningless names to the fields), but it's also being used as an
+// instance type. you can't do that with an array of types. and without
+// reification features i can't generate a struct procedurally. (it needs to be
+// a struct because the elements/fields have different types)
+const Voices = struct {
+    const modules = @import("modules.zig");
+
+    // pedals
+    voice0: Voice(VoiceParams {
+        .polyphony = 2,
+        .Adapter = struct {
+            const Module = modules.PMOscInstrument;
+            fn initModule() Module { return modules.PMOscInstrument.init(0.4); }
+            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+                return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
+            }
+        },
+    }),
+    // regular organ
+    voice1: Voice(VoiceParams {
+        .polyphony = 8,
+        .Adapter = struct {
+            const Module = modules.NiceInstrument;
+            fn initModule() Module { return modules.NiceInstrument.init(0.25); }
+            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+                return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+            }
+        },
+    }),
+    // weird organ
+    voice2: Voice(VoiceParams {
+        .polyphony = 2,
+        .Adapter = struct {
+            const Module = modules.NiceInstrument;
+            fn initModule() Module { return modules.NiceInstrument.init(0.1); }
+            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+                return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+            }
+        },
+    }),
+};
+
+// this parallels the Voices struct. these values are not necessarily the same
+// as the polyphony amount. they're just a parsing detail
 const COLUMNS_PER_VOICE = [_]usize {
     2,
     8,
@@ -45,17 +88,10 @@ const TOTAL_COLUMNS = blk: {
     break :blk sum;
 };
 
-const MyNoteParams = struct {
-    freq: f32,
-    note_on: bool,
-};
-
 const NUM_INSTRUMENTS = COLUMNS_PER_VOICE.len;
 
 var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongNote = undefined;
 var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongNote = undefined;
-
-var contents_arr: [1*1024*1024]u8 = undefined;
 
 fn makeSongNote(t: f32, id: usize, freq: f32, note_on: bool) zang.Notes(MyNoteParams).SongNote {
     return zang.Notes(MyNoteParams).SongNote {
@@ -180,7 +216,9 @@ fn doParse(parser: *Parser) !void {
 }
 
 fn parse() void {
-    const contents = util.readFile(contents_arr[0..]) catch {
+    var buffer: [150000]u8 = undefined;
+
+    const contents = util.readFile(buffer[0..]) catch {
         std.debug.warn("failed to read file\n");
         return;
     };
@@ -197,77 +235,56 @@ fn parse() void {
     };
 }
 
-const SupportedInstrument = enum {
-    HardSquare,
-    Organ,
-    WeirdOrgan,
-    Nice,
-    WeirdNice,
-    FltSaw,
-    PMOsc,
+const VoiceParams = struct {
+    Adapter: type,
+    polyphony: usize,
 };
 
-fn Voice(comptime si: SupportedInstrument, comptime polyphony: usize, comptime freq_mul: f32) type {
-    const modules = @import("modules.zig");
-
+// polyphonic instrument, encapsulating note tracking (uses `all_notes` global)
+// fn Voice(comptime Adapter: type, comptime polyphony: usize) type {
+fn Voice(comptime vp: VoiceParams) type {
     return struct {
-        const Instrument = switch (si) {
-            .HardSquare => modules.HardSquareInstrument,
-            .Organ,
-            .WeirdOrgan => modules.SquareWithEnvelope,
-            .Nice,
-            .WeirdNice => modules.NiceInstrument,
-            .FltSaw => modules.FilteredSawtoothInstrument,
-            .PMOsc => modules.PMOscInstrument,
-        };
+        pub const num_outputs = vp.Adapter.Module.num_outputs;
+        pub const num_temps = vp.Adapter.Module.num_temps;
 
         const SubVoice = struct {
-            module: Instrument,
+            module: vp.Adapter.Module,
             trigger: zang.Trigger(MyNoteParams),
         };
 
         tracker: zang.Notes(MyNoteParams).NoteTracker,
-        dispatcher: zang.Notes(MyNoteParams).PolyphonyDispatcher(polyphony),
+        dispatcher: zang.Notes(MyNoteParams).PolyphonyDispatcher(vp.polyphony),
 
-        sub_voices: [polyphony]SubVoice,
+        sub_voices: [vp.polyphony]SubVoice,
 
         fn init(track_index: usize) @This() {
             var self = @This() {
                 .tracker = zang.Notes(MyNoteParams).NoteTracker.init(all_notes[track_index]),
-                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(polyphony).init(),
+                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(vp.polyphony).init(),
                 .sub_voices = undefined,
             };
-            var i: usize = 0; while (i < polyphony) : (i += 1) {
+            var i: usize = 0; while (i < vp.polyphony) : (i += 1) {
                 self.sub_voices[i] = SubVoice {
-                    .module = switch (si) {
-                        .HardSquare => modules.HardSquareInstrument.init(),
-                        .Organ => modules.SquareWithEnvelope.init(false),
-                        .WeirdOrgan => modules.SquareWithEnvelope.init(true),
-                        .Nice => modules.NiceInstrument.init(0.25),
-                        .WeirdNice => modules.NiceInstrument.init(0.1),
-                        .FltSaw => modules.FilteredSawtoothInstrument.init(),
-                        .PMOsc => modules.PMOscInstrument.init(0.4),
-                    },
+                    .module = vp.Adapter.initModule(),
                     .trigger = zang.Trigger(MyNoteParams).init(),
                 };
             }
             return self;
         }
 
-        fn makeParams(voice: *const @This(), sample_rate: f32, source_params: MyNoteParams) Instrument.Params {
-            return switch (si) {
-                .HardSquare,
-                .Organ,
-                .WeirdOrgan,
-                .Nice,
-                .WeirdNice,
-                .FltSaw,
-                .PMOsc => Instrument.Params {
-                    .sample_rate = sample_rate,
-                    .freq = source_params.freq * freq_mul,
-                    .note_on = source_params.note_on,
-                },
-            };
+        fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+            const iap = self.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start);
+
+            const poly_iap = self.dispatcher.dispatch(iap);
+
+            for (self.sub_voices) |*sub_voice, i| {
+                var ctr = sub_voice.trigger.counter(span, poly_iap[i]);
+
+                while (sub_voice.trigger.next(&ctr)) |result| {
+                    const params = vp.Adapter.makeParams(AUDIO_SAMPLE_RATE, result.params);
+                    sub_voice.module.paint(result.span, outputs, temps, result.note_id_changed, params);
+                }
+            }
         }
     };
 }
@@ -277,7 +294,7 @@ pub const MainModule = struct {
     pub const num_temps = blk: {
         comptime var n: usize = 0;
         inline for (@typeInfo(Voices).Struct.fields) |field| {
-            n = std.math.max(n, @field(field.field_type, "Instrument").num_temps);
+            n = std.math.max(n, @field(field.field_type, "num_temps"));
         }
         break :blk n;
     };
@@ -300,25 +317,10 @@ pub const MainModule = struct {
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         inline for (@typeInfo(Voices).Struct.fields) |field| {
-            const Instrument = @field(field.field_type, "Instrument");
+            const VoiceType = field.field_type;
             const voice = &@field(self.voices, field.name);
 
-            const iap = voice.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start);
-
-            const poly_iap = voice.dispatcher.dispatch(iap);
-
-            for (voice.sub_voices) |*sub_voice, i| {
-                var ctr = sub_voice.trigger.counter(span, poly_iap[i]);
-
-                while (sub_voice.trigger.next(&ctr)) |result| {
-                    const params = voice.makeParams(AUDIO_SAMPLE_RATE, result.params);
-                    var inner_temps: [Instrument.num_temps][]f32 = undefined;
-                    var j: usize = 0; while (j < Instrument.num_temps) : (j += 1) {
-                        inner_temps[j] = temps[j];
-                    }
-                    sub_voice.module.paint(result.span, outputs, inner_temps, result.note_id_changed, params);
-                }
-            }
+            voice.paint(span, outputs, util.subarray(temps, VoiceType.num_temps));
         }
     }
 
