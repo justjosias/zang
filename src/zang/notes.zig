@@ -79,6 +79,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
         pub const SongNote = struct {
             params: NoteParamsType,
             t: f32,
+            id: usize,
         };
 
         // follow a canned melody, creating impulses from it, one mix buffer at a time
@@ -119,7 +120,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         // TODO - do something graceful-ish when count >= self.impulse_array.len
                         self.impulses_array[count] = Impulse {
                             .frame = rel_frame_index,
-                            .note_id = self.next_song_note,
+                            .note_id = song_note.id,// self.next_song_note,
                         };
                         self.paramses_array[count] = song_note.params;
                         count += 1;
@@ -137,5 +138,106 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 };
             }
         };
+
+        pub fn PolyphonyDispatcher(comptime polyphony: usize) type {
+            const SlotState = struct {
+                note_id: usize,
+                // polyphony only works when the ParamsType includes note_on.
+                // we need this to be able to determine when to reuse slots
+                note_on: bool,
+            };
+
+            return struct {
+                slots: [polyphony]?SlotState,
+                // TODO - i should be able to use a single array for each of these
+                // because only 32 impulses can come in, only 32 impulses could come out...
+                // or can i even reuse the storage of the NoteTracker?
+                impulses_array: [polyphony][32]Impulse, // internal storage
+                paramses_array: [polyphony][32]NoteParamsType,
+
+                pub fn init() @This() {
+                    return @This() {
+                        .slots = [1]?SlotState{null} ** polyphony,
+                        .impulses_array = undefined,
+                        .paramses_array = undefined,
+                    };
+                }
+
+                // FIXME can this be changed to a generator pattern so we don't need the static arrays?
+                pub fn dispatch(self: *@This(), iap: ImpulsesAndParamses) [polyphony]ImpulsesAndParamses {
+                    var counts = [1]usize{0} ** polyphony;
+
+                    var i: usize = 0; while (i < iap.paramses.len) : (i += 1) {
+                        const impulse = iap.impulses[i];
+                        const params = iap.paramses[i];
+
+                        const slot_index = blk: {
+                            // first, try to reuse a slot that's already assigned to this note_id
+                            var j: usize = 0; while (j < polyphony) : (j += 1) {
+                                if (self.slots[j]) |slot| {
+                                    if (slot.note_id == impulse.note_id) {
+                                        break :blk j;
+                                    }
+                                }
+                            }
+                            // otherwise pick an empty slot
+                            j = 0; while (j < polyphony) : (j += 1) {
+                                if (self.slots[j] == null) {
+                                    break :blk j;
+                                }
+                            }
+                            // otherwise pick the note-off slot with the oldest note_id
+                            // FIXME! this is flawed because the note_id is assigned at note-on, which has no correlation to when the note-off happened.
+                            // we need an 'age' based on time.
+                            var maybe_best: ?usize = null;
+                            j = 0; while (j < polyphony) : (j += 1) {
+                                const slot = self.slots[j].?;
+                                if (!slot.note_on) {
+                                    if (maybe_best) |best| {
+                                        if (slot.note_id < self.slots[best].?.note_id) {
+                                            maybe_best = j;
+                                        }
+                                    } else { // maybe_best == null
+                                        maybe_best = j;
+                                    }
+                                }
+                            }
+                            if (maybe_best) |best| {
+                                break :blk best;
+                            }
+                            // otherwise pick the note-on slot with the oldest note_id
+                            var best: usize = 0;
+                            j = 1; while (j < polyphony) : (j += 1) {
+                                const slot = self.slots[j].?;
+                                if (slot.note_id < self.slots[best].?.note_id) {
+                                    best = j;
+                                }
+                            }
+                            break :blk best;
+                        };
+
+                        // std.debug.warn("slot_index={}\n", slot_index);
+
+                        self.slots[slot_index] = SlotState {
+                            .note_id = impulse.note_id,
+                            .note_on = params.note_on,
+                        };
+
+                        self.impulses_array[slot_index][counts[slot_index]] = impulse;
+                        self.paramses_array[slot_index][counts[slot_index]] = params;
+                        counts[slot_index] += 1;
+                    }
+
+                    var result: [polyphony]ImpulsesAndParamses = undefined;
+                    i = 0; while (i < polyphony) : (i += 1) {
+                        result[i] = ImpulsesAndParamses {
+                            .impulses = self.impulses_array[i][0..counts[i]],
+                            .paramses = self.paramses_array[i][0..counts[i]],
+                        };
+                    }
+                    return result;
+                }
+            };
+        }
     };
 }

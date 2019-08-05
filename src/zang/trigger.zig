@@ -29,6 +29,8 @@ pub fn Trigger(comptime ParamsType: type) type {
     };
 
     return struct {
+        // note: i currently don't ever set this back to null. because
+        // note-off should still be rendered (for envelope release).
         note: ?NoteSpanNote,
 
         pub const Counter = struct {
@@ -65,6 +67,9 @@ pub fn Trigger(comptime ParamsType: type) type {
 
         pub fn next(self: *@This(), ctr: *Counter) ?NewPaintReturnValue {
             while (ctr.start < ctr.end) {
+                // first, try to continue a previously started note (this will
+                // peek at ctr in order to stop when the first next event comes).
+                // then, take impulses from the ctr (getNextNoteSpan).
                 const note_span = carryOver(ctr, self.note) orelse getNextNoteSpan(ctr);
 
                 ctr.start = note_span.end;
