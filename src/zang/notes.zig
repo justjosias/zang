@@ -121,7 +121,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         // TODO - do something graceful-ish when count >= self.impulse_array.len
                         self.impulses_array[count] = Impulse {
                             .frame = rel_frame_index,
-                            .note_id = song_note.id,// self.next_song_note,
+                            .note_id = song_note.id,
                         };
                         self.paramses_array[count] = song_note.params;
                         count += 1;
