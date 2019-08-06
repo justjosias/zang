@@ -163,6 +163,8 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     };
                 }
 
+                // FIXME - pass note_on to this function as well. if it's false, and we don't see the note_id
+                // in any of our slots, we should do nothing
                 fn chooseSlot(self: *const @This(), note_id: usize) usize {
                     // first, try to reuse a slot that's already assigned to this note_id
                     for (self.slots) |maybe_slot, slot_index| {

@@ -1,5 +1,6 @@
 const std = @import("std");
 
+// closest thing i could find in std was io.readFileAlloc
 pub fn readFile(buffer: []u8) ![]const u8 {
     const file = try std.fs.File.openRead("examples/example_song.txt");
     defer file.close();

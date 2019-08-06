@@ -4,6 +4,7 @@ const f = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const util = @import("common/util.zig");
+const modules = @import("modules.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -27,60 +28,54 @@ const MyNoteParams = struct {
     note_on: bool,
 };
 
+const Pedal = struct {
+    const Module = modules.PMOscInstrument;
+    fn initModule() Module { return modules.PMOscInstrument.init(0.4); }
+    fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+        return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
+    }
+    const polyphony = 2;
+    const num_columns = 2;
+};
+
+const RegularOrgan = struct {
+    const Module = modules.NiceInstrument;
+    fn initModule() Module { return modules.NiceInstrument.init(0.25); }
+    fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+        return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+    }
+    const polyphony = 8;
+    const num_columns = 8;
+};
+
+const WeirdOrgan = struct {
+    const Module = modules.NiceInstrument;
+    fn initModule() Module { return modules.NiceInstrument.init(0.1); }
+    fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
+        return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+    }
+    const polyphony = 2;
+    const num_columns = 2;
+};
+
 // note: i would prefer for this to be an array of types (so i don't have to
 // give meaningless names to the fields), but it's also being used as an
 // instance type. you can't do that with an array of types. and without
 // reification features i can't generate a struct procedurally. (it needs to be
 // a struct because the elements/fields have different types)
 const Voices = struct {
-    const modules = @import("modules.zig");
-
-    // pedals
-    voice0: Voice(VoiceParams {
-        .polyphony = 2,
-        .Adapter = struct {
-            const Module = modules.PMOscInstrument;
-            fn initModule() Module { return modules.PMOscInstrument.init(0.4); }
-            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-                return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
-            }
-        },
-    }),
-    // regular organ
-    voice1: Voice(VoiceParams {
-        .polyphony = 8,
-        .Adapter = struct {
-            const Module = modules.NiceInstrument;
-            fn initModule() Module { return modules.NiceInstrument.init(0.25); }
-            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-                return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
-            }
-        },
-    }),
-    // weird organ
-    voice2: Voice(VoiceParams {
-        .polyphony = 2,
-        .Adapter = struct {
-            const Module = modules.NiceInstrument;
-            fn initModule() Module { return modules.NiceInstrument.init(0.1); }
-            fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-                return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
-            }
-        },
-    }),
+    voice0: Voice(Pedal),
+    voice1: Voice(RegularOrgan),
+    voice2: Voice(WeirdOrgan),
 };
 
 // this parallels the Voices struct. these values are not necessarily the same
 // as the polyphony amount. they're just a parsing detail
-const COLUMNS_PER_VOICE = [_]usize {
-    2,
-    8,
-    2,
+const COLUMNS_PER_VOICE = [@typeInfo(Voices).Struct.fields.len]usize {
+    Pedal.num_columns,
+    RegularOrgan.num_columns,
+    WeirdOrgan.num_columns,
 };
-
-comptime {
-    std.debug.assert(@typeInfo(Voices).Struct.fields.len == COLUMNS_PER_VOICE.len);
-}
 
 const TOTAL_COLUMNS = blk: {
     var sum: usize = 0;
@@ -90,6 +85,7 @@ const TOTAL_COLUMNS = blk: {
 
 const NUM_INSTRUMENTS = COLUMNS_PER_VOICE.len;
 
+// note we can't put params straight into Module.Params because that requires sample_rate which is only known at runtime
 var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongNote = undefined;
 var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongNote = undefined;
 
@@ -182,7 +178,6 @@ fn doParse(parser: *Parser) !void {
                     t += NOTE_DURATION / (rate * tempo);
 
                     // sort the events at this time frame by note id. this puts note-offs before note-ons
-                    // (not sure if this is really necessary though. if not i might remove the sorting)
                     var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
                         const start = old_instrument_num_notes[i];
                         const end = instrument_num_notes[i];
@@ -235,37 +230,31 @@ fn parse() void {
     };
 }
 
-const VoiceParams = struct {
-    Adapter: type,
-    polyphony: usize,
-};
-
 // polyphonic instrument, encapsulating note tracking (uses `all_notes` global)
-// fn Voice(comptime Adapter: type, comptime polyphony: usize) type {
-fn Voice(comptime vp: VoiceParams) type {
+fn Voice(comptime T: type) type {
     return struct {
-        pub const num_outputs = vp.Adapter.Module.num_outputs;
-        pub const num_temps = vp.Adapter.Module.num_temps;
+        pub const num_outputs = T.Module.num_outputs;
+        pub const num_temps = T.Module.num_temps;
 
         const SubVoice = struct {
-            module: vp.Adapter.Module,
+            module: T.Module,
             trigger: zang.Trigger(MyNoteParams),
         };
 
         tracker: zang.Notes(MyNoteParams).NoteTracker,
-        dispatcher: zang.Notes(MyNoteParams).PolyphonyDispatcher(vp.polyphony),
+        dispatcher: zang.Notes(MyNoteParams).PolyphonyDispatcher(T.polyphony),
 
-        sub_voices: [vp.polyphony]SubVoice,
+        sub_voices: [T.polyphony]SubVoice,
 
         fn init(track_index: usize) @This() {
             var self = @This() {
                 .tracker = zang.Notes(MyNoteParams).NoteTracker.init(all_notes[track_index]),
-                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(vp.polyphony).init(),
+                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(T.polyphony).init(),
                 .sub_voices = undefined,
             };
-            var i: usize = 0; while (i < vp.polyphony) : (i += 1) {
+            var i: usize = 0; while (i < T.polyphony) : (i += 1) {
                 self.sub_voices[i] = SubVoice {
-                    .module = vp.Adapter.initModule(),
+                    .module = T.initModule(),
                     .trigger = zang.Trigger(MyNoteParams).init(),
                 };
             }
@@ -281,7 +270,7 @@ fn Voice(comptime vp: VoiceParams) type {
                 var ctr = sub_voice.trigger.counter(span, poly_iap[i]);
 
                 while (sub_voice.trigger.next(&ctr)) |result| {
-                    const params = vp.Adapter.makeParams(AUDIO_SAMPLE_RATE, result.params);
+                    const params = T.makeParams(AUDIO_SAMPLE_RATE, result.params);
                     sub_voice.module.paint(result.span, outputs, temps, result.note_id_changed, params);
                 }
             }
