@@ -400,57 +400,58 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
     };
 }
 
-const MAIN_DELAY = 15000;
-const HALF_DELAY = MAIN_DELAY / 2;
+pub fn StereoEchoes(comptime MAIN_DELAY: usize) type {
+    const HALF_DELAY = MAIN_DELAY / 2;
 
-pub const StereoEchoes = struct {
-    pub const num_outputs = 2;
-    pub const num_temps = 4;
-    pub const Params = struct {
-        input: []const f32,
-        feedback_volume: f32,
-        cutoff: f32,
-    };
-
-    delay0: SimpleDelay(HALF_DELAY),
-    delay1: SimpleDelay(HALF_DELAY),
-    echoes: FilteredEchoes(MAIN_DELAY),
-
-    pub fn init() StereoEchoes {
-        return StereoEchoes {
-            .delay0 = SimpleDelay(HALF_DELAY).init(),
-            .delay1 = SimpleDelay(HALF_DELAY).init(),
-            .echoes = FilteredEchoes(MAIN_DELAY).init(),
+    return struct {
+        pub const num_outputs = 2;
+        pub const num_temps = 4;
+        pub const Params = struct {
+            input: []const f32,
+            feedback_volume: f32,
+            cutoff: f32,
         };
-    }
 
-    pub fn reset(self: *StereoEchoes) void {
-        self.delay0.reset();
-        self.delay1.reset();
-        self.echoes.reset();
-    }
+        delay0: SimpleDelay(HALF_DELAY),
+        delay1: SimpleDelay(HALF_DELAY),
+        echoes: FilteredEchoes(MAIN_DELAY),
 
-    pub fn paint(self: *StereoEchoes, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
-        // output dry signal to center channel
-        zang.addInto(span, outputs[0], params.input);
-        zang.addInto(span, outputs[1], params.input);
+        pub fn init() @This() {
+            return @This() {
+                .delay0 = SimpleDelay(HALF_DELAY).init(),
+                .delay1 = SimpleDelay(HALF_DELAY).init(),
+                .echoes = FilteredEchoes(MAIN_DELAY).init(),
+            };
+        }
 
-        // initial half delay before first echo on the left channel
-        zang.zero(span, temps[0]);
-        self.delay0.paint(span, [1][]f32{temps[0]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
-            .input = params.input,
-        });
-        // filtered echoes to the left
-        zang.zero(span, temps[1]);
-        self.echoes.paint(span, [1][]f32{temps[1]}, [2][]f32{temps[2], temps[3]}, FilteredEchoes(MAIN_DELAY).Params {
-            .input = temps[0],
-            .feedback_volume = params.feedback_volume,
-            .cutoff = params.cutoff,
-        });
-        // use another delay to mirror the left echoes to the right side
-        zang.addInto(span, outputs[0], temps[1]);
-        self.delay1.paint(span, [1][]f32{outputs[1]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
-            .input = temps[1],
-        });
-    }
-};
+        pub fn reset(self: *@This()) void {
+            self.delay0.reset();
+            self.delay1.reset();
+            self.echoes.reset();
+        }
+
+        pub fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+            // output dry signal to center channel
+            zang.addInto(span, outputs[0], params.input);
+            zang.addInto(span, outputs[1], params.input);
+
+            // initial half delay before first echo on the left channel
+            zang.zero(span, temps[0]);
+            self.delay0.paint(span, [1][]f32{temps[0]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
+                .input = params.input,
+            });
+            // filtered echoes to the left
+            zang.zero(span, temps[1]);
+            self.echoes.paint(span, [1][]f32{temps[1]}, [2][]f32{temps[2], temps[3]}, FilteredEchoes(MAIN_DELAY).Params {
+                .input = temps[0],
+                .feedback_volume = params.feedback_volume,
+                .cutoff = params.cutoff,
+            });
+            // use another delay to mirror the left echoes to the right side
+            zang.addInto(span, outputs[0], temps[1]);
+            self.delay1.paint(span, [1][]f32{outputs[1]}, [0][]f32{}, SimpleDelay(HALF_DELAY).Params {
+                .input = temps[1],
+            });
+        }
+    };
+}

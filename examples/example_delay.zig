@@ -2,7 +2,7 @@ const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
-const StereoEchoes = @import("modules.zig").StereoEchoes;
+const StereoEchoes = @import("modules.zig").StereoEchoes(15000);
 
 pub const DESCRIPTION =
     c\\example_delay

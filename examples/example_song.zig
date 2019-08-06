@@ -4,7 +4,6 @@ const f = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const util = @import("common/util.zig");
-const modules = @import("modules.zig");
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -29,8 +28,8 @@ const MyNoteParams = struct {
 };
 
 const Pedal = struct {
-    const Module = modules.PMOscInstrument;
-    fn initModule() Module { return modules.PMOscInstrument.init(0.4); }
+    const Module = @import("modules.zig").PMOscInstrument;
+    fn initModule() Module { return Module.init(0.4); }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
     }
@@ -39,8 +38,8 @@ const Pedal = struct {
 };
 
 const RegularOrgan = struct {
-    const Module = modules.NiceInstrument;
-    fn initModule() Module { return modules.NiceInstrument.init(0.25); }
+    const Module = @import("modules.zig").NiceInstrument;
+    fn initModule() Module { return Module.init(0.25); }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
     }
@@ -49,8 +48,8 @@ const RegularOrgan = struct {
 };
 
 const WeirdOrgan = struct {
-    const Module = modules.NiceInstrument;
-    fn initModule() Module { return modules.NiceInstrument.init(0.1); }
+    const Module = @import("modules.zig").NiceInstrument;
+    fn initModule() Module { return Module.init(0.1); }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
     }
@@ -279,22 +278,26 @@ fn Voice(comptime T: type) type {
 }
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
+    const StereoEchoes = @import("modules.zig").StereoEchoes(5000);
+
+    pub const num_outputs = 2;
     pub const num_temps = blk: {
-        comptime var n: usize = 0;
+        comptime var n: usize = 1 + StereoEchoes.num_temps;
         inline for (@typeInfo(Voices).Struct.fields) |field| {
-            n = std.math.max(n, @field(field.field_type, "num_temps"));
+            n = std.math.max(n, 1 + @field(field.field_type, "num_temps"));
         }
         break :blk n;
     };
 
     voices: Voices,
+    echoes: StereoEchoes,
 
     pub fn init() MainModule {
         parse();
 
         var mod = MainModule {
             .voices = undefined,
+            .echoes = StereoEchoes.init(),
         };
 
         inline for (@typeInfo(Voices).Struct.fields) |field, track_index| {
@@ -305,12 +308,22 @@ pub const MainModule = struct {
     }
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+        zang.zero(span, temps[num_temps - 1]);
+
         inline for (@typeInfo(Voices).Struct.fields) |field| {
             const VoiceType = field.field_type;
             const voice = &@field(self.voices, field.name);
 
-            voice.paint(span, outputs, util.subarray(temps, VoiceType.num_temps));
+            voice.paint(span, [1][]f32{temps[num_temps - 1]}, util.subarray(temps, VoiceType.num_temps));
         }
+
+        zang.multiplyWithScalar(span, temps[num_temps - 1], 0.5);
+
+        self.echoes.paint(span, outputs, util.subarray(temps, StereoEchoes.num_temps), StereoEchoes.Params {
+            .input = temps[num_temps - 1],
+            .feedback_volume = 0.2,
+            .cutoff = 0.1,
+        });
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
