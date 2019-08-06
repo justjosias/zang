@@ -6,7 +6,7 @@ fn expectCloseTo(actual: f32, expected: f32) void {
     const delta = expected - actual;
 
     if (delta < -0.001 or delta > 0.001) {
-        std.debug.panic("expected {.5}, got {.5}", expected, actual);
+        std.debug.panic("expected {}, got {}", expected, actual);
     }
 }
 
@@ -26,9 +26,9 @@ fn expectSliceCloseTo(comptime len: comptime_int, actual: [len]f32, expected: [l
         std.debug.warn("\n");
         i = 0; while (i < len) : (i += 1) {
             if (index_ok[i]) {
-                std.debug.warn("  [{}] {.5} ok\n", i, actual[i]);
+                std.debug.warn("  [{}] {} ok\n", i, actual[i]);
             } else {
-                std.debug.warn("  [{}] {.5}, expected {.5}\n", i, actual[i], expected[i]);
+                std.debug.warn("  [{}] {}, expected {}\n", i, actual[i], expected[i]);
             }
         }
         std.debug.panic("expectSliceCloseTo failure");

@@ -9,7 +9,7 @@ fn expectCloseTo(func: fn(f32)f32, arg: f32, expected: f32) void {
     const delta = expected - actual;
 
     if (delta < -0.001 or delta > 0.001) {
-        std.debug.panic("expected f({.5}) = {.5}, got {.5}", arg, expected, actual);
+        std.debug.panic("expected f({}) = {}, got {}", arg, expected, actual);
     }
 }
 
