@@ -113,6 +113,7 @@ pub const MainModule = struct {
     pub const num_temps = 3;
 
     iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     player: LaserPlayer,
     trigger: zang.Trigger(LaserPlayer.Params),
 
@@ -121,6 +122,7 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         return MainModule {
             .iq = zang.Notes(LaserPlayer.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .player = LaserPlayer.init(),
             .trigger = zang.Trigger(LaserPlayer.Params).init(),
             .r = std.rand.DefaultPrng.init(0),
@@ -145,7 +147,7 @@ pub const MainModule = struct {
                     const carrier_mul_variance = 0.0;
                     const modulator_mul_variance = 0.1;
                     const modulator_rad_variance = 0.25;
-                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), LaserPlayer.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq_mul = freq_mul,
                         .carrier_mul = 2.0 + self.r.random.float(f32) * carrier_mul_variance - 0.5 * carrier_mul_variance,
@@ -155,7 +157,7 @@ pub const MainModule = struct {
                 },
                 c.SDLK_a => {
                     // enemy laser
-                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), LaserPlayer.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq_mul = freq_mul,
                         .carrier_mul = 4.0,
@@ -165,7 +167,7 @@ pub const MainModule = struct {
                 },
                 c.SDLK_s => {
                     // pain sound?
-                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), LaserPlayer.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq_mul = freq_mul,
                         .carrier_mul = 0.5,
@@ -175,7 +177,7 @@ pub const MainModule = struct {
                 },
                 c.SDLK_d => {
                     // some web effect?
-                    self.iq.push(impulse_frame, LaserPlayer.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), LaserPlayer.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq_mul = freq_mul,
                         .carrier_mul = 1.0,

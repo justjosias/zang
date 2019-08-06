@@ -72,6 +72,7 @@ pub const MainModule = struct {
         const Params = struct { freq: f32, note_on: bool };
 
         iq: zang.Notes(Params).ImpulseQueue,
+        idgen: zang.IdGenerator,
         mod: PMOscInstrument,
         trig: zang.Trigger(Params),
     };
@@ -80,6 +81,8 @@ pub const MainModule = struct {
         const Params = struct { value: f32, note_on: bool };
 
         iq: zang.Notes(Params).ImpulseQueue,
+        idgen: zang.IdGenerator,
+
         mod: zang.Portamento,
         trig: zang.Trigger(Params),
     };
@@ -88,6 +91,7 @@ pub const MainModule = struct {
     first: bool,
     mode: u32,
     mode_iq: zang.Notes(u32).ImpulseQueue,
+    mode_idgen: zang.IdGenerator,
     instr: Instr,
     ratio: Porta,
     multiplier: Porta,
@@ -98,18 +102,22 @@ pub const MainModule = struct {
             .first = true,
             .mode = 0,
             .mode_iq = zang.Notes(u32).ImpulseQueue.init(),
+            .mode_idgen = zang.IdGenerator.init(),
             .instr = Instr {
                 .iq = zang.Notes(Instr.Params).ImpulseQueue.init(),
+                .idgen = zang.IdGenerator.init(),
                 .mod = PMOscInstrument.init(),
                 .trig = zang.Trigger(Instr.Params).init(),
             },
             .ratio = Porta {
                 .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
+                .idgen = zang.IdGenerator.init(),
                 .mod = zang.Portamento.init(),
                 .trig = zang.Trigger(Porta.Params).init(),
             },
             .multiplier = Porta {
                 .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
+                .idgen = zang.IdGenerator.init(),
                 .mod = zang.Portamento.init(),
                 .trig = zang.Trigger(Porta.Params).init(),
             },
@@ -119,7 +127,7 @@ pub const MainModule = struct {
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
-            self.mode_iq.push(0, self.mode);
+            self.mode_iq.push(0, self.mode_idgen.nextId(), self.mode);
         }
         // ratio
         zang.zero(span, temps[0]);
@@ -169,19 +177,19 @@ pub const MainModule = struct {
     }
 
     pub fn mouseEvent(self: *MainModule, x: f32, y: f32, impulse_frame: usize) void {
-        self.ratio.iq.push(impulse_frame, Porta.Params { .value = x, .note_on = true });
-        self.multiplier.iq.push(impulse_frame, Porta.Params { .value = y, .note_on = true });
+        self.ratio.iq.push(impulse_frame, self.ratio.idgen.nextId(), Porta.Params { .value = x, .note_on = true });
+        self.multiplier.iq.push(impulse_frame, self.multiplier.idgen.nextId(), Porta.Params { .value = y, .note_on = true });
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (key == c.SDLK_SPACE and down) {
             self.mode = (self.mode + 1) % 2;
-            self.mode_iq.push(impulse_frame, self.mode);
+            self.mode_iq.push(impulse_frame, self.mode_idgen.nextId(), self.mode);
         }
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.instr.iq.push(impulse_frame, Instr.Params {
+                self.instr.iq.push(impulse_frame, self.instr.idgen.nextId(), Instr.Params {
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });

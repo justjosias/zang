@@ -1,5 +1,23 @@
 const std = @import("std");
 
+// this can be used when pushing to an ImpulseQueue. it's all you need if you
+// don't care about matching note-on and note-off events (which is only
+// important for polyphony)
+pub const IdGenerator = struct {
+    next_id: usize,
+
+    pub fn init() IdGenerator {
+        return IdGenerator {
+            .next_id = 1,
+        };
+    }
+
+    pub fn nextId(self: *IdGenerator) usize {
+        defer self.next_id += 1;
+        return self.next_id;
+    }
+};
+
 pub const Impulse = struct {
     frame: usize, // frames (e.g. 44100 for one second in)
     note_id: usize,
@@ -17,20 +35,18 @@ pub fn Notes(comptime NoteParamsType: type) type {
             impulses_array: [32]Impulse,
             paramses_array: [32]NoteParamsType,
             length: usize,
-            next_id: usize,
 
             pub fn init() ImpulseQueue {
                 return ImpulseQueue {
                     .impulses_array = undefined,
                     .paramses_array = undefined,
                     .length = 0,
-                    .next_id = 1,
                 };
             }
 
             // return impulses and advance state.
             // make sure to use the returned impulse list before pushing more stuff
-            // FIXME shuldn't this take in a span?
+            // FIXME shouldn't this take in a span?
             // although it's probably fine now because we're never using an impulse queue
             // within something...
             pub fn consume(self: *ImpulseQueue) ImpulsesAndParamses {
@@ -42,33 +58,18 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 };
             }
 
-            pub fn push(self: *ImpulseQueue, impulse_frame: usize, params: NoteParamsType) void {
-                const actual_impulse_frame = blk: {
-                    if (self.length > 0) {
-                        const last_impulse_frame = self.impulses_array[self.length - 1].frame;
-
-                        // if the new impulse would be at the same time or earlier than
-                        // the previous one, have it replace the previous one
-                        // FIXME - should i not bother with this here, and just make sure
-                        // Triggerable handles it correctly?
-                        if (impulse_frame <= last_impulse_frame) {
-                            self.length -= 1;
-                            break :blk last_impulse_frame;
-                        }
-                    }
-
-                    break :blk impulse_frame;
-                };
-
-                const note_id = self.next_id;
-                self.next_id += 1;
-
+            pub fn push(self: *ImpulseQueue, impulse_frame: usize, note_id: usize, params: NoteParamsType) void {
                 if (self.length >= self.impulses_array.len) {
                     std.debug.warn("ImpulseQueue: no more slots\n"); // FIXME
                     return;
                 }
+                if (self.length > 0 and impulse_frame < self.impulses_array[self.length - 1].frame) {
+                    // you must push impulses in order. this could even be a panic
+                    std.debug.warn("ImpulseQueue: notes pushed out of order\n");
+                    return;
+                }
                 self.impulses_array[self.length] = Impulse {
-                    .frame = actual_impulse_frame,
+                    .frame = impulse_frame,
                     .note_id = note_id,
                 };
                 self.paramses_array[self.length] = params;
@@ -163,16 +164,18 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     };
                 }
 
-                // FIXME - pass note_on to this function as well. if it's false, and we don't see the note_id
-                // in any of our slots, we should do nothing
-                fn chooseSlot(self: *const @This(), note_id: usize) usize {
-                    // first, try to reuse a slot that's already assigned to this note_id
-                    for (self.slots) |maybe_slot, slot_index| {
-                        if (maybe_slot) |slot| {
-                            if (slot.note_id == note_id) {
-                                return slot_index;
+                fn chooseSlot(self: *const @This(), note_id: usize, note_on: bool) ?usize {
+                    if (!note_on) {
+                        // this is a note-off event. try to find the slot where the note
+                        // lives. if we don't find it (meaning it got overridden at some
+                        // point), return null
+                        return for (self.slots) |maybe_slot, slot_index| {
+                            if (maybe_slot) |slot| {
+                                if (slot.note_id == note_id and slot.note_on) {
+                                    break slot_index;
+                                }
                             }
-                        }
+                        } else null;
                     }
                     // otherwise pick the note-off slot with the oldest note_id
                     // FIXME! this is flawed because the note_id is assigned at note-on, which has no correlation to when the note-off happened.
@@ -219,18 +222,16 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         const impulse = iap.impulses[i];
                         const params = iap.paramses[i];
 
-                        const slot_index = self.chooseSlot(impulse.note_id);
+                        if (self.chooseSlot(impulse.note_id, params.note_on)) |slot_index| {
+                            self.slots[slot_index] = SlotState {
+                                .note_id = impulse.note_id,
+                                .note_on = params.note_on,
+                            };
 
-                        // std.debug.warn("slot_index={}\n", slot_index);
-
-                        self.slots[slot_index] = SlotState {
-                            .note_id = impulse.note_id,
-                            .note_on = params.note_on,
-                        };
-
-                        self.impulses_array[slot_index][counts[slot_index]] = impulse;
-                        self.paramses_array[slot_index][counts[slot_index]] = params;
-                        counts[slot_index] += 1;
+                            self.impulses_array[slot_index][counts[slot_index]] = impulse;
+                            self.paramses_array[slot_index][counts[slot_index]] = params;
+                            counts[slot_index] += 1;
+                        }
                     }
 
                     var result: [polyphony]ImpulsesAndParamses = undefined;

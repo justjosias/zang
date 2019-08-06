@@ -25,6 +25,7 @@ pub const MainModule = struct {
 
     key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     instr: Instrument,
     trigger: zang.Trigger(Instrument.Params),
     echoes: StereoEchoes,
@@ -33,6 +34,7 @@ pub const MainModule = struct {
         return MainModule {
             .key = null,
             .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
             .trigger = zang.Trigger(Instrument.Params).init(),
             .echoes = StereoEchoes.init(),
@@ -63,7 +65,7 @@ pub const MainModule = struct {
         } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, Instrument.Params {
+                self.iq.push(impulse_frame, self.idgen.nextId(), Instrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * rel_freq,
                     .note_on = down,

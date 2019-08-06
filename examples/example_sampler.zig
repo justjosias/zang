@@ -27,6 +27,7 @@ pub const MainModule = struct {
 
     wav: zang.WavContents,
     iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     sampler: zang.Sampler,
     trigger: zang.Trigger(zang.Sampler.Params),
     distortion: zang.Distortion,
@@ -38,6 +39,7 @@ pub const MainModule = struct {
         return MainModule {
             .wav = zang.readWav(@embedFile("drumloop.wav")) catch unreachable,
             .iq = zang.Notes(zang.Sampler.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .sampler = zang.Sampler.init(),
             .trigger = zang.Trigger(zang.Sampler.Params).init(),
             .distortion = zang.Distortion.init(),
@@ -50,7 +52,7 @@ pub const MainModule = struct {
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
-            self.iq.push(0, zang.Sampler.Params {
+            self.iq.push(0, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .wav = self.wav,
                 .loop = true,
@@ -80,14 +82,14 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down and key == c.SDLK_SPACE) {
-            self.iq.push(impulse_frame, zang.Sampler.Params {
+            self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * (0.5 + 1.0 * self.r.random.float(f32)),
                 .wav = self.wav,
                 .loop = true,
             });
         }
         if (down and key == c.SDLK_b) {
-            self.iq.push(impulse_frame, zang.Sampler.Params {
+            self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * -(0.5 + 1.0 * self.r.random.float(f32)),
                 .wav = self.wav,
                 .loop = true,

@@ -91,12 +91,14 @@ pub const MainModule = struct {
     pub const num_temps = 2;
 
     iq: zang.Notes(CurvePlayer.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     player: CurvePlayer,
     trigger: zang.Trigger(CurvePlayer.Params),
 
     pub fn init() MainModule {
         return MainModule {
             .iq = zang.Notes(CurvePlayer.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .player = CurvePlayer.init(),
             .trigger = zang.Trigger(CurvePlayer.Params).init(),
         };
@@ -112,7 +114,7 @@ pub const MainModule = struct {
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down) {
             if (common.getKeyRelFreq(key)) |rel_freq| {
-                self.iq.push(impulse_frame, CurvePlayer.Params {
+                self.iq.push(impulse_frame, self.idgen.nextId(), CurvePlayer.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .rel_freq = rel_freq,
                 });

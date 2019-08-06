@@ -26,9 +26,11 @@ pub const MainModule = struct {
 
     key0: ?i32,
     iq0: zang.Notes(PMOscInstrument.Params).ImpulseQueue,
+    idgen0: zang.IdGenerator,
     instr0: PMOscInstrument,
     trig0: zang.Trigger(PMOscInstrument.Params),
     iq1: zang.Notes(FilteredSawtoothInstrument.Params).ImpulseQueue,
+    idgen1: zang.IdGenerator,
     instr1: FilteredSawtoothInstrument,
     trig1: zang.Trigger(FilteredSawtoothInstrument.Params),
 
@@ -36,9 +38,11 @@ pub const MainModule = struct {
         return MainModule {
             .key0 = null,
             .iq0 = zang.Notes(PMOscInstrument.Params).ImpulseQueue.init(),
+            .idgen0 = zang.IdGenerator.init(),
             .instr0 = PMOscInstrument.init(1.0),
             .trig0 = zang.Trigger(PMOscInstrument.Params).init(),
             .iq1 = zang.Notes(FilteredSawtoothInstrument.Params).ImpulseQueue.init(),
+            .idgen1 = zang.IdGenerator.init(),
             .instr1 = FilteredSawtoothInstrument.init(),
             .trig1 = zang.Trigger(FilteredSawtoothInstrument.Params).init(),
         };
@@ -61,7 +65,7 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (key == c.SDLK_SPACE) {
-            self.iq1.push(impulse_frame, FilteredSawtoothInstrument.Params {
+            self.iq1.push(impulse_frame, self.idgen1.nextId(), FilteredSawtoothInstrument.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .freq = a4 * note_frequencies.c4 / 4.0,
                 .note_on = down,
@@ -69,7 +73,7 @@ pub const MainModule = struct {
         } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
-                self.iq0.push(impulse_frame, PMOscInstrument.Params {
+                self.iq0.push(impulse_frame, self.idgen0.nextId(), PMOscInstrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * rel_freq,
                     .note_on = down,

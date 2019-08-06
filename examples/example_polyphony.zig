@@ -33,6 +33,7 @@ const Polyphony = struct {
     const Voice = struct {
         down: bool,
         iq: zang.Notes(Instrument.Params).ImpulseQueue,
+        idgen: zang.IdGenerator,
         instrument: Instrument,
         trigger: zang.Trigger(Instrument.Params),
     };
@@ -47,6 +48,7 @@ const Polyphony = struct {
             self.voices[i] = Voice {
                 .down = false,
                 .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
+                .idgen = zang.IdGenerator.init(),
                 .instrument = Instrument.init(0.3),
                 .trigger = zang.Trigger(Instrument.Params).init(),
             };
@@ -57,7 +59,7 @@ const Polyphony = struct {
     fn paint(self: *Polyphony, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
-                self.voices[i].iq.push(0, Instrument.Params {
+                self.voices[i].iq.push(0, self.voices[i].idgen.nextId(), Instrument.Params {
                     .sample_rate = params.sample_rate,
                     .freq = a4 * common.key_bindings[i].rel_freq,
                     .note_on = params.note_held[i],
@@ -85,6 +87,7 @@ pub const MainModule = struct {
 
     current_params: Polyphony.Params,
     iq: zang.Notes(Polyphony.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     polyphony: Polyphony,
     trigger: zang.Trigger(Polyphony.Params),
     dec: zang.Decimator,
@@ -97,6 +100,7 @@ pub const MainModule = struct {
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
             .iq = zang.Notes(Polyphony.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .polyphony = Polyphony.init(),
             .trigger = zang.Trigger(Polyphony.Params).init(),
             .dec = zang.Decimator.init(),
@@ -140,7 +144,7 @@ pub const MainModule = struct {
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
-                self.iq.push(impulse_frame, self.current_params);
+                self.iq.push(impulse_frame, self.idgen.nextId(), self.current_params);
             }
         }
     }

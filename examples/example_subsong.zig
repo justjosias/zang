@@ -89,12 +89,12 @@ const SubtrackPlayer = struct {
 
         return SubtrackPlayer {
             .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongNote {
-                SongNote { .t = 0.0 * t, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
-                SongNote { .t = 1.0 * t, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
-                SongNote { .t = 2.0 * t, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
-                SongNote { .t = 3.0 * t, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
-                SongNote { .t = 4.0 * t, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
-                SongNote { .t = 5.0 * t, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
+                SongNote { .t = 0.0 * t, .id = 1, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
+                SongNote { .t = 1.0 * t, .id = 2, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
+                SongNote { .t = 2.0 * t, .id = 3, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
+                SongNote { .t = 3.0 * t, .id = 4, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
+                SongNote { .t = 4.0 * t, .id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
+                SongNote { .t = 5.0 * t, .id = 6, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
             }),
             .instr = InnerInstrument.init(),
             .trigger = zang.Trigger(MyNoteParams).init(),
@@ -124,6 +124,7 @@ pub const MainModule = struct {
 
     key: ?i32,
     iq: zang.Notes(SubtrackPlayer.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     player: SubtrackPlayer,
     trigger: zang.Trigger(SubtrackPlayer.Params),
 
@@ -131,6 +132,7 @@ pub const MainModule = struct {
         return MainModule {
             .key = null,
             .iq = zang.Notes(SubtrackPlayer.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .player = SubtrackPlayer.init(),
             .trigger = zang.Trigger(SubtrackPlayer.Params).init(),
         };
@@ -147,7 +149,7 @@ pub const MainModule = struct {
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, SubtrackPlayer.Params {
+                self.iq.push(impulse_frame, self.idgen.nextId(), SubtrackPlayer.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * rel_freq,
                     .note_on = down,

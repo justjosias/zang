@@ -78,6 +78,7 @@ pub const MainModule = struct {
 
     keys_held: u64,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     instr: Instrument,
     trigger: zang.Trigger(Instrument.Params),
 
@@ -85,6 +86,7 @@ pub const MainModule = struct {
         return MainModule {
             .keys_held = 0,
             .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
             .trigger = zang.Trigger(Instrument.Params).init(),
         };
@@ -115,7 +117,7 @@ pub const MainModule = struct {
                 self.keys_held |= key_flag;
 
                 if (key_flag > prev_keys_held) {
-                    self.iq.push(impulse_frame, Instrument.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = a4 * kb.rel_freq,
                         .note_on = true,
@@ -125,14 +127,14 @@ pub const MainModule = struct {
                 self.keys_held &= ~key_flag;
 
                 if (self.keys_held == 0) {
-                    self.iq.push(impulse_frame, Instrument.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = a4 * kb.rel_freq,
                         .note_on = false,
                     });
                 } else {
                     const rel_freq = common.key_bindings[63 - @clz(u64, self.keys_held)].rel_freq;
-                    self.iq.push(impulse_frame, Instrument.Params {
+                    self.iq.push(impulse_frame, self.idgen.nextId(), Instrument.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = a4 * rel_freq,
                         .note_on = true,

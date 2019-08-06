@@ -147,6 +147,7 @@ pub const MainModule = struct {
 
     key: ?i32,
     iq: zang.Notes(OuterInstrument.Params).ImpulseQueue,
+    idgen: zang.IdGenerator,
     outer: OuterInstrument,
     trigger: zang.Trigger(OuterInstrument.Params),
     echoes: StereoEchoes,
@@ -156,6 +157,7 @@ pub const MainModule = struct {
         return MainModule {
             .key = null,
             .iq = zang.Notes(OuterInstrument.Params).ImpulseQueue.init(),
+            .idgen = zang.IdGenerator.init(),
             .outer = OuterInstrument.init(),
             .trigger = zang.Trigger(OuterInstrument.Params).init(),
             .echoes = StereoEchoes.init(),
@@ -198,7 +200,7 @@ pub const MainModule = struct {
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, OuterInstrument.Params {
+                self.iq.push(impulse_frame, self.idgen.nextId(), OuterInstrument.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * rel_freq * 0.5,
                     .note_on = down,

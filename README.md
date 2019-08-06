@@ -28,7 +28,9 @@ Running the examples (again, except `write_wav`) will display a window with some
 
 `zig build sampler`: Loop a WAV file (drum loop from [free-loops.com](http://free-loops.com/6791-live-drums.html)). Press space to restart the loop at a randomly altered playback speed. Press 'd' to toggle a distortion effect.
 
-`zig build polyphony`: Each key is an individual voice so you can hold down as many keys as your keyboard wiring lets you. Press space to cycle through various levels of decimation (artificial sample rate reduction).
+`zig build polyphony`: Each key is an individual voice so you can hold down as many keys as your keyboard wiring lets you (this is a brute-force approach to polyphony - as many voices as there are keys). Press space to cycle through various levels of decimation (artificial sample rate reduction).
+
+`zig build polyphony2`: A variant of the above, but limited to 3 voices of polyphony. Each new note takes over the stalest voice slot.
 
 `zig build delay`: Play the keyboard with a stereo filtered echo effect.
 

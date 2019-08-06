@@ -1,4 +1,5 @@
 const notes = @import("zang/notes.zig");
+pub const IdGenerator = notes.IdGenerator;
 pub const Impulse = notes.Impulse;
 pub const Notes = notes.Notes;
 

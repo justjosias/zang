@@ -33,10 +33,12 @@ pub const MainModule = struct {
 
     key0: ?i32,
     iq0: zang.Notes(Params0).ImpulseQueue,
+    idgen0: zang.IdGenerator,
     trig0: zang.Trigger(Params0),
 
     key1: ?i32,
     iq1: zang.Notes(Params1).ImpulseQueue,
+    idgen1: zang.IdGenerator,
     trig1: zang.Trigger(Params1),
 
     pub fn init() MainModule {
@@ -46,9 +48,11 @@ pub const MainModule = struct {
             .env = zang.Envelope.init(),
             .key0 = null,
             .iq0 = zang.Notes(Params0).ImpulseQueue.init(),
+            .idgen0 = zang.IdGenerator.init(),
             .trig0 = zang.Trigger(Params0).init(),
             .key1 = null,
             .iq1 = zang.Notes(Params1).ImpulseQueue.init(),
+            .idgen1 = zang.IdGenerator.init(),
             .trig1 = zang.Trigger(Params1).init(),
         };
     }
@@ -56,8 +60,8 @@ pub const MainModule = struct {
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         if (self.first) {
             self.first = false;
-            self.iq0.push(0, Params0 { .freq = a4 * 0.5, .note_on = false });
-            self.iq1.push(0, Params1 { .color = 0.5, .note_on = false });
+            self.iq0.push(0, self.idgen0.nextId(), Params0 { .freq = a4 * 0.5, .note_on = false });
+            self.iq1.push(0, self.idgen1.nextId(), Params1 { .color = 0.5, .note_on = false });
         }
 
         zang.zero(span, temps[0]);
@@ -137,7 +141,7 @@ pub const MainModule = struct {
         if (common.getKeyRelFreqFromRow(0, key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
-                self.iq0.push(impulse_frame, Params0 {
+                self.iq0.push(impulse_frame, self.idgen0.nextId(), Params0 {
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });
@@ -148,7 +152,7 @@ pub const MainModule = struct {
             const f = @intToFloat(f32, key - c.SDLK_1) / @intToFloat(f32, c.SDLK_9 - c.SDLK_1);
             if (down or (if (self.key1) |nh| nh == key else false)) {
                 self.key1 = if (down) key else null;
-                self.iq1.push(impulse_frame, Params1 {
+                self.iq1.push(impulse_frame, self.idgen1.nextId(), Params1 {
                     .color = 0.5 + std.math.sqrt(f) * 0.49,
                     .note_on = down,
                 });

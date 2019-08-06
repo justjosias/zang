@@ -70,6 +70,9 @@ pub fn Trigger(comptime ParamsType: type) type {
                 // first, try to continue a previously started note (this will
                 // peek at ctr in order to stop when the first next event comes).
                 // then, take impulses from the ctr (getNextNoteSpan).
+                // TODO - factor carryOver out of the while loop. it should only
+                // be able to happen zero or one times, and only at the
+                // beginning.
                 const note_span = carryOver(ctr, self.note) orelse getNextNoteSpan(ctr);
 
                 ctr.start = note_span.end;
@@ -129,8 +132,8 @@ pub fn Trigger(comptime ParamsType: type) type {
                 if (impulse.frame >= ctr.end) {
                     // this impulse (and all after it, since they're in chronological order)
                     // starts after the end of the buffer.
-                    // this should never happen (you should never create an impulse at >=
-                    // "mix_buffer_length")
+                    // this should never happen (the impulses coming in should have been
+                    // clipped already)
                     break;
                 }
 
@@ -143,6 +146,8 @@ pub fn Trigger(comptime ParamsType: type) type {
                     };
                 }
 
+                std.debug.assert(impulse.frame == ctr.start);
+
                 ctr.impulse_index += 1;
 
                 // this span ends at the start of the next impulse (if one exists), or the
@@ -154,7 +159,8 @@ pub fn Trigger(comptime ParamsType: type) type {
                         ctr.end;
 
                 if (note_end_clipped <= ctr.start) {
-                    // impulse is entirely in the past. skip it
+                    // either the impulse is entirely in the past (which should be impossible),
+                    // or the next one starts at the same time
                     continue;
                 }
 

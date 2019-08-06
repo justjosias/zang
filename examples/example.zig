@@ -217,7 +217,13 @@ pub fn main() !void {
 var r = std.rand.DefaultPrng.init(0);
 
 fn getImpulseFrame() usize {
-    return r.random.intRangeLessThan(usize, 0, example.AUDIO_BUFFER_SIZE);
+    // FIXME - i was using random values as a kind of test, but this is actually bad.
+    // it means if you press two keys at the same time, they get different values, and
+    // the second might have an earlier value than the first, which will cause it to
+    // get discarded by the ImpulseQueue!
+    // return r.random.intRangeLessThan(usize, 0, example.AUDIO_BUFFER_SIZE);
+
+    return 0;
 }
 
 // // come up with a frame index to start the sound at
