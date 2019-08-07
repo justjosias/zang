@@ -278,26 +278,22 @@ fn Voice(comptime T: type) type {
 }
 
 pub const MainModule = struct {
-    const StereoEchoes = @import("modules.zig").StereoEchoes(5000);
-
-    pub const num_outputs = 2;
+    pub const num_outputs = 1;
     pub const num_temps = blk: {
-        comptime var n: usize = 1 + StereoEchoes.num_temps;
+        comptime var n: usize = 0;
         inline for (@typeInfo(Voices).Struct.fields) |field| {
-            n = std.math.max(n, 1 + @field(field.field_type, "num_temps"));
+            n = std.math.max(n, @field(field.field_type, "num_temps"));
         }
         break :blk n;
     };
 
     voices: Voices,
-    echoes: StereoEchoes,
 
     pub fn init() MainModule {
         parse();
 
         var mod = MainModule {
             .voices = undefined,
-            .echoes = StereoEchoes.init(),
         };
 
         inline for (@typeInfo(Voices).Struct.fields) |field, track_index| {
@@ -308,22 +304,12 @@ pub const MainModule = struct {
     }
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
-        zang.zero(span, temps[num_temps - 1]);
-
         inline for (@typeInfo(Voices).Struct.fields) |field| {
             const VoiceType = field.field_type;
             const voice = &@field(self.voices, field.name);
 
-            voice.paint(span, [1][]f32{temps[num_temps - 1]}, util.subarray(temps, VoiceType.num_temps));
+            voice.paint(span, outputs, util.subarray(temps, VoiceType.num_temps));
         }
-
-        zang.multiplyWithScalar(span, temps[num_temps - 1], 0.5);
-
-        self.echoes.paint(span, outputs, util.subarray(temps, StereoEchoes.num_temps), StereoEchoes.Params {
-            .input = temps[num_temps - 1],
-            .feedback_volume = 0.2,
-            .cutoff = 0.1,
-        });
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
