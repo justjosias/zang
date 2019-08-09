@@ -45,7 +45,7 @@ test "Trigger: first note at frame=0" {
 
     testAll(&trigger, Notes(f32).ImpulsesAndParamses {
         .impulses = [_]Impulse {
-            Impulse { .frame = 0, .note_id = 1 },
+            Impulse { .frame = 0, .note_id = 1, .event_id = 1 },
         },
         .paramses = [_]f32 {
             440.0,
@@ -60,7 +60,7 @@ test "Trigger: first note after frame=0" {
 
     testAll(&trigger, Notes(f32).ImpulsesAndParamses {
         .impulses = [_]Impulse {
-            Impulse { .frame = 500, .note_id = 1 },
+            Impulse { .frame = 500, .note_id = 1, .event_id = 1 },
         },
         .paramses = [_]f32 {
             440.0,
@@ -75,8 +75,8 @@ test "Trigger: carryover" {
 
     testAll(&trigger, Notes(f32).ImpulsesAndParamses {
         .impulses = [_]Impulse {
-            Impulse { .frame =   0, .note_id = 1 },
-            Impulse { .frame = 200, .note_id = 2 },
+            Impulse { .frame =   0, .note_id = 1, .event_id = 1 },
+            Impulse { .frame = 200, .note_id = 2, .event_id = 2 },
         },
         .paramses = [_]f32 {
             440.0,
@@ -89,8 +89,8 @@ test "Trigger: carryover" {
 
     testAll(&trigger, Notes(f32).ImpulsesAndParamses {
         .impulses = [_]Impulse {
-            Impulse { .frame = 500, .note_id = 3 },
-            Impulse { .frame = 600, .note_id = 3 }, // same
+            Impulse { .frame = 500, .note_id = 3, .event_id = 1 },
+            Impulse { .frame = 600, .note_id = 3, .event_id = 2 }, // same
         },
         .paramses = [_]f32 {
             330.0,
@@ -115,8 +115,8 @@ test "Trigger: two notes starting at the same time" {
 
     testAll(&trigger, Notes(f32).ImpulsesAndParamses {
         .impulses = [_]Impulse {
-            Impulse { .frame = 200, .note_id = 1 },
-            Impulse { .frame = 200, .note_id = 2 },
+            Impulse { .frame = 200, .note_id = 1, .event_id = 1 },
+            Impulse { .frame = 200, .note_id = 2, .event_id = 2 },
         },
         .paramses = [_]f32 {
             440.0,

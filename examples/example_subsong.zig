@@ -83,18 +83,18 @@ const SubtrackPlayer = struct {
     trigger: zang.Trigger(MyNoteParams),
 
     fn init() SubtrackPlayer {
-        const SongNote = zang.Notes(MyNoteParams).SongNote;
+        const SongEvent = zang.Notes(MyNoteParams).SongEvent;
         const f = note_frequencies;
         const t = 0.1;
 
         return SubtrackPlayer {
-            .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongNote {
-                SongNote { .t = 0.0 * t, .id = 1, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
-                SongNote { .t = 1.0 * t, .id = 2, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
-                SongNote { .t = 2.0 * t, .id = 3, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
-                SongNote { .t = 3.0 * t, .id = 4, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
-                SongNote { .t = 4.0 * t, .id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
-                SongNote { .t = 5.0 * t, .id = 6, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
+            .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongEvent {
+                SongEvent { .t = 0.0 * t, .note_id = 1, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
+                SongEvent { .t = 1.0 * t, .note_id = 2, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
+                SongEvent { .t = 2.0 * t, .note_id = 3, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
+                SongEvent { .t = 3.0 * t, .note_id = 4, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
+                SongEvent { .t = 4.0 * t, .note_id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
+                SongEvent { .t = 5.0 * t, .note_id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
             }),
             .instr = InnerInstrument.init(),
             .trigger = zang.Trigger(MyNoteParams).init(),

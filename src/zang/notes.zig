@@ -21,6 +21,7 @@ pub const IdGenerator = struct {
 pub const Impulse = struct {
     frame: usize, // frames (e.g. 44100 for one second in)
     note_id: usize,
+    event_id: usize,
 };
 
 pub fn Notes(comptime NoteParamsType: type) type {
@@ -35,12 +36,14 @@ pub fn Notes(comptime NoteParamsType: type) type {
             impulses_array: [32]Impulse,
             paramses_array: [32]NoteParamsType,
             length: usize,
+            next_event_id: usize,
 
             pub fn init() ImpulseQueue {
                 return ImpulseQueue {
                     .impulses_array = undefined,
                     .paramses_array = undefined,
                     .length = 0,
+                    .next_event_id = 1,
                 };
             }
 
@@ -71,30 +74,32 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.impulses_array[self.length] = Impulse {
                     .frame = impulse_frame,
                     .note_id = note_id,
+                    .event_id = self.next_event_id,
                 };
                 self.paramses_array[self.length] = params;
                 self.length += 1;
+                self.next_event_id += 1;
             }
         };
 
-        pub const SongNote = struct {
+        pub const SongEvent = struct {
             params: NoteParamsType,
             t: f32,
-            id: usize,
+            note_id: usize,
         };
 
         // follow a canned melody, creating impulses from it, one mix buffer at a time
         pub const NoteTracker = struct {
-            song: []const SongNote,
-            next_song_note: usize,
+            song: []const SongEvent,
+            next_song_event: usize,
             t: f32,
             impulses_array: [32]Impulse, // internal storage
             paramses_array: [32]NoteParamsType,
 
-            pub fn init(song: []const SongNote) NoteTracker {
+            pub fn init(song: []const SongEvent) NoteTracker {
                 return NoteTracker {
                     .song = song,
-                    .next_song_note = 0,
+                    .next_song_event = 0,
                     .t = 0.0,
                     .impulses_array = undefined,
                     .paramses_array = undefined,
@@ -102,7 +107,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             }
 
             pub fn reset(self: *NoteTracker) void {
-                self.next_song_note = 0;
+                self.next_song_event = 0;
                 self.t = 0.0;
             }
 
@@ -113,19 +118,20 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 const buf_time = @intToFloat(f32, out_len) / sample_rate;
                 const end_t = self.t + buf_time;
 
-                for (self.song[self.next_song_note..]) |song_note| {
-                    const note_t = song_note.t;
+                for (self.song[self.next_song_event..]) |song_event| {
+                    const note_t = song_event.t;
                     if (note_t < end_t) {
                         const f = (note_t - self.t) / buf_time; // 0 to 1
                         const rel_frame_index = std.math.min(@floatToInt(usize, f * @intToFloat(f32, out_len)), out_len - 1);
                         // TODO - do something graceful-ish when count >= self.impulse_array.len
+                        self.next_song_event += 1;
                         self.impulses_array[count] = Impulse {
                             .frame = rel_frame_index,
-                            .note_id = song_note.id,
+                            .note_id = song_event.note_id,
+                            .event_id = self.next_song_event,
                         };
-                        self.paramses_array[count] = song_note.params;
+                        self.paramses_array[count] = song_event.params;
                         count += 1;
-                        self.next_song_note += 1;
                     } else {
                         break;
                     }
@@ -142,7 +148,13 @@ pub fn Notes(comptime NoteParamsType: type) type {
 
         pub fn PolyphonyDispatcher(comptime polyphony: usize) type {
             const SlotState = struct {
+                // each note-on/off combo has the same note_id. this is used
+                // to match them up
                 note_id: usize,
+                // note-on and off have unique event_ids. these monotonically
+                // increase and are used to determine the "stalest" slot (to
+                // be reused)
+                event_id: usize,
                 // polyphony only works when the ParamsType includes note_on.
                 // we need this to be able to determine when to reuse slots
                 note_on: bool,
@@ -164,7 +176,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     };
                 }
 
-                fn chooseSlot(self: *const @This(), note_id: usize, note_on: bool) ?usize {
+                fn chooseSlot(self: *const @This(), note_id: usize, event_id: usize, note_on: bool) ?usize {
                     if (!note_on) {
                         // this is a note-off event. try to find the slot where the note
                         // lives. if we don't find it (meaning it got overridden at some
@@ -177,16 +189,16 @@ pub fn Notes(comptime NoteParamsType: type) type {
                             }
                         } else null;
                     }
-                    // otherwise pick the note-off slot with the oldest note_id
-                    // FIXME! this is flawed because the note_id is assigned at note-on, which has no correlation to when the note-off happened.
-                    // we need an 'age' based on time.
+                    // otherwise, this is a note-on event. find the slot in note-off state
+                    // with the oldest event_id. this will reuse will reuse the slot that
+                    // had its note-off the longest time ago.
                     {
                         var maybe_best: ?usize = null;
                         for (self.slots) |maybe_slot, slot_index| {
                             if (maybe_slot) |slot| {
                                 if (!slot.note_on) {
                                     if (maybe_best) |best| {
-                                        if (slot.note_id < self.slots[best].?.note_id) {
+                                        if (slot.event_id < self.slots[best].?.event_id) {
                                             maybe_best = slot_index;
                                         }
                                     } else { // maybe_best == null
@@ -203,11 +215,10 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         }
                     }
                     // otherwise, we have no choice but to take over a track
-                    // that's still in note-on state. pick the slot with the
-                    // oldest note_id.
+                    // that's still in note-on state.
                     var best: usize = 0;
                     var slot_index: usize = 1; while (slot_index < polyphony) : (slot_index += 1) {
-                        if (self.slots[slot_index].?.note_id < self.slots[best].?.note_id) {
+                        if (self.slots[slot_index].?.event_id < self.slots[best].?.event_id) {
                             best = slot_index;
                         }
                     }
@@ -222,9 +233,10 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         const impulse = iap.impulses[i];
                         const params = iap.paramses[i];
 
-                        if (self.chooseSlot(impulse.note_id, params.note_on)) |slot_index| {
+                        if (self.chooseSlot(impulse.note_id, impulse.event_id, params.note_on)) |slot_index| {
                             self.slots[slot_index] = SlotState {
                                 .note_id = impulse.note_id,
+                                .event_id = impulse.event_id,
                                 .note_on = params.note_on,
                             };
 

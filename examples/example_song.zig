@@ -85,13 +85,13 @@ const TOTAL_COLUMNS = blk: {
 const NUM_INSTRUMENTS = COLUMNS_PER_VOICE.len;
 
 // note we can't put params straight into Module.Params because that requires sample_rate which is only known at runtime
-var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongNote = undefined;
-var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongNote = undefined;
+var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongEvent = undefined;
+var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongEvent = undefined;
 
-fn makeSongNote(t: f32, id: usize, freq: f32, note_on: bool) zang.Notes(MyNoteParams).SongNote {
-    return zang.Notes(MyNoteParams).SongNote {
+fn makeSongNote(t: f32, id: usize, freq: f32, note_on: bool) zang.Notes(MyNoteParams).SongEvent {
+    return zang.Notes(MyNoteParams).SongEvent {
         .t = t,
-        .id = id,
+        .note_id = id,
         .params = MyNoteParams {
             .freq = freq,
             .note_on = note_on,
@@ -180,9 +180,9 @@ fn doParse(parser: *Parser) !void {
                     var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
                         const start = old_instrument_num_notes[i];
                         const end = instrument_num_notes[i];
-                        std.sort.sort(zang.Notes(MyNoteParams).SongNote, all_notes_arr[i][start..end], struct {
-                            fn compare(a: zang.Notes(MyNoteParams).SongNote, b: zang.Notes(MyNoteParams).SongNote) bool {
-                                return a.id < b.id;
+                        std.sort.sort(zang.Notes(MyNoteParams).SongEvent, all_notes_arr[i][start..end], struct {
+                            fn compare(a: zang.Notes(MyNoteParams).SongEvent, b: zang.Notes(MyNoteParams).SongEvent) bool {
+                                return a.note_id < b.note_id;
                             }
                         }.compare);
                     }
