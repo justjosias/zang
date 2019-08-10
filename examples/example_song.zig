@@ -33,7 +33,7 @@ const Pedal = struct {
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
     }
-    const polyphony = 2;
+    const polyphony = 3;
     const num_columns = 2;
 };
 
@@ -43,7 +43,7 @@ const RegularOrgan = struct {
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
     }
-    const polyphony = 8;
+    const polyphony = 10;
     const num_columns = 8;
 };
 
@@ -53,7 +53,7 @@ const WeirdOrgan = struct {
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
         return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
     }
-    const polyphony = 2;
+    const polyphony = 4;
     const num_columns = 2;
 };
 
