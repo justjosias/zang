@@ -260,6 +260,14 @@ fn Voice(comptime T: type) type {
             return self;
         }
 
+        fn reset(self: *@This()) void {
+            self.tracker.reset();
+            self.dispatcher.reset();
+            for (self.sub_voices) |*sub_voice| {
+                sub_voice.trigger.reset();
+            }
+        }
+
         fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
             const iap = self.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start);
 
@@ -315,12 +323,7 @@ pub const MainModule = struct {
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         if (down and key == c.SDLK_SPACE) {
             inline for (@typeInfo(Voices).Struct.fields) |field| {
-                const voice = &@field(self.voices, field.name);
-
-                voice.tracker.reset();
-                for (voice.sub_voices) |*sub_voice| {
-                    sub_voice.trigger.reset();
-                }
+                @field(self.voices, field.name).reset();
             }
         }
     }

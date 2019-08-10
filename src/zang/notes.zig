@@ -176,6 +176,12 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     };
                 }
 
+                pub fn reset(self: *@This()) void {
+                    for (self.slots) |*maybe_slot| {
+                        maybe_slot.* = null;
+                    }
+                }
+
                 fn chooseSlot(self: *const @This(), note_id: usize, event_id: usize, note_on: bool) ?usize {
                     if (!note_on) {
                         // this is a note-off event. try to find the slot where the note
