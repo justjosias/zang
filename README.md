@@ -12,7 +12,7 @@ Running the examples (again, except `write_wav`) will display a window with some
 
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 
-`zig build song`: Play Bach's Toccata and Fugue in D Minor. Features (hard-coded) polyphony.
+`zig build song`: Plays Bach's Toccata and Fugue in D Minor in full. The song is parsed from a text file. For now that parser is custom to this example.
 
 `zig build subsong`: Like `play`, but a small melody is played for each note, pitched by the frequency of the key you press. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).
 
