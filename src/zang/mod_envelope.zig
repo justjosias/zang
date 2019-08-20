@@ -52,10 +52,10 @@ pub const Envelope = struct {
         self.duration = duration;
     }
 
-    fn paintTowardGoal(self: *Envelope, buf: []f32, i_ptr: *usize, params: Params) bool {
+    fn paintTowardGoal(self: *Envelope, buf: []f32, i_ptr: *usize, sample_rate: f32) bool {
         var i = i_ptr.*; defer i_ptr.* = i;
 
-        const t_step = 1.0 / (self.duration * params.sample_rate);
+        const t_step = 1.0 / (self.duration * sample_rate);
         var finished = false;
 
         while (!finished and i < buf.len) : (i += 1) {
@@ -80,26 +80,18 @@ pub const Envelope = struct {
         }
 
         if (self.state == .Attack) {
-            if (self.paintTowardGoal(buf, &i, params)) {
+            if (self.paintTowardGoal(buf, &i, params.sample_rate)) {
                 if (params.sustain_volume < 1.0) {
                     self.changeState(.Decay, params.sustain_volume, params.decay_duration);
                 } else {
                     self.changeState(.Sustain, 1.0, 0.0);
                 }
             }
-
-            if (i == buf.len) {
-                return;
-            }
         }
 
         if (self.state == .Decay) {
-            if (self.paintTowardGoal(buf, &i, params)) {
+            if (self.paintTowardGoal(buf, &i, params.sample_rate)) {
                 self.changeState(.Sustain, 1.0, 0.0);
-            }
-
-            if (i == buf.len) {
-                return;
             }
         }
 
@@ -117,7 +109,7 @@ pub const Envelope = struct {
 
         if (self.t < 1.0) {
             var i: usize = 0;
-            _ = self.paintTowardGoal(buf, &i, params);
+            _ = self.paintTowardGoal(buf, &i, params.sample_rate);
         }
     }
 
