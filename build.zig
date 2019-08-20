@@ -13,6 +13,7 @@ pub fn build(b: *Builder) void {
     example(b, mode, windows, "play", "example_play.zig");
     example(b, mode, windows, "song", "example_song.zig");
     example(b, mode, windows, "subsong", "example_subsong.zig");
+    example(b, mode, windows, "envelope", "example_envelope.zig");
     example(b, mode, windows, "stereo", "example_stereo.zig");
     example(b, mode, windows, "curve", "example_curve.zig");
     example(b, mode, windows, "detuned", "example_detuned.zig");

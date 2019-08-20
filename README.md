@@ -16,6 +16,8 @@ Running the examples (again, except `write_wav`) will display a window with some
 
 `zig build subsong`: Like `play`, but a small melody is played for each note, pitched by the frequency of the key you press. The melody is encapsulated in a module, which looks on the outside like any other module (oscillators, etc).
 
+`zig build envelope`: Hit the spacebar to trigger a note with a slow progressing ADSR envelope. This is a stripped down example making it easy to look at the shape of the envelope in the visualizer.
+
 `zig build stereo`: A wind-like filtered noise effect slowly oscillates from side to side. (Probably too subtle to be a good stereo demonstration, you might need headphones to even notice it.)
 
 `zig build curve`: Like `subsong`, but plays a sound defined by smooth curves instead of discrete notes.
