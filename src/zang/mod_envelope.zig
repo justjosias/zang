@@ -12,9 +12,6 @@ pub const Envelope = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        // durations: these are how long it would take to go from zero.
-        // it will actually be shorter if pm.envelope is already starting
-        // somewhere (from a previous note)
         attack_duration: f32,
         decay_duration: f32,
         sustain_volume: f32,
