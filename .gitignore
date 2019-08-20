@@ -1,4 +1,5 @@
 .vscode/
+*.swp
 zig-cache/
 
 /out.wav
