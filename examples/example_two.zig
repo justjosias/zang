@@ -114,10 +114,10 @@ pub const MainModule = struct {
                     ),
                     zang.Envelope.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .attack_duration = 0.025,
-                        .decay_duration = 0.1,
+                        .attack = zang.Envelope.Curve { .curve_type = .Cubed, .duration = 0.025 },
+                        .decay = zang.Envelope.Curve { .curve_type = .Cubed, .duration = 0.1 },
+                        .release = zang.Envelope.Curve { .curve_type = .Cubed, .duration = 1.0 },
                         .sustain_volume = 0.5,
-                        .release_duration = 1.0,
                         .note_on = result0.params.note_on or result1.params.note_on,
                     },
                 );
