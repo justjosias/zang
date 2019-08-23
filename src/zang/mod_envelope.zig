@@ -1,5 +1,73 @@
 const Span = @import("basics.zig").Span;
 
+const Painter = struct {
+    pub const CurveFunction = enum {
+        Linear,
+        Squared,
+        Cubed,
+    };
+
+    t: f32,
+    last_value: f32,
+    start: f32,
+
+    fn init() Painter {
+        return Painter {
+            .t = 0.0,
+            .last_value = 0.0,
+            .start = 0.0,
+        };
+    }
+
+    fn reset(self: *Painter) void {
+        self.start = self.last_value;
+        self.t = 0.0;
+    }
+
+    fn paintToward(self: *Painter, buf: []f32, i_ptr: *usize, sample_rate: f32, curve: Envelope.Curve, goal: f32) bool {
+        if (self.t >= 1.0) {
+            return true;
+        }
+
+        var curve_func: CurveFunction = undefined;
+        var duration: f32 = undefined;
+        switch (curve) {
+            .Instantaneous => {
+                self.last_value = goal;
+                return true;
+            },
+            .Linear  => |dur| { curve_func = .Linear;  duration = dur; },
+            .Squared => |dur| { curve_func = .Squared; duration = dur; },
+            .Cubed   => |dur| { curve_func = .Cubed;   duration = dur; },
+        }
+
+        var i = i_ptr.*;
+        defer i_ptr.* = i;
+
+        const t_step = 1.0 / (duration * sample_rate);
+        var finished = false;
+
+        // TODO - this can be optimized
+        while (!finished and i < buf.len) : (i += 1) {
+            self.t += t_step;
+            if (self.t >= 1.0) {
+                self.t = 1.0;
+                finished = true;
+            }
+            const it = 1.0 - self.t;
+            const tp = switch (curve_func) {
+                .Linear => self.t,
+                .Squared => 1.0 - it * it,
+                .Cubed => 1.0 - it * it * it,
+            };
+            self.last_value = self.start + tp * (goal - self.start);
+            buf[i] += self.last_value;
+        }
+
+        return finished;
+    }
+};
+
 pub const Envelope = struct {
     pub const num_outputs = 1;
     pub const num_temps = 0;
@@ -12,121 +80,79 @@ pub const Envelope = struct {
         note_on: bool,
     };
 
-    pub const CurveType = enum {
-        Linear,
-        Squared,
-        Cubed,
-    };
-
-    pub const Curve = struct {
-        curve_type: CurveType,
-        duration: f32,
+    pub const Curve = union(enum) {
+        Instantaneous,
+        Linear: f32, // duration (must be > 0)
+        Squared: f32, // ditto
+        Cubed: f32, // ditto
     };
 
     const State = enum {
-        Initial,
+        Idle,
         Attack,
         Decay,
         Sustain,
         Release,
     };
 
-    t: f32,
-    last_value: f32,
-    start: f32,
-    goal: f32,
-    curve: ?Curve,
     state: State,
+    painter: Painter,
 
     pub fn init() Envelope {
         return Envelope {
-            .t = 0.0,
-            .last_value = 0.0,
-            .start = 0.0,
-            .goal = 0.0,
-            .curve = null,
-            .state = .Initial,
+            .state = .Idle,
+            .painter = Painter.init(),
         };
     }
 
-    fn changeState(self: *Envelope, new_state: State, goal: f32, curve: ?Curve) void {
+    fn changeState(self: *Envelope, new_state: State) void {
         self.state = new_state;
-        self.start = self.last_value;
-        self.goal = goal;
-        self.t = 0.0;
-        self.curve = curve;
-    }
-
-    fn paintTowardGoal(self: *Envelope, buf: []f32, i_ptr: *usize, sample_rate: f32) bool {
-        const curve = self.curve.?;
-
-        var i = i_ptr.*;
-        defer i_ptr.* = i;
-
-        const t_step = 1.0 / (curve.duration * sample_rate);
-        var finished = false;
-
-        // TODO - this can be optimized
-        while (!finished and i < buf.len) : (i += 1) {
-            self.t += t_step;
-            if (self.t >= 1.0) {
-                self.t = 1.0;
-                finished = true;
-            }
-            const it = 1.0 - self.t;
-            const tp = switch (curve.curve_type) {
-                .Linear => self.t,
-                .Squared => 1.0 - it * it,
-                .Cubed => 1.0 - it * it * it,
-            };
-            self.last_value = self.start + tp * (self.goal - self.start);
-            buf[i] += self.last_value;
-        }
-
-        return finished;
+        self.painter.reset();
     }
 
     fn paintOn(self: *Envelope, buf: []f32, params: Params, new_note: bool) void {
         var i: usize = 0;
 
         if (new_note) {
-            self.changeState(.Attack, 1.0, params.attack);
+            self.changeState(.Attack);
         }
 
         if (self.state == .Attack) {
-            if (self.paintTowardGoal(buf, &i, params.sample_rate)) {
+            if (self.painter.paintToward(buf, &i, params.sample_rate, params.attack, 1.0)) {
                 if (params.sustain_volume < 1.0) {
-                    self.changeState(.Decay, params.sustain_volume, params.decay);
+                    self.changeState(.Decay);
                 } else {
-                    self.changeState(.Sustain, 1.0, null);
+                    self.changeState(.Sustain);
                 }
             }
         }
 
         if (self.state == .Decay) {
-            if (self.paintTowardGoal(buf, &i, params.sample_rate)) {
-                self.changeState(.Sustain, 1.0, null);
+            if (self.painter.paintToward(buf, &i, params.sample_rate, params.decay, params.sustain_volume)) {
+                self.changeState(.Sustain);
             }
         }
 
         if (self.state == .Sustain) {
             while (i < buf.len) : (i += 1) {
-                buf[i] += self.last_value;
+                buf[i] += params.sustain_volume;
             }
         }
     }
 
     fn paintOff(self: *Envelope, buf: []f32, params: Params) void {
-        if (self.state == .Initial) {
+        if (self.state == .Idle) {
             return;
         }
+
+        var i: usize = 0;
+
         if (self.state != .Release) {
-            self.changeState(.Release, 0.0, params.release);
+            self.changeState(.Release);
         }
 
-        if (self.t < 1.0) {
-            var i: usize = 0;
-            _ = self.paintTowardGoal(buf, &i, params.sample_rate);
+        if (self.painter.paintToward(buf, &i, params.sample_rate, params.release, 0.0)) {
+            self.changeState(.Idle);
         }
     }
 
