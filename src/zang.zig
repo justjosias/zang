@@ -31,6 +31,9 @@ pub const multiplyWith = basics.multiplyWith;
 pub const multiplyScalar = basics.multiplyScalar;
 pub const multiplyWithScalar = basics.multiplyWithScalar;
 
+const paint_line = @import("zang/paint_line.zig");
+pub const Painter = paint_line.Painter;
+
 const delay = @import("zang/delay.zig");
 pub const Delay = delay.Delay;
 

@@ -9,11 +9,9 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     c\\example_portamento
     c\\
-    c\\Play an "instrument" with the keyboard. (The tone is
-    c\\created using noise and a resonant low-pass filter.)
-    c\\
-    c\\If you press multiple keys, the frequency will slide
-    c\\toward the highest held key.
+    c\\Play an instrument with the keyboard. If you press
+    c\\multiple keys, the frequency will slide toward the
+    c\\highest held key.
 ;
 
 const a4 = 440.0;
@@ -27,48 +25,52 @@ pub const Instrument = struct {
         note_on: bool,
     };
 
-    noise: zang.Noise,
+    osc: zang.Oscillator,
     env: zang.Envelope,
     porta: zang.Portamento,
-    flt: zang.Filter,
+    prev_note_on: bool,
 
     pub fn init() Instrument {
         return Instrument {
-            .noise = zang.Noise.init(0),
+            .osc = zang.Oscillator.init(),
             .env = zang.Envelope.init(),
             .porta = zang.Portamento.init(),
-            .flt = zang.Filter.init(),
+            .prev_note_on = false,
         };
     }
 
     pub fn paint(self: *Instrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+        defer self.prev_note_on = params.note_on;
+
         zang.zero(span, temps[0]);
-        self.noise.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Noise.Params {});
-        zang.zero(span, temps[1]);
-        self.porta.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+        self.porta.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Portamento.Params {
             .sample_rate = params.sample_rate,
-            .mode = .CatchUp,
-            .velocity = 8.0,
-            .value = zang.cutoffFromFrequency(params.freq, params.sample_rate),
+            .curve = zang.Painter.Curve { .Cubed = 0.5 },
+            .goal = params.freq,
             .note_on = params.note_on,
+            .prev_note_on = self.prev_note_on,
         });
-        zang.zero(span, temps[2]);
-        self.flt.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Filter.Params {
-            .input = temps[0],
-            .filter_type = .LowPass,
-            .cutoff = zang.buffer(temps[1]),
-            .resonance = 0.985,
-        });
-        zang.zero(span, temps[0]);
-        self.env.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
+
+        zang.zero(span, temps[1]);
+        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, !self.prev_note_on and params.note_on, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
-            .attack = zang.Envelope.Curve { .Cubed = 0.025 },
-            .decay = zang.Envelope.Curve { .Cubed = 0.1 },
-            .release = zang.Envelope.Curve { .Cubed = 1.0 },
+            .attack = zang.Painter.Curve { .Cubed = 0.025 },
+            .decay = zang.Painter.Curve { .Cubed = 0.1 },
+            .release = zang.Painter.Curve { .Cubed = 1.0 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
-        zang.multiply(span, outputs[0], temps[2], temps[0]);
+
+        zang.zero(span, temps[2]);
+        self.osc.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+            .sample_rate = params.sample_rate,
+            .waveform = .Square,
+            .freq = zang.buffer(temps[0]),
+            .phase = zang.constant(0.0),
+            .color = 0.5,
+        });
+
+        zang.multiply(span, outputs[0], temps[1], temps[2]);
     }
 };
 

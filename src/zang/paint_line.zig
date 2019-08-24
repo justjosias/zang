@@ -1,59 +1,75 @@
-const std = @import("std");
+pub const Painter = struct {
+    pub const Curve = union(enum) {
+        Instantaneous,
+        Linear: f32, // duration (must be > 0)
+        Squared: f32, // ditto
+        Cubed: f32, // ditto
+    };
 
-// FIXME - why am i using u31 all over the place?
+    t: f32,
+    last_value: f32,
+    start: f32,
 
-// linear interpolation. v1 is where we want to end up after full_length.
-// full_length may be past the end of the buffer
-// returns the value of the last sample rendered (will be the same as v1 if
-// buf.len == full_length)
-pub fn paintLine(buf: []f32, full_length: u31, v0: f32, v1: f32) f32 {
-    std.debug.assert(buf.len > 0);
-    std.debug.assert(buf.len <= full_length);
-
-    const t1 = @intToFloat(f32, buf.len) / @intToFloat(f32, full_length);
-
-    const v1_actual = v0 + t1 * (v1 - v0);
-
-    const inv_len = 1.0 / @intToFloat(f32, buf.len);
-    var i: usize = 0;
-
-    var v: f32 = v0;
-    const step = (v1_actual - v0) * inv_len;
-
-    while (i < buf.len - 1) {
-        v += step; // the first sample has already stepped forward
-        buf[i] += v;
-        i += 1;
+    pub fn init() Painter {
+        return Painter {
+            .t = 0.0,
+            .last_value = 0.0,
+            .start = 0.0,
+        };
     }
 
-    // set the last sample manually, so it is exactly the destination value
-    buf[buf.len - 1] += v1_actual;
-
-    return v1_actual;
-}
-
-// return true if goal was reached
-pub fn paintLineTowards(value: *f32, sample_rate: f32, buf: []f32, i_ptr: *u31, dur: f32, goal: f32) bool {
-    const buf_len = @intCast(u31, buf.len);
-
-    // how long will it take to get there?
-    const time = std.math.fabs(goal - value.*) * dur;
-
-    const s_time_in_samples = @floatToInt(i32, time * sample_rate);
-
-    if (s_time_in_samples <= 0) {
-        value.* = goal;
-        return true;
-    } else {
-        const time_in_samples = @intCast(u31, s_time_in_samples);
-        const i = i_ptr.*;
-
-        const end = std.math.min(i + time_in_samples, buf_len);
-
-        value.* = paintLine(buf[i..end], time_in_samples, value.*, goal);
-
-        i_ptr.* = end;
-
-        return i + time_in_samples <= buf_len;
+    pub fn newCurve(self: *Painter) void {
+        self.start = self.last_value;
+        self.t = 0.0;
     }
-}
+
+    pub fn paintToward(self: *Painter, buf: []f32, i_ptr: *usize, sample_rate: f32, curve: Curve, goal: f32) bool {
+        const CurveFunction = enum {
+            Linear,
+            Squared,
+            Cubed,
+        };
+
+        if (self.t >= 1.0) {
+            return true;
+        }
+
+        var curve_func: CurveFunction = undefined;
+        var duration: f32 = undefined;
+        switch (curve) {
+            .Instantaneous => {
+                self.t = 1.0;
+                self.last_value = goal;
+                return true;
+            },
+            .Linear  => |dur| { curve_func = .Linear;  duration = dur; },
+            .Squared => |dur| { curve_func = .Squared; duration = dur; },
+            .Cubed   => |dur| { curve_func = .Cubed;   duration = dur; },
+        }
+
+        var i = i_ptr.*;
+        defer i_ptr.* = i;
+
+        const t_step = 1.0 / (duration * sample_rate);
+        var finished = false;
+
+        // TODO - this can be optimized
+        while (!finished and i < buf.len) : (i += 1) {
+            self.t += t_step;
+            if (self.t >= 1.0) {
+                self.t = 1.0;
+                finished = true;
+            }
+            const it = 1.0 - self.t;
+            const tp = switch (curve_func) {
+                .Linear => self.t,
+                .Squared => 1.0 - it * it,
+                .Cubed => 1.0 - it * it * it,
+            };
+            self.last_value = self.start + tp * (goal - self.start);
+            buf[i] += self.last_value;
+        }
+
+        return finished;
+    }
+};

@@ -54,9 +54,9 @@ const PMOscInstrument = struct {
         zang.zero(span, temps[1]);
         self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
-            .attack = zang.Envelope.Curve { .Cubed = 0.025 },
-            .decay = zang.Envelope.Curve { .Cubed = 0.1 },
-            .release = zang.Envelope.Curve { .Cubed = 1.0 },
+            .attack = zang.Painter.Curve { .Cubed = 0.025 },
+            .decay = zang.Painter.Curve { .Cubed = 0.1 },
+            .release = zang.Painter.Curve { .Cubed = 1.0 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
@@ -134,15 +134,15 @@ pub const MainModule = struct {
         {
             var ctr = self.ratio.trig.counter(span, self.ratio.iq.consume());
             while (self.ratio.trig.next(&ctr)) |result| {
-                self.ratio.mod.paint(result.span, [1][]f32{temps[0]}, [0][]f32{}, zang.Portamento.Params {
+                self.ratio.mod.paint(result.span, [1][]f32{temps[0]}, [0][]f32{}, result.note_id_changed, zang.Portamento.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .mode = .CatchUp,
-                    .velocity = 8.0,
-                    .value = switch (self.mode) {
+                    .curve = zang.Painter.Curve { .Linear = 0.1 },
+                    .goal = switch (self.mode) {
                         0 => result.params.value * 4.0,
                         else => result.params.value * 880.0,
                     },
                     .note_on = result.params.note_on,
+                    .prev_note_on = true,
                 });
             }
         }
@@ -151,12 +151,12 @@ pub const MainModule = struct {
         {
             var ctr = self.multiplier.trig.counter(span, self.multiplier.iq.consume());
             while (self.multiplier.trig.next(&ctr)) |result| {
-                self.multiplier.mod.paint(result.span, [1][]f32{temps[1]}, [0][]f32{}, zang.Portamento.Params {
+                self.multiplier.mod.paint(result.span, [1][]f32{temps[1]}, [0][]f32{}, result.note_id_changed, zang.Portamento.Params {
                     .sample_rate = AUDIO_SAMPLE_RATE,
-                    .mode = .CatchUp,
-                    .velocity = 8.0,
-                    .value = result.params.value * 2.0,
+                    .curve = zang.Painter.Curve { .Linear = 0.1 },
+                    .goal = result.params.value * 2.0,
                     .note_on = result.params.note_on,
+                    .prev_note_on = true,
                 });
             }
         }

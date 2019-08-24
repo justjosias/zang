@@ -51,9 +51,9 @@ const InnerInstrument = struct {
         zang.zero(span, temps[1]);
         self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
             .sample_rate = params.sample_rate,
-            .attack = zang.Envelope.Curve { .Cubed = 0.025 },
-            .decay = zang.Envelope.Curve { .Cubed = 0.1 },
-            .release = zang.Envelope.Curve { .Cubed = 0.15 },
+            .attack = zang.Painter.Curve { .Cubed = 0.025 },
+            .decay = zang.Painter.Curve { .Cubed = 0.1 },
+            .release = zang.Painter.Curve { .Cubed = 0.15 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
