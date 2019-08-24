@@ -60,3 +60,6 @@ When a voice slot is taken over, don't just play a new note on it, somehow cause
 For example, if you have a long release duration, and you release the note at the peak of the attack, you'll get a long, loud release, even if your attack & decay were both short and your sustain volume was low.
 
 I guess I need to run the attack/decay alongside the release, and take the `min` of them or something.
+
+## lo-fi zang
+Make a second library which has only basic modules and doesn't use floats. Share as much as possible (API design and possibly even code).
