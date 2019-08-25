@@ -13,9 +13,6 @@ Make a module that lets you artificially alter the sample rate and resolution of
 
 Updated: I added decimator, which lets you change the sample rate, but doesn't do anything about the resolution, I guess that would be a separate module.
 
-## Combine triangle and sawtooth oscillators and implement the "color" param
-It will become TriSaw or something like that. When color is 0.5, it will be triangle. When color is 0 or 1, it will be a sawtooth.
-
 ## Alternate noise types
 Zig's standard library has functions to generate random numbers with different distributions (`floatNorm` and `floatExp`), do those correspond to any "colors" of noise?
 
@@ -63,3 +60,9 @@ I guess I need to run the attack/decay alongside the release, and take the `min`
 
 ## lo-fi zang
 Make a second library which has only basic modules and doesn't use floats. Share as much as possible (API design and possibly even code).
+
+## SineOsc module
+Just Oscillator but it's always a sine wave. I want to get rid of Oscillator eventually.
+
+## PulseOsc and TriSawOsc should support controlled frequency and color
+Then I can get rid of Oscillator.
