@@ -13,8 +13,8 @@ pub const DESCRIPTION =
     c\\A single instrument triggered by two input sources.
     c\\Play the lower half of the keyboard to control the
     c\\note frequency. Press the number keys to change the
-    c\\pulse oscillator's duty cycle. Both input sources
-    c\\trigger the envelope.
+    c\\"colour" of the oscillator - from triangle to
+    c\\sawtooth. Both input sources trigger the envelope.
 ;
 
 const a4 = 880.0;
@@ -28,7 +28,7 @@ pub const MainModule = struct {
 
     first: bool,
 
-    osc: zang.PulseOsc,
+    osc: zang.TriSawOsc,
     env: zang.Envelope,
 
     key0: ?i32,
@@ -44,7 +44,7 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         return MainModule{
             .first = true,
-            .osc = zang.PulseOsc.init(),
+            .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
             .key0 = null,
             .iq0 = zang.Notes(Params0).ImpulseQueue.init(),
@@ -95,7 +95,7 @@ pub const MainModule = struct {
                     inner_span,
                     [1][]f32{temps[0]},
                     [0][]f32{},
-                    zang.PulseOsc.Params {
+                    zang.TriSawOsc.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = result0.params.freq,
                         .color = result1.params.color,
@@ -153,7 +153,7 @@ pub const MainModule = struct {
             if (down or (if (self.key1) |nh| nh == key else false)) {
                 self.key1 = if (down) key else null;
                 self.iq1.push(impulse_frame, self.idgen1.nextId(), Params1 {
-                    .color = 0.5 + std.math.sqrt(f) * 0.49,
+                    .color = 0.5 + std.math.sqrt(f) * 0.5,
                     .note_on = down,
                 });
             }

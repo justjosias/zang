@@ -78,3 +78,6 @@ pub const PulseOsc = mod_pulseosc.PulseOsc;
 
 const mod_sampler = @import("zang/mod_sampler.zig");
 pub const Sampler = mod_sampler.Sampler;
+
+const mod_trisawosc = @import("zang/mod_trisawosc.zig");
+pub const TriSawOsc = mod_trisawosc.TriSawOsc;
