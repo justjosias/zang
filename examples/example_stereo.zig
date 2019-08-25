@@ -85,13 +85,13 @@ pub const MainModule = struct {
     pub const num_outputs = 2;
     pub const num_temps = 4;
 
-    osc: zang.Oscillator,
+    osc: zang.SineOsc,
     noisem0: NoiseModule,
     noisem1: NoiseModule,
 
     pub fn init() MainModule {
         return MainModule {
-            .osc = zang.Oscillator.init(),
+            .osc = zang.SineOsc.init(),
             .noisem0 = NoiseModule.init(0),
             .noisem1 = NoiseModule.init(1),
         };
@@ -102,12 +102,10 @@ pub const MainModule = struct {
 
         // temps[0] = slow oscillator representing left/right pan (-1 to +1)
         zang.zero(span, temps[0]);
-        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = sample_rate,
-            .waveform = .Sine,
             .freq = zang.constant(0.1),
             .phase = zang.constant(0.0),
-            .color = 0.5,
         });
 
         // paint two noise voices

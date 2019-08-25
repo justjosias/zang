@@ -1,9 +1,11 @@
+// TODO remove this as soon as PulseOsc and TriSawOsc are upgraded to support
+// controlled frequency
+
 const std = @import("std");
 const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
 const Span = @import("basics.zig").Span;
 
 pub const Waveform = enum {
-    Sine,
     Triangle,
     Square,
     Sawtooth,
@@ -30,13 +32,8 @@ pub fn square(t: f32, color: f32) f32 {
     return if (frac < color) f32(0.7) else f32(-0.7);
 }
 
-pub fn sin(t: f32) f32 {
-    return std.math.sin(t * std.math.pi * 2.0);
-}
-
 fn oscFunc(waveform: Waveform) fn (t: f32) f32 {
     return switch (waveform) {
-        .Sine => sin,
         .Triangle => tri,
         .Square => square,
         .Sawtooth => saw,
@@ -54,7 +51,6 @@ pub const Oscillator = struct {
         sample_rate: f32,
         waveform: Waveform,
         freq: ConstantOrBuffer,
-        phase: ConstantOrBuffer,
         color: f32, // 0-1, only used for square wave (TODO - use for tri/saw)
     };
 
@@ -72,34 +68,18 @@ pub const Oscillator = struct {
         // TODO - make params.color ConstantOrBuffer as well...
         switch (params.freq) {
             .Constant => |freq|
-                switch (params.phase) {
-                    .Constant => |phase|
-                        self.paintSimple(params.sample_rate, output, params.waveform, freq, params.color),
-                    .Buffer =>
-                        @panic("TODO"), // FIXME
-                },
+                self.paintConstantFrequency(params.sample_rate, output, params.waveform, freq, params.color),
             .Buffer => |freq|
-                switch (params.phase) {
-                    .Constant => |phase| // FIXME - ignores phase
-                        self.paintControlledFrequency(params.sample_rate, output, params.waveform, freq[span.start..span.end], params.color),
-                    .Buffer => |phase|
-                        self.paintControlledPhaseAndFrequency(params.sample_rate, output, params.waveform, phase[span.start..span.end], freq[span.start..span.end], params.color),
-                },
+                self.paintControlledFrequency(params.sample_rate, output, params.waveform, freq[span.start..span.end], params.color),
         }
     }
 
-    fn paintSimple(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq: f32, color: f32) void {
+    fn paintConstantFrequency(self: *Oscillator, sample_rate: f32, buf: []f32, waveform: Waveform, freq: f32, color: f32) void {
         const step = freq / sample_rate;
         var t = self.t;
         var i: usize = 0;
 
         switch (waveform) {
-            .Sine => {
-                while (i < buf.len) : (i += 1) {
-                    buf[i] += sin(t);
-                    t += step;
-                }
-            },
             .Triangle => {
                 while (i < buf.len) : (i += 1) {
                     buf[i] += tri(t);
@@ -131,13 +111,6 @@ pub const Oscillator = struct {
         var i: usize = 0;
 
         switch (waveform) {
-            .Sine => {
-                while (i < buf.len) : (i += 1) {
-                    const freq = freq_buf[i];
-                    buf[i] += sin(t);
-                    t += freq * inv;
-                }
-            },
             .Triangle => {
                 while (i < buf.len) : (i += 1) {
                     const freq = freq_buf[i];
@@ -156,59 +129,6 @@ pub const Oscillator = struct {
                 while (i < buf.len) : (i += 1) {
                     const freq = freq_buf[i];
                     buf[i] += saw(t);
-                    t += freq * inv;
-                }
-            },
-        }
-
-        t -= std.math.trunc(t); // it actually goes out of tune without this!...
-
-        self.t = t;
-    }
-
-    fn paintControlledPhaseAndFrequency(
-        self: *Oscillator,
-        sample_rate: f32,
-        buf: []f32,
-        waveform: Waveform,
-        input_phase: []const f32,
-        input_frequency: []const f32,
-        color: f32,
-    ) void {
-        const inv = 1.0 / sample_rate;
-        var t = self.t;
-        var i: usize = 0;
-
-        switch (waveform) {
-            .Sine => {
-                while (i < buf.len) : (i += 1) {
-                    const phase = input_phase[i];
-                    const freq = input_frequency[i];
-                    buf[i] += sin(t + phase);
-                    t += freq * inv;
-                }
-            },
-            .Triangle => {
-                while (i < buf.len) : (i += 1) {
-                    const phase = input_phase[i];
-                    const freq = input_frequency[i];
-                    buf[i] += tri(t + phase);
-                    t += freq * inv;
-                }
-            },
-            .Square => {
-                while (i < buf.len) : (i += 1) {
-                    const phase = input_phase[i];
-                    const freq = input_frequency[i];
-                    buf[i] += square(t + phase, color);
-                    t += freq * inv;
-                }
-            },
-            .Sawtooth => {
-                while (i < buf.len) : (i += 1) {
-                    const phase = input_phase[i];
-                    const freq = input_frequency[i];
-                    buf[i] += saw(t + phase);
                     t += freq * inv;
                 }
             },

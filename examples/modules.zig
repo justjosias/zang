@@ -20,13 +20,13 @@ pub const PhaseModOscillator = struct {
         multiplier: zang.ConstantOrBuffer,
     };
 
-    carrier: zang.Oscillator,
-    modulator: zang.Oscillator,
+    carrier: zang.SineOsc,
+    modulator: zang.SineOsc,
 
     pub fn init() PhaseModOscillator {
         return PhaseModOscillator {
-            .carrier = zang.Oscillator.init(),
-            .modulator = zang.Oscillator.init(),
+            .carrier = zang.SineOsc.init(),
+            .modulator = zang.SineOsc.init(),
         };
     }
 
@@ -49,12 +49,10 @@ pub const PhaseModOscillator = struct {
             },
         }
         zang.zero(span, temps[2]);
-        self.modulator.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+        self.modulator.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sine,
             .freq = zang.buffer(temps[1]),
             .phase = zang.constant(0.0),
-            .color = 0.5,
         });
         zang.zero(span, temps[1]);
         switch (params.multiplier) {
@@ -62,12 +60,10 @@ pub const PhaseModOscillator = struct {
             .Buffer => |multiplier| zang.multiply(span, temps[1], temps[2], multiplier),
         }
         zang.zero(span, temps[2]);
-        self.carrier.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+        self.carrier.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
-            .color = 0.5,
         });
         zang.addInto(span, outputs[0], temps[2]);
     }
@@ -126,13 +122,13 @@ pub const FilteredSawtoothInstrument = struct {
         note_on: bool,
     };
 
-    osc: zang.Oscillator,
+    osc: zang.TriSawOsc,
     env: zang.Envelope,
     flt: zang.Filter,
 
     pub fn init() FilteredSawtoothInstrument {
         return FilteredSawtoothInstrument {
-            .osc = zang.Oscillator.init(),
+            .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
             .flt = zang.Filter.init(),
         };
@@ -140,12 +136,10 @@ pub const FilteredSawtoothInstrument = struct {
 
     pub fn paint(self: *FilteredSawtoothInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.TriSawOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sawtooth,
-            .freq = zang.constant(params.freq),
-            .phase = zang.constant(0.0),
-            .color = 0.5,
+            .freq = params.freq,
+            .color = 0.0,
         });
         zang.multiplyWithScalar(span, temps[0], 1.5); // boost sawtooth volume
         zang.zero(span, temps[1]);

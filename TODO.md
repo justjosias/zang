@@ -61,8 +61,5 @@ I guess I need to run the attack/decay alongside the release, and take the `min`
 ## lo-fi zang
 Make a second library which has only basic modules and doesn't use floats. Share as much as possible (API design and possibly even code).
 
-## SineOsc module
-Just Oscillator but it's always a sine wave. I want to get rid of Oscillator eventually.
-
 ## PulseOsc and TriSawOsc should support controlled frequency and color
 Then I can get rid of Oscillator.

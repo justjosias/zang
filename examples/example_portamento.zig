@@ -25,14 +25,14 @@ pub const Instrument = struct {
         note_on: bool,
     };
 
-    osc: zang.Oscillator,
+    osc: zang.SineOsc,
     env: zang.Envelope,
     porta: zang.Portamento,
     prev_note_on: bool,
 
     pub fn init() Instrument {
         return Instrument {
-            .osc = zang.Oscillator.init(),
+            .osc = zang.SineOsc.init(),
             .env = zang.Envelope.init(),
             .porta = zang.Portamento.init(),
             .prev_note_on = false,
@@ -62,12 +62,10 @@ pub const Instrument = struct {
         });
 
         zang.zero(span, temps[2]);
-        self.osc.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint(span, [1][]f32{temps[2]}, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Square,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
-            .color = 0.5,
         });
 
         zang.multiply(span, outputs[0], temps[1], temps[2]);

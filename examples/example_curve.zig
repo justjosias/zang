@@ -38,16 +38,16 @@ const CurvePlayer = struct {
     };
 
     carrier_curve: zang.Curve,
-    carrier: zang.Oscillator,
+    carrier: zang.SineOsc,
     modulator_curve: zang.Curve,
-    modulator: zang.Oscillator,
+    modulator: zang.SineOsc,
 
     fn init() CurvePlayer {
         return CurvePlayer {
             .carrier_curve = zang.Curve.init(),
-            .carrier = zang.Oscillator.init(),
+            .carrier = zang.SineOsc.init(),
             .modulator_curve = zang.Curve.init(),
-            .modulator = zang.Oscillator.init(),
+            .modulator = zang.SineOsc.init(),
         };
     }
 
@@ -62,12 +62,10 @@ const CurvePlayer = struct {
             .freq_mul = freq_mul,
         });
         zang.zero(span, temps[1]);
-        self.modulator.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+        self.modulator.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
-            .color = 0.5,
         });
         zang.zero(span, temps[0]);
         self.carrier_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
@@ -76,12 +74,10 @@ const CurvePlayer = struct {
             .curve = carrier_curve,
             .freq_mul = freq_mul,
         });
-        self.carrier.paint(span, outputs, [0][]f32{}, zang.Oscillator.Params {
+        self.carrier.paint(span, outputs, [0][]f32{}, zang.SineOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sine,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
-            .color = 0.5,
         });
     }
 };
