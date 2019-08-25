@@ -1,5 +1,6 @@
 const std = @import("std");
 const zang = @import("zang");
+const wav = @import("wav");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
@@ -21,11 +22,36 @@ pub const DESCRIPTION =
     c\\Press 'd' to toggle distortion.
 ;
 
+fn readWav(comptime filename: []const u8) !zang.Sample {
+    const buf = @embedFile(filename);
+    var sis = std.io.SliceInStream.init(buf);
+    const stream = &sis.stream;
+
+    const Loader = wav.Loader(std.io.SliceInStream.Error);
+    const preloaded = try Loader.preload(stream, true);
+
+    if (preloaded.num_channels != 1) {
+        std.debug.warn("only mono wav files supported\n");
+        return error.UnsupportedWavFile;
+    }
+    if (preloaded.bytes_per_sample != 2) {
+        std.debug.warn("only 16-bit wav files supported\n");
+        return error.UnsupportedWavFile;
+    }
+
+    // don't call Loader.load because we're working on a slice, so we can just
+    // take a subslice of it
+    return zang.Sample {
+        .data = buf[sis.pos .. sis.pos + preloaded.getNumBytes()],
+        .sample_rate = preloaded.sample_rate,
+    };
+}
+
 pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 1;
 
-    wav: zang.WavContents,
+    sample: zang.Sample,
     iq: zang.Notes(zang.Sampler.Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     sampler: zang.Sampler,
@@ -37,7 +63,7 @@ pub const MainModule = struct {
 
     pub fn init() MainModule {
         return MainModule {
-            .wav = zang.readWav(@embedFile("drumloop.wav")) catch unreachable,
+            .sample = readWav("drumloop.wav") catch unreachable,
             .iq = zang.Notes(zang.Sampler.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
             .sampler = zang.Sampler.init(),
@@ -54,7 +80,7 @@ pub const MainModule = struct {
             self.first = false;
             self.iq.push(0, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .wav = self.wav,
+                .sample = self.sample,
                 .loop = true,
             });
         }
@@ -84,14 +110,14 @@ pub const MainModule = struct {
         if (down and key == c.SDLK_SPACE) {
             self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * (0.5 + 1.0 * self.r.random.float(f32)),
-                .wav = self.wav,
+                .sample = self.sample,
                 .loop = true,
             });
         }
         if (down and key == c.SDLK_b) {
             self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * -(0.5 + 1.0 * self.r.random.float(f32)),
-                .wav = self.wav,
+                .sample = self.sample,
                 .loop = true,
             });
         }

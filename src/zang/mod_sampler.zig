@@ -27,12 +27,17 @@ fn getSample(data: []const u8, index1: i32, loop: bool) f32 {
     }
 }
 
+pub const Sample = struct {
+    sample_rate: usize,
+    data: []const u8, // must be 1 channel, 16 bits per sample
+};
+
 pub const Sampler = struct {
     pub const num_outputs = 1;
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        wav: WavContents,
+        sample: Sample,
         loop: bool,
     };
 
@@ -51,7 +56,7 @@ pub const Sampler = struct {
 
         const out = outputs[0][span.start..span.end];
 
-        const ratio = @intToFloat(f32, params.wav.sample_rate) / params.sample_rate;
+        const ratio = @intToFloat(f32, params.sample.sample_rate) / params.sample_rate;
 
         if (ratio < 0.0 and !params.loop) {
             // i don't think it makes sense to play backwards without looping
@@ -64,7 +69,7 @@ pub const Sampler = struct {
             const t = @floatToInt(i32, std.math.round(self.t));
 
             var i: u31 = 0; while (i < out.len) : (i += 1) {
-                out[i] += getSample(params.wav.data, t + i32(i), params.loop);
+                out[i] += getSample(params.sample.data, t + i32(i), params.loop);
             }
 
             self.t += @intToFloat(f32, out.len);
@@ -75,8 +80,8 @@ pub const Sampler = struct {
                 const t1 = t0 + 1;
                 const tfrac = @intToFloat(f32, t1) - self.t;
 
-                const s0 = getSample(params.wav.data, t0, params.loop);
-                const s1 = getSample(params.wav.data, t1, params.loop);
+                const s0 = getSample(params.sample.data, t0, params.loop);
+                const s1 = getSample(params.sample.data, t1, params.loop);
 
                 const s = s0 * (1.0 - tfrac) + s1 * tfrac;
 
@@ -86,8 +91,8 @@ pub const Sampler = struct {
             }
         }
 
-        if (self.t >= @intToFloat(f32, params.wav.data.len) and params.loop) {
-            self.t -= @intToFloat(f32, params.wav.data.len);
+        if (self.t >= @intToFloat(f32, params.sample.data.len) and params.loop) {
+            self.t -= @intToFloat(f32, params.sample.data.len);
         }
     }
 };

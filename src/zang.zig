@@ -13,10 +13,6 @@ const mixdown = @import("zang/mixdown.zig");
 pub const AudioFormat = mixdown.AudioFormat;
 pub const mixDown = mixdown.mixDown;
 
-const read_wav = @import("zang/read_wav.zig");
-pub const WavContents = read_wav.WavContents;
-pub const readWav = read_wav.readWav;
-
 const basics = @import("zang/basics.zig");
 pub const Span = basics.Span;
 pub const zero = basics.zero;
@@ -74,6 +70,7 @@ pub const PulseOsc = mod_pulseosc.PulseOsc;
 
 const mod_sampler = @import("zang/mod_sampler.zig");
 pub const Sampler = mod_sampler.Sampler;
+pub const Sample = mod_sampler.Sample;
 
 const mod_sineosc = @import("zang/mod_sineosc.zig");
 pub const SineOsc = mod_sineosc.SineOsc;

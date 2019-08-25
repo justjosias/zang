@@ -35,6 +35,7 @@ pub fn build(b: *Builder) void {
             exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
         }
 
+        exe.addPackagePath("wav", "src/wav.zig");
         exe.addPackagePath("zang", "src/zang.zig");
         exe.addPackagePath("zang-12tet", "src/zang-12tet.zig");
 
@@ -58,6 +59,7 @@ fn example(b: *Builder, mode: builtin.Mode, windows: bool, comptime name: []cons
         exe.setTarget(builtin.Arch.x86_64, builtin.Os.windows, builtin.Abi.gnu);
     }
 
+    exe.addPackagePath("wav", "src/wav.zig");
     exe.addPackagePath("zang", "src/zang.zig");
     exe.addPackagePath("zang-12tet", "src/zang-12tet.zig");
     exe.addIncludeDir(".");

@@ -64,3 +64,9 @@ Make a second library which has only basic modules and doesn't use floats. Share
 ## PulseOsc with controlled frequency needs antialiasing
 
 ## TriSawOsc with controlled frequency needs total rewrite
+
+## Move WAV writing code from examples/write_wav.zig to src/wav.zig and clean it up
+This won't be as simple as PCX saving because it can be streamed, and you have to seek back and set the chunk sizes when you're done.
+
+## Move wav.zig to its own repository `zig-wav`
+After the above is done.
