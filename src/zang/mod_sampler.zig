@@ -3,25 +3,31 @@ const WavContents = @import("read_wav.zig").WavContents;
 const Span = @import("basics.zig").Span;
 
 // FIXME - no effort at all has been made to optimize the sampler module
-// FIXME - hardcoded to support only 16-bit wav files
 // FIXME - use a better resampling filter
 // TODO - more complex looping schemes
 // TODO - allow sample_rate to be controlled
 
-fn getSample(data: []const u8, num_channels: usize, index1: i32, channel: usize, loop: bool) f32 {
-    const num_samples = @intCast(i32, data.len / 2 / num_channels);
+inline fn decodeSigned(comptime byte_count: u16, slice: []const u8, index: usize) f32 {
+    const T = @IntType(true, byte_count * 8);
+    const sval = std.mem.readIntSliceLittle(T, slice[index * byte_count .. (index + 1) * byte_count]);
+    const max = 1 << u32(byte_count * 8 - 1);
+    return @intToFloat(f32, sval) / @intToFloat(f32, max);
+}
+
+fn getSample(data: []const u8, bytes_per_sample: usize, num_channels: usize, index1: i32, channel: usize, loop: bool) f32 {
+    const num_samples = @intCast(i32, data.len / bytes_per_sample / num_channels);
     const index = if (loop) @mod(index1, num_samples) else index1;
 
     if (index >= 0 and index < num_samples) {
         const i = @intCast(usize, index) * num_channels + channel;
 
-        const b0 = data[i * 2 + 0];
-        const b1 = data[i * 2 + 1];
-
-        const uval = u16(b0) | (u16(b1) << 8);
-        const sval = @bitCast(i16, uval);
-
-        return @intToFloat(f32, sval) / 32768.0;
+        return switch (bytes_per_sample) {
+            1 => (@intToFloat(f32, data[i]) - 127.5) / 127.5,
+            2 => decodeSigned(2, data, i),
+            3 => decodeSigned(3, data, i),
+            4 => decodeSigned(4, data, i),
+            else => 0.0,
+        };
     } else {
         return 0.0;
     }
@@ -30,7 +36,7 @@ fn getSample(data: []const u8, num_channels: usize, index1: i32, channel: usize,
 pub const Sample = struct {
     num_channels: usize,
     sample_rate: usize,
-    bytes_per_sample: usize, // must be 2
+    bytes_per_sample: usize,
     data: []const u8,
 };
 
@@ -53,9 +59,6 @@ pub const Sampler = struct {
     }
 
     pub fn paint(self: *Sampler, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
-        if (params.sample.bytes_per_sample != 2) {
-            std.debug.panic("TODO - Sampler: support non-16-bit samples\n");
-        }
         if (params.channel >= params.sample.num_channels) {
             return;
         }
@@ -79,7 +82,7 @@ pub const Sampler = struct {
             const t = @floatToInt(i32, std.math.round(self.t));
 
             var i: u31 = 0; while (i < out.len) : (i += 1) {
-                out[i] += getSample(params.sample.data, params.sample.num_channels, t + i32(i), params.channel, params.loop);
+                out[i] += getSample(params.sample.data, params.sample.bytes_per_sample, params.sample.num_channels, t + i32(i), params.channel, params.loop);
             }
 
             self.t += @intToFloat(f32, out.len);
@@ -90,8 +93,8 @@ pub const Sampler = struct {
                 const t1 = t0 + 1;
                 const tfrac = @intToFloat(f32, t1) - self.t;
 
-                const s0 = getSample(params.sample.data, params.sample.num_channels, t0, params.channel, params.loop);
-                const s1 = getSample(params.sample.data, params.sample.num_channels, t1, params.channel, params.loop);
+                const s0 = getSample(params.sample.data, params.sample.bytes_per_sample, params.sample.num_channels, t0, params.channel, params.loop);
+                const s1 = getSample(params.sample.data, params.sample.bytes_per_sample, params.sample.num_channels, t1, params.channel, params.loop);
 
                 const s = s0 * (1.0 - tfrac) + s1 * tfrac;
 
