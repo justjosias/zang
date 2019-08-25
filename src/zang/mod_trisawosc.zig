@@ -2,7 +2,9 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/LICENSE.txt
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
+const std = @import("std");
 const Span = @import("basics.zig").Span;
+const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
 
 const fc32bit = f32(1 << 32);
 
@@ -29,39 +31,53 @@ pub const TriSawOsc = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        freq: f32,
+        freq: ConstantOrBuffer,
         color: f32,
     };
 
     cnt: u32,
+    t: f32, // TODO - remove (see below)
 
     pub fn init() TriSawOsc {
-        return TriSawOsc { .cnt = 0 };
+        return TriSawOsc {
+            .cnt = 0,
+            .t = 0.0,
+        };
     }
 
     pub fn paint(self: *TriSawOsc, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
-        if (params.freq < 0 or params.freq > params.sample_rate / 8.0) {
+        switch (params.freq) {
+            .Constant => |freq| {
+                self.paintConstantFrequency(outputs[0][span.start..span.end], params.sample_rate, freq, params.color);
+            },
+            .Buffer => |freq| {
+                self.paintControlledFrequency(outputs[0][span.start..span.end], params.sample_rate, freq[span.start..span.end], params.color);
+            }
+        }
+    }
+
+    fn paintConstantFrequency(self: *TriSawOsc, output: []f32, sample_rate: f32, freq: f32, color: f32) void {
+        if (freq < 0 or freq > sample_rate / 8.0) {
             return;
         }
         // note: farbrausch code includes some explanatory comments. i've
         // preserved the variable names they used, but condensed the code
-        const buf = outputs[0][span.start..span.end];
         var cnt = self.cnt;
-        const SRfcobasefrq = fc32bit / params.sample_rate;
-        const freq = @floatToInt(u32, SRfcobasefrq * params.freq);
-        const brpt = ftou32(clamp01(params.color));
+        const SRfcobasefrq = fc32bit / sample_rate;
+        const ifreq = @floatToInt(u32, SRfcobasefrq * freq);
+        const brpt = ftou32(clamp01(color));
         const gain = 0.7;
-        const f = utof23(freq);
+        const f = utof23(ifreq);
         const omf = 1.0 - f;
         const rcpf = 1.0 / f;
         const col = utof23(brpt);
         const c1 = gain / col;
         const c2 = -gain / (1.0 - col);
-        var state = if ((cnt -% freq) < brpt) u32(3) else u32(0);
-        var i: usize = 0; while (i < buf.len) : (i += 1) {
+        var state = if ((cnt -% ifreq) < brpt) u32(3) else u32(0);
+        var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt) - col;
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            buf[i] += gain + switch (state | (u32(@boolToInt(cnt < freq)) << 2)) {
+            output[i] += gain + switch (state | (u32(@boolToInt(cnt < ifreq)) << 2)) {
                 0b011 => c1 * (p + p - f), // up
                 0b000 => c2 * (p + p - f), // down
                 0b010 => rcpf * (c2 * sqr(p) - c1 * sqr(p - f)), // up down
@@ -70,8 +86,37 @@ pub const TriSawOsc = struct {
                 0b100 => -rcpf * (gain + c2 * omf * (p + p + omf)), // down up down
                 else => unreachable,
             };
-            cnt +%= freq;
+            cnt +%= ifreq;
         }
         self.cnt = cnt;
+    }
+
+    fn paintControlledFrequency(self: *TriSawOsc, output: []f32, sample_rate: f32, freq: []const f32, color: f32) void {
+        // TODO - implement color properly
+        // TODO - rewrite using self.cnt and get rid of self.t
+        // TODO - antialiasing
+        // TODO - add equivalent of the bad frequency check at the top of paintConstantFrequency
+        var t = self.t;
+        const gain = 0.7;
+        var i: usize = 0; while (i < output.len) : (i += 1) {
+            var frac: f32 = undefined;
+            if (color < 0.25 or color > 0.75) {
+                // sawtooth
+                frac = (t - std.math.floor(t)) * 2.0 - 1.0;
+            } else {
+                // triangle
+                frac = t - std.math.floor(t);
+                if (frac < 0.25) {
+                    frac = frac * 4.0;
+                } else if (frac < 0.75) {
+                    frac = 1.0 - (frac - 0.25) * 4.0;
+                } else {
+                    frac = (frac - 0.75) * 4.0 - 1.0;
+                }
+            }
+            output[i] += gain * frac;
+            t += freq[i] / sample_rate;
+        }
+        self.t = t - std.math.trunc(t); // it actually goes out of tune without this!...
     }
 };

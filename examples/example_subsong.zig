@@ -43,7 +43,7 @@ const InnerInstrument = struct {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.TriSawOsc.Params {
             .sample_rate = params.sample_rate,
-            .freq = params.freq,
+            .freq = zang.constant(params.freq),
             .color = 0.0,
         });
         zang.zero(span, temps[1]);

@@ -38,14 +38,14 @@ pub const Instrument = struct {
     };
 
     dc: zang.DC,
-    osc: zang.Oscillator,
+    osc: zang.TriSawOsc,
     env: zang.Envelope,
     main_filter: zang.Filter,
 
     pub fn init() Instrument {
         return Instrument {
             .dc = zang.DC.init(),
-            .osc = zang.Oscillator.init(),
+            .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
             .main_filter = zang.Filter.init(),
         };
@@ -57,10 +57,10 @@ pub const Instrument = struct {
         }
         // paint with oscillator into temps[1]
         zang.zero(span, temps[1]);
-        self.osc.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Oscillator.Params {
+        self.osc.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.TriSawOsc.Params {
             .sample_rate = params.sample_rate,
-            .waveform = .Sawtooth,
             .freq = zang.buffer(temps[0]),
+            .color = 0.0,
         });
         // slight volume reduction
         zang.multiplyWithScalar(span, temps[1], 0.75);

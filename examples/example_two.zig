@@ -97,7 +97,7 @@ pub const MainModule = struct {
                     [0][]f32{},
                     zang.TriSawOsc.Params {
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = result0.params.freq,
+                        .freq = zang.constant(result0.params.freq),
                         .color = result1.params.color,
                     },
                 );

@@ -52,7 +52,6 @@ Modules:
 * Filter: lowpass, highpass, notch, bandpass, including resonance
 * Gate: a simpler Envelope, just outputs 1 or 0 based on note on and off events
 * Noise: basic white noise
-* Oscillator: triangle/square/sawtooth oscillator, low quality (no oversampling) but supports sliding frequency. This module will be removed when all of its features have been added to PulseOsc and TriSawOsc
 * Portamento: interpolate incoming stream of values (e.g. note frequencies)
 * PulseOsc: square wave oscillator
 * Sampler: play an audio file (wav loader provided), resampling according to the note frequencies

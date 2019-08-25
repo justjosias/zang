@@ -66,10 +66,6 @@ pub const Gate = mod_gate.Gate;
 const mod_noise = @import("zang/mod_noise.zig");
 pub const Noise = mod_noise.Noise;
 
-const mod_oscillator = @import("zang/mod_oscillator.zig");
-pub const Oscillator = mod_oscillator.Oscillator;
-pub const Waveform = mod_oscillator.Waveform;
-
 const mod_portamento = @import("zang/mod_portamento.zig");
 pub const Portamento = mod_portamento.Portamento;
 

@@ -63,4 +63,4 @@ Make a second library which has only basic modules and doesn't use floats. Share
 
 ## PulseOsc with controlled frequency needs antialiasing
 
-## TriSawOsc should support controlled frequency
+## TriSawOsc with controlled frequency needs total rewrite

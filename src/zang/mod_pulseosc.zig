@@ -88,6 +88,7 @@ pub const PulseOsc = struct {
 
     fn paintControlledFrequency(self: *PulseOsc, output: []f32, sample_rate: f32, freq: []const f32, color: f32) void {
         // TODO - implement antialiasing here
+        // TODO - add equivalent of the bad frequency check at the top of paintConstantFrequency
         var cnt = self.cnt;
         const SRfcobasefrq = fc32bit / sample_rate;
         const brpt = ftou32(clamp01(color));
