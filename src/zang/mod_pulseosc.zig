@@ -3,6 +3,7 @@
 // https://github.com/farbrausch/fr_public/blob/master/v2/synth_core.cpp
 
 const Span = @import("basics.zig").Span;
+const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
 
 const fc32bit = f32(1 << 32);
 
@@ -29,37 +30,49 @@ pub const PulseOsc = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        freq: f32,
+        freq: ConstantOrBuffer,
         color: f32,
     };
 
     cnt: u32,
 
     pub fn init() PulseOsc {
-        return PulseOsc { .cnt = 0 };
+        return PulseOsc {
+            .cnt = 0,
+        };
     }
 
     pub fn paint(self: *PulseOsc, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
-        if (params.freq < 0 or params.freq > params.sample_rate / 8.0) {
+        switch (params.freq) {
+            .Constant => |freq| {
+                self.paintConstantFrequency(outputs[0][span.start..span.end], params.sample_rate, freq, params.color);
+            },
+            .Buffer => |freq| {
+                self.paintControlledFrequency(outputs[0][span.start..span.end], params.sample_rate, freq[span.start..span.end], params.color);
+            }
+        }
+    }
+
+    fn paintConstantFrequency(self: *PulseOsc, output: []f32, sample_rate: f32, freq: f32, color: f32) void {
+        if (freq < 0 or freq > sample_rate / 8.0) {
             return;
         }
         // note: farbrausch code includes some explanatory comments. i've
         // preserved the variable names they used, but condensed the code
-        const buf = outputs[0][span.start..span.end];
         var cnt = self.cnt;
-        const SRfcobasefrq = fc32bit / params.sample_rate;
-        const freq = @floatToInt(u32, SRfcobasefrq * params.freq);
-        const brpt = ftou32(clamp01(params.color));
+        const SRfcobasefrq = fc32bit / sample_rate;
+        const ifreq = @floatToInt(u32, SRfcobasefrq * freq);
+        const brpt = ftou32(clamp01(color));
         const gain = 0.7;
-        const gdf = gain / utof23(freq);
+        const gdf = gain / utof23(ifreq);
         const col = utof23(brpt);
         const cc121 = gdf * 2.0 * (col - 1.0) + gain;
         const cc212 = gdf * 2.0 * col - gain;
-        var state = if ((cnt -% freq) < brpt) u32(3) else u32(0);
-        var i: usize = 0; while (i < buf.len) : (i += 1) {
+        var state = if ((cnt -% ifreq) < brpt) u32(0b011) else u32(0b000);
+        var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt);
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            buf[i] += switch (state | (u32(@boolToInt(cnt < freq)) << 2)) {
+            output[i] += switch (state | (u32(@boolToInt(cnt < ifreq)) << 2)) {
                 0b011 => gain, // up
                 0b000 => -gain, // down
                 0b010 => gdf * 2.0 * (col - p) + gain, // up down
@@ -68,7 +81,21 @@ pub const PulseOsc = struct {
                 0b100 => cc212, // down up down
                 else => unreachable,
             };
-            cnt +%= freq;
+            cnt +%= ifreq;
+        }
+        self.cnt = cnt;
+    }
+
+    fn paintControlledFrequency(self: *PulseOsc, output: []f32, sample_rate: f32, freq: []const f32, color: f32) void {
+        // TODO - implement antialiasing here
+        var cnt = self.cnt;
+        const SRfcobasefrq = fc32bit / sample_rate;
+        const brpt = ftou32(clamp01(color));
+        const gain: f32 = 0.7;
+        var i: usize = 0; while (i < output.len) : (i += 1) {
+            const ifreq = @floatToInt(u32, SRfcobasefrq * freq[i]);
+            output[i] += if ((cnt -% ifreq) < brpt) gain else -gain;
+            cnt +%= ifreq;
         }
         self.cnt = cnt;
     }

@@ -61,7 +61,6 @@ pub const Instrument = struct {
             .sample_rate = params.sample_rate,
             .waveform = .Sawtooth,
             .freq = zang.buffer(temps[0]),
-            .color = 0.5,
         });
         // slight volume reduction
         zang.multiplyWithScalar(span, temps[1], 0.75);

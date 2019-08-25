@@ -189,7 +189,7 @@ pub const NiceInstrument = struct {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
-            .freq = params.freq,
+            .freq = zang.constant(params.freq),
             .color = self.color,
         });
         zang.multiplyWithScalar(span, temps[0], 0.5);
@@ -236,8 +236,8 @@ pub const HardSquareInstrument = struct {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
-            .freq = params.freq,
-            .color = 0.5,
+            .freq = zang.constant(params.freq),
+            .color = 0.1,
         });
         zang.zero(span, temps[1]);
         self.gate.paint(span, [1][]f32{temps[1]}, [0][]f32{}, zang.Gate.Params {
@@ -272,7 +272,7 @@ pub const SquareWithEnvelope = struct {
         zang.zero(span, temps[0]);
         self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
             .sample_rate = params.sample_rate,
-            .freq = params.freq,
+            .freq = zang.constant(params.freq),
             .color = if (self.weird) f32(0.3) else f32(0.5),
         });
         zang.zero(span, temps[1]);

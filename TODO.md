@@ -61,5 +61,6 @@ I guess I need to run the attack/decay alongside the release, and take the `min`
 ## lo-fi zang
 Make a second library which has only basic modules and doesn't use floats. Share as much as possible (API design and possibly even code).
 
-## PulseOsc and TriSawOsc should support controlled frequency and color
-Then I can get rid of Oscillator.
+## PulseOsc with controlled frequency needs antialiasing
+
+## TriSawOsc should support controlled frequency
