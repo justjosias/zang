@@ -8,12 +8,12 @@ const Span = @import("basics.zig").Span;
 // TODO - more complex looping schemes
 // TODO - allow sample_rate to be controlled
 
-fn getSample(data: []const u8, index1: i32, loop: bool) f32 {
-    const half_len = @intCast(i32, data.len / 2);
-    const index = if (loop) @mod(index1, half_len) else index1;
+fn getSample(data: []const u8, num_channels: usize, index1: i32, channel: usize, loop: bool) f32 {
+    const num_samples = @intCast(i32, data.len / 2 / num_channels);
+    const index = if (loop) @mod(index1, num_samples) else index1;
 
-    if (index >= 0 and index < half_len) {
-        const i = @intCast(usize, index);
+    if (index >= 0 and index < num_samples) {
+        const i = @intCast(usize, index) * num_channels + channel;
 
         const b0 = data[i * 2 + 0];
         const b1 = data[i * 2 + 1];
@@ -28,8 +28,10 @@ fn getSample(data: []const u8, index1: i32, loop: bool) f32 {
 }
 
 pub const Sample = struct {
+    num_channels: usize,
     sample_rate: usize,
-    data: []const u8, // must be 1 channel, 16 bits per sample
+    bytes_per_sample: usize, // must be 2
+    data: []const u8,
 };
 
 pub const Sampler = struct {
@@ -38,6 +40,7 @@ pub const Sampler = struct {
     pub const Params = struct {
         sample_rate: f32,
         sample: Sample,
+        channel: usize,
         loop: bool,
     };
 
@@ -50,6 +53,13 @@ pub const Sampler = struct {
     }
 
     pub fn paint(self: *Sampler, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+        if (params.sample.bytes_per_sample != 2) {
+            std.debug.panic("TODO - Sampler: support non-16-bit samples\n");
+        }
+        if (params.channel >= params.sample.num_channels) {
+            return;
+        }
+
         if (note_id_changed) {
             self.t = 0.0;
         }
@@ -69,7 +79,7 @@ pub const Sampler = struct {
             const t = @floatToInt(i32, std.math.round(self.t));
 
             var i: u31 = 0; while (i < out.len) : (i += 1) {
-                out[i] += getSample(params.sample.data, t + i32(i), params.loop);
+                out[i] += getSample(params.sample.data, params.sample.num_channels, t + i32(i), params.channel, params.loop);
             }
 
             self.t += @intToFloat(f32, out.len);
@@ -80,8 +90,8 @@ pub const Sampler = struct {
                 const t1 = t0 + 1;
                 const tfrac = @intToFloat(f32, t1) - self.t;
 
-                const s0 = getSample(params.sample.data, t0, params.loop);
-                const s1 = getSample(params.sample.data, t1, params.loop);
+                const s0 = getSample(params.sample.data, params.sample.num_channels, t0, params.channel, params.loop);
+                const s1 = getSample(params.sample.data, params.sample.num_channels, t1, params.channel, params.loop);
 
                 const s = s0 * (1.0 - tfrac) + s1 * tfrac;
 

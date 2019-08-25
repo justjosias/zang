@@ -30,20 +30,13 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
     const Loader = wav.Loader(std.io.SliceInStream.Error);
     const preloaded = try Loader.preload(stream, true);
 
-    if (preloaded.num_channels != 1) {
-        std.debug.warn("only mono wav files supported\n");
-        return error.UnsupportedWavFile;
-    }
-    if (preloaded.bytes_per_sample != 2) {
-        std.debug.warn("only 16-bit wav files supported\n");
-        return error.UnsupportedWavFile;
-    }
-
     // don't call Loader.load because we're working on a slice, so we can just
     // take a subslice of it
     return zang.Sample {
-        .data = buf[sis.pos .. sis.pos + preloaded.getNumBytes()],
+        .num_channels = preloaded.num_channels,
         .sample_rate = preloaded.sample_rate,
+        .bytes_per_sample = preloaded.bytes_per_sample,
+        .data = buf[sis.pos .. sis.pos + preloaded.getNumBytes()],
     };
 }
 
@@ -81,6 +74,7 @@ pub const MainModule = struct {
             self.iq.push(0, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .sample = self.sample,
+                .channel = 0,
                 .loop = true,
             });
         }
@@ -111,6 +105,7 @@ pub const MainModule = struct {
             self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * (0.5 + 1.0 * self.r.random.float(f32)),
                 .sample = self.sample,
+                .channel = 0,
                 .loop = true,
             });
         }
@@ -118,6 +113,7 @@ pub const MainModule = struct {
             self.iq.push(impulse_frame, self.idgen.nextId(), zang.Sampler.Params {
                 .sample_rate = AUDIO_SAMPLE_RATE * -(0.5 + 1.0 * self.r.random.float(f32)),
                 .sample = self.sample,
+                .channel = 0,
                 .loop = true,
             });
         }
