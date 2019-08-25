@@ -1,5 +1,12 @@
 const std = @import("std");
 
+pub const Format = enum {
+    U8,
+    S16,
+    S24,
+    S32,
+};
+
 pub const PreloadedInfo = struct {
     num_channels: usize,
     sample_rate: usize,
@@ -94,6 +101,44 @@ pub fn Loader(comptime ReadError: type) type {
             const num_bytes = preloaded.getNumBytes();
             std.debug.assert(out_buffer.len >= num_bytes);
             try stream.readNoEof(out_buffer[num_bytes]);
+        }
+    };
+}
+
+pub const SaveInfo = struct {
+    num_channels: usize,
+    sample_rate: usize,
+    bytes_per_sample: usize, // 1 (8-bit), 2 (16-bit), 3 (24-bit), or 4 (32-bit)
+    data: []const u8,
+};
+
+pub fn Saver(comptime WriteError: type) type {
+    return struct {
+        pub fn save(stream: *std.io.OutStream(WriteError), info: SaveInfo) !void {
+            const data_len = @intCast(u32, info.data.len);
+
+            // location of "data" header
+            const data_chunk_pos: u32 = 36;
+
+            // length of file
+            const file_length = data_chunk_pos + 8 + data_len;
+
+            try stream.write("RIFF");
+            try stream.writeIntLittle(u32, file_length - 8);
+            try stream.write("WAVE");
+
+            try stream.write("fmt ");
+            try stream.writeIntLittle(u32, 16); // PCM
+            try stream.writeIntLittle(u16, 1); // uncompressed
+            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels));
+            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate));
+            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate * info.num_channels * info.bytes_per_sample));
+            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels * info.bytes_per_sample));
+            try stream.writeIntLittle(u16, @intCast(u16, info.bytes_per_sample * 8));
+
+            try stream.write("data");
+            try stream.writeIntLittle(u32, data_len);
+            try stream.write(info.data);
         }
     };
 }
