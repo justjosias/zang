@@ -2,19 +2,28 @@ const std = @import("std");
 
 pub const Format = enum {
     U8,
-    S16,
-    S24,
-    S32,
+    S16LSB,
+    S24LSB,
+    S32LSB,
+
+    pub fn getNumBytes(self: Format) u16 {
+        return switch (self) {
+            .U8 => u16(1),
+            .S16LSB => u16(2),
+            .S24LSB => u16(3),
+            .S32LSB => u16(4),
+        };
+    }
 };
 
 pub const PreloadedInfo = struct {
     num_channels: usize,
     sample_rate: usize,
-    bytes_per_sample: usize, // 1 (8-bit), 2 (16-bit), 3 (24-bit), or 4 (32-bit)
+    format: Format,
     num_samples: usize,
 
     pub fn getNumBytes(self: PreloadedInfo) usize {
-        return self.num_samples * self.num_channels * self.bytes_per_sample;
+        return self.num_samples * self.num_channels * self.format.getNumBytes();
     }
 };
 
@@ -36,10 +45,13 @@ pub fn Loader(comptime ReadError: type) type {
         pub fn preload(stream: *std.io.InStream(ReadError), verbose: bool) !PreloadedInfo {
             // read RIFF chunk descriptor (12 bytes)
             const chunk_id = try readIdentifier(stream);
+            if (!std.mem.eql(u8, chunk_id, "RIFF")) {
+                return preloadError(verbose, "missing \"RIFF\" header\n");
+            }
             try stream.skipBytes(4); // ignore chunk_size
-            const format = try readIdentifier(stream);
-            if (!std.mem.eql(u8, chunk_id, "RIFF") or !std.mem.eql(u8, format, "WAVE")) {
-                return preloadError(verbose, "missing \"RIFF\" or \"WAVE\" header\n");
+            const format_id = try readIdentifier(stream);
+            if (!std.mem.eql(u8, format_id, "WAVE")) {
+                return preloadError(verbose, "missing \"WAVE\" identifier\n");
             }
 
             // read "fmt" sub-chunk
@@ -67,10 +79,14 @@ pub fn Loader(comptime ReadError: type) type {
             if (sample_rate < 1 or sample_rate > 192000) {
                 return preloadError(verbose, "invalid sample_rate\n");
             }
-            if (bits_per_sample < 8 or bits_per_sample > 32 or (bits_per_sample & 7) != 0) {
-                return preloadError(verbose, "invalid number of bits per sample\n");
-            }
-            const bytes_per_sample = bits_per_sample >> 3;
+            const format = switch (bits_per_sample) {
+                8 => Format.U8,
+                16 => Format.S16LSB,
+                24 => Format.S24LSB,
+                32 => Format.S32LSB,
+                else => return preloadError(verbose, "invalid number of bits per sample\n"),
+            };
+            const bytes_per_sample = format.getNumBytes();
             if (byte_rate != sample_rate * num_channels * bytes_per_sample) {
                 return preloadError(verbose, "invalid byte_rate\n");
             }
@@ -92,7 +108,7 @@ pub fn Loader(comptime ReadError: type) type {
             return PreloadedInfo {
                 .num_channels = num_channels,
                 .sample_rate = sample_rate,
-                .bytes_per_sample = bytes_per_sample,
+                .format = format,
                 .num_samples = num_samples,
             };
         }
@@ -108,7 +124,7 @@ pub fn Loader(comptime ReadError: type) type {
 pub const SaveInfo = struct {
     num_channels: usize,
     sample_rate: usize,
-    bytes_per_sample: usize, // 1 (8-bit), 2 (16-bit), 3 (24-bit), or 4 (32-bit)
+    format: Format,
     data: []const u8,
 };
 
@@ -116,6 +132,7 @@ pub fn Saver(comptime WriteError: type) type {
     return struct {
         pub fn save(stream: *std.io.OutStream(WriteError), info: SaveInfo) !void {
             const data_len = @intCast(u32, info.data.len);
+            const bytes_per_sample = info.format.getNumBytes();
 
             // location of "data" header
             const data_chunk_pos: u32 = 36;
@@ -132,9 +149,9 @@ pub fn Saver(comptime WriteError: type) type {
             try stream.writeIntLittle(u16, 1); // uncompressed
             try stream.writeIntLittle(u16, @intCast(u16, info.num_channels));
             try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate));
-            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate * info.num_channels * info.bytes_per_sample));
-            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels * info.bytes_per_sample));
-            try stream.writeIntLittle(u16, @intCast(u16, info.bytes_per_sample * 8));
+            try stream.writeIntLittle(u32, @intCast(u32, info.sample_rate * info.num_channels) * bytes_per_sample);
+            try stream.writeIntLittle(u16, @intCast(u16, info.num_channels) * bytes_per_sample);
+            try stream.writeIntLittle(u16, bytes_per_sample * 8);
 
             try stream.write("data");
             try stream.writeIntLittle(u32, data_len);

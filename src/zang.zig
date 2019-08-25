@@ -71,6 +71,7 @@ pub const PulseOsc = mod_pulseosc.PulseOsc;
 const mod_sampler = @import("zang/mod_sampler.zig");
 pub const Sampler = mod_sampler.Sampler;
 pub const Sample = mod_sampler.Sample;
+pub const SampleFormat = mod_sampler.SampleFormat;
 
 const mod_sineosc = @import("zang/mod_sineosc.zig");
 pub const SineOsc = mod_sineosc.SineOsc;

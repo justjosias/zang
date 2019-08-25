@@ -71,7 +71,10 @@ pub fn main() !void {
     try Saver.save(&fos.stream, wav.SaveInfo {
         .num_channels = example.MainModule.num_outputs,
         .sample_rate = example.AUDIO_SAMPLE_RATE,
-        .bytes_per_sample = bytes_per_sample,
+        .format = switch (example.AUDIO_FORMAT) {
+            .S8 => .U8,
+            .S16LSB => .S16LSB,
+        },
         .data = g_big_buffer[0..],
     });
 }

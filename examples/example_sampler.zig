@@ -35,7 +35,12 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
     return zang.Sample {
         .num_channels = preloaded.num_channels,
         .sample_rate = preloaded.sample_rate,
-        .bytes_per_sample = preloaded.bytes_per_sample,
+        .format = switch (preloaded.format) {
+            .U8 => zang.SampleFormat.U8,
+            .S16LSB => zang.SampleFormat.S16LSB,
+            .S24LSB => zang.SampleFormat.S24LSB,
+            .S32LSB => zang.SampleFormat.S32LSB,
+        },
         .data = buf[sis.pos .. sis.pos + preloaded.getNumBytes()],
     };
 }
