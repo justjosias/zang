@@ -10,7 +10,7 @@ The library is frequently updated to use the latest (master) version of Zig. Als
 
 Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. All drawing can be toggled by hitting the F1 key (this is useful for profiling the audio code).
 
-Before building the examples, you need to initialize git submodules, as some of them use an external dependency ([zig-wav](https://github.com/dbandstra/zig-wav)).
+Before building the examples, you need to initialize git submodules, as some of the examples use an external dependency ([zig-wav](https://github.com/dbandstra/zig-wav)).
 
 ```
 git submodule init
