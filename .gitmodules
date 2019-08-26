@@ -1,0 +1,3 @@
+[submodule "examples/zig-wav"]
+	path = examples/zig-wav
+	url = git@github.com:dbandstra/zig-wav.git
