@@ -10,6 +10,13 @@ The library is frequently updated to use the latest (master) version of Zig. Als
 
 Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. All drawing can be toggled by hitting the F1 key (this is useful for profiling the audio code).
 
+Before building the examples, you need to initialize git submodules, as some of them use an external dependency ([zig-wav](https://github.com/dbandstra/zig-wav)).
+
+```
+git submodule init
+git submodule update
+```
+
 `zig build play`: You can play a simple synthesizer with the keyboard. Home row to play a C major scale, sharps/flats in the qwerty row. Hold space to play a low C in a separate voice.
 
 `zig build song`: Plays Bach's Toccata and Fugue in D Minor in full. The song is parsed from a text file. For now that parser is custom to this example.
