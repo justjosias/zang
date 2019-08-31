@@ -63,12 +63,12 @@ pub fn Notes(comptime NoteParamsType: type) type {
 
             pub fn push(self: *ImpulseQueue, impulse_frame: usize, note_id: usize, params: NoteParamsType) void {
                 if (self.length >= self.impulses_array.len) {
-                    std.debug.warn("ImpulseQueue: no more slots\n"); // FIXME
+                    // std.debug.warn("ImpulseQueue: no more slots\n"); // FIXME
                     return;
                 }
                 if (self.length > 0 and impulse_frame < self.impulses_array[self.length - 1].frame) {
                     // you must push impulses in order. this could even be a panic
-                    std.debug.warn("ImpulseQueue: notes pushed out of order\n");
+                    // std.debug.warn("ImpulseQueue: notes pushed out of order\n");
                     return;
                 }
                 self.impulses_array[self.length] = Impulse {
