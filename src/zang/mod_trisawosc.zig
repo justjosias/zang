@@ -6,7 +6,7 @@ const std = @import("std");
 const Span = @import("basics.zig").Span;
 const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
 
-const fc32bit = f32(1 << 32);
+const fc32bit: f32 = 1 << 32;
 
 inline fn sqr(v: f32) f32 {
     return v * v;
@@ -73,11 +73,11 @@ pub const TriSawOsc = struct {
         const col = utof23(brpt);
         const c1 = gain / col;
         const c2 = -gain / (1.0 - col);
-        var state = if ((cnt -% ifreq) < brpt) u32(3) else u32(0);
+        var state = if ((cnt -% ifreq) < brpt) @as(u32, 3) else @as(u32, 0);
         var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt) - col;
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            output[i] += gain + switch (state | (u32(@boolToInt(cnt < ifreq)) << 2)) {
+            output[i] += gain + switch (state | (@as(u32, @boolToInt(cnt < ifreq)) << 2)) {
                 0b011 => c1 * (p + p - f), // up
                 0b000 => c2 * (p + p - f), // down
                 0b010 => rcpf * (c2 * sqr(p) - c1 * sqr(p - f)), // up down

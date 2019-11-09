@@ -82,7 +82,7 @@ extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void 
             std.mem.set(f32, g_fft_imag[0..], 0.0);
             fft(1024, g_fft_real[0..], g_fft_imag[0..]);
 
-            c.plot(min * mul, max * mul, g_fft_real[0..].ptr, if (g_fft_log) c_int(1) else c_int(0));
+            c.plot(min * mul, max * mul, g_fft_real[0..].ptr, if (g_fft_log) @as(c_int, 1) else @as(c_int, 0));
         }
     }
 
@@ -118,8 +118,8 @@ pub fn main() !void {
     var want: c.SDL_AudioSpec = undefined;
     want.freq = AUDIO_SAMPLE_RATE;
     want.format = switch (AUDIO_FORMAT) {
-        zang.AudioFormat.S8 => u16(c.AUDIO_S8),
-        zang.AudioFormat.S16LSB => u16(c.AUDIO_S16LSB),
+        zang.AudioFormat.S8 => @as(u16, c.AUDIO_S8),
+        zang.AudioFormat.S16LSB => @as(u16, c.AUDIO_S16LSB),
     };
     want.channels = example.MainModule.num_outputs;
     want.samples = AUDIO_BUFFER_SIZE;
@@ -198,7 +198,7 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, if (g_full_fft) c_int(1) else c_int(0));
+            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, if (g_full_fft) @as(c_int, 1) else @as(c_int, 0));
             c.SDL_UnlockAudioDevice(device);
         }
     }

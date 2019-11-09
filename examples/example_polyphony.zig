@@ -122,12 +122,12 @@ pub const MainModule = struct {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .input = temps[2],
                 .fake_sample_rate = switch (self.dec_mode) {
-                    1 => f32(6000.0),
-                    2 => f32(5000.0),
-                    3 => f32(4000.0),
-                    4 => f32(3000.0),
-                    5 => f32(2000.0),
-                    6 => f32(1000.0),
+                    1 => @as(f32, 6000.0),
+                    2 => @as(f32, 5000.0),
+                    3 => @as(f32, 4000.0),
+                    4 => @as(f32, 3000.0),
+                    5 => @as(f32, 2000.0),
+                    6 => @as(f32, 1000.0),
                     else => unreachable,
                 },
             });

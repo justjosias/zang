@@ -42,18 +42,18 @@ pub fn Parser(comptime num_columns: usize) type {
                     return null;
 
             const semitone = blk: {
-                if (letter == 'C' and modifier == '-') break :blk i32(0);
-                if (letter == 'C' and modifier == '#') break :blk i32(1);
-                if (letter == 'D' and modifier == '-') break :blk i32(2);
-                if (letter == 'D' and modifier == '#') break :blk i32(3);
-                if (letter == 'E' and modifier == '-') break :blk i32(4);
-                if (letter == 'F' and modifier == '-') break :blk i32(5);
-                if (letter == 'F' and modifier == '#') break :blk i32(6);
-                if (letter == 'G' and modifier == '-') break :blk i32(7);
-                if (letter == 'G' and modifier == '#') break :blk i32(8);
-                if (letter == 'A' and modifier == '-') break :blk i32(9);
-                if (letter == 'A' and modifier == '#') break :blk i32(10);
-                if (letter == 'B' and modifier == '-') break :blk i32(11);
+                if (letter == 'C' and modifier == '-') break :blk @as(i32, 0);
+                if (letter == 'C' and modifier == '#') break :blk @as(i32, 1);
+                if (letter == 'D' and modifier == '-') break :blk @as(i32, 2);
+                if (letter == 'D' and modifier == '#') break :blk @as(i32, 3);
+                if (letter == 'E' and modifier == '-') break :blk @as(i32, 4);
+                if (letter == 'F' and modifier == '-') break :blk @as(i32, 5);
+                if (letter == 'F' and modifier == '#') break :blk @as(i32, 6);
+                if (letter == 'G' and modifier == '-') break :blk @as(i32, 7);
+                if (letter == 'G' and modifier == '#') break :blk @as(i32, 8);
+                if (letter == 'A' and modifier == '-') break :blk @as(i32, 9);
+                if (letter == 'A' and modifier == '#') break :blk @as(i32, 10);
+                if (letter == 'B' and modifier == '-') break :blk @as(i32, 11);
                 return null;
             };
 

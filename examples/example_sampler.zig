@@ -27,8 +27,8 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
     var sis = std.io.SliceInStream.init(buf);
     const stream = &sis.stream;
 
-    const Loader = wav.Loader(std.io.SliceInStream.Error);
-    const preloaded = try Loader.preload(stream, true);
+    const Loader = wav.Loader(std.io.SliceInStream.Error, true);
+    const preloaded = try Loader.preload(stream);
 
     // don't call Loader.load because we're working on a slice, so we can just
     // take a subslice of it

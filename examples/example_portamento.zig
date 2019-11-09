@@ -110,7 +110,7 @@ pub const MainModule = struct {
             }
 
             const key_index = @intCast(u6, i);
-            const key_flag = u64(1) << key_index;
+            const key_flag = @as(u64, 1) << key_index;
             const prev_keys_held = self.keys_held;
 
             if (down) {

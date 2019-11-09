@@ -5,7 +5,7 @@
 const Span = @import("basics.zig").Span;
 const ConstantOrBuffer = @import("trigger.zig").ConstantOrBuffer;
 
-const fc32bit = f32(1 << 32);
+const fc32bit: f32 = 1 << 32;
 
 inline fn clamp01(v: f32) f32 {
     return if (v < 0.0) 0.0 else if (v > 1.0) 1.0 else v;
@@ -68,11 +68,11 @@ pub const PulseOsc = struct {
         const col = utof23(brpt);
         const cc121 = gdf * 2.0 * (col - 1.0) + gain;
         const cc212 = gdf * 2.0 * col - gain;
-        var state = if ((cnt -% ifreq) < brpt) u32(0b011) else u32(0b000);
+        var state = if ((cnt -% ifreq) < brpt) @as(u32, 0b011) else @as(u32, 0b000);
         var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt);
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            output[i] += switch (state | (u32(@boolToInt(cnt < ifreq)) << 2)) {
+            output[i] += switch (state | (@as(u32, @boolToInt(cnt < ifreq)) << 2)) {
                 0b011 => gain, // up
                 0b000 => -gain, // down
                 0b010 => gdf * 2.0 * (col - p) + gain, // up down

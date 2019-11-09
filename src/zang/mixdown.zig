@@ -35,11 +35,11 @@ fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channe
 
         const clamped_value =
             if (value <= -32767.0)
-                i16(-32767)
+                @as(i16, -32767)
             else if (value >= 32766.0)
-                i16(32766)
+                @as(i16, 32766)
             else if (value != value) // NaN
-                i16(0)
+                @as(i16, 0)
             else
                 @floatToInt(i16, value);
 
@@ -58,11 +58,11 @@ fn mixDownS8(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_in
 
         const clamped_value =
             if (value <= -127.0)
-                i8(-127)
+                @as(i8, -127)
             else if (value >= 126.0)
-                i8(126)
+                @as(i8, 126)
             else if (value != value) // NaN
-                i8(0)
+                @as(i8, 0)
             else
                 @floatToInt(i8, value);
 

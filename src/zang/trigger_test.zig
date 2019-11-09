@@ -28,7 +28,7 @@ fn testAll(trigger: *Trigger(f32), iap: Notes(f32).ImpulsesAndParamses, expected
         std.testing.expectEqual(e.note_id_changed, r.note_id_changed);
     }
 
-    std.testing.expectEqual((?Trigger(f32).NewPaintReturnValue)(null), trigger.next(&ctr));
+    std.testing.expectEqual(@as(?Trigger(f32).NewPaintReturnValue, null), trigger.next(&ctr));
 }
 
 test "Trigger: no notes" {

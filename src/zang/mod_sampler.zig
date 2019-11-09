@@ -17,16 +17,16 @@ pub const SampleFormat = enum {
 inline fn decodeSigned(comptime byte_count: u16, slice: []const u8, index: usize) f32 {
     const T = @IntType(true, byte_count * 8);
     const sval = std.mem.readIntSliceLittle(T, slice[index * byte_count .. (index + 1) * byte_count]);
-    const max = 1 << u32(byte_count * 8 - 1);
+    const max = 1 << @as(u32, byte_count * 8 - 1);
     return @intToFloat(f32, sval) / @intToFloat(f32, max);
 }
 
 fn getSample(data: []const u8, format: SampleFormat, num_channels: usize, index1: i32, channel: usize, loop: bool) f32 {
     const bytes_per_sample = switch (format) {
-        .U8 => usize(1),
-        .S16LSB => usize(2),
-        .S24LSB => usize(3),
-        .S32LSB => usize(4),
+        .U8 => @as(usize, 1),
+        .S16LSB => @as(usize, 2),
+        .S24LSB => @as(usize, 3),
+        .S32LSB => @as(usize, 4),
     };
     const num_samples = @intCast(i32, data.len / bytes_per_sample / num_channels);
     const index = if (loop) @mod(index1, num_samples) else index1;
@@ -94,7 +94,7 @@ pub const Sampler = struct {
             const t = @floatToInt(i32, std.math.round(self.t));
 
             var i: u31 = 0; while (i < out.len) : (i += 1) {
-                out[i] += getSample(params.sample.data, params.sample.format, params.sample.num_channels, t + i32(i), params.channel, params.loop);
+                out[i] += getSample(params.sample.data, params.sample.format, params.sample.num_channels, t + @as(i32, i), params.channel, params.loop);
             }
 
             self.t += @intToFloat(f32, out.len);
