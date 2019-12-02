@@ -9,19 +9,19 @@ const MyNoteParams = struct {
 
 test "PolyphonyDispatcher: 5 note-ons with 3 slots" {
     const iap = Notes(MyNoteParams).ImpulsesAndParamses {
-        .impulses = [_]Impulse {
-            Impulse { .frame = 100, .note_id = 1, .event_id = 1 },
-            Impulse { .frame = 200, .note_id = 2, .event_id = 2 },
-            Impulse { .frame = 300, .note_id = 3, .event_id = 3 },
-            Impulse { .frame = 400, .note_id = 4, .event_id = 4 },
-            Impulse { .frame = 500, .note_id = 5, .event_id = 5 },
+        .impulses = &[_]Impulse {
+            .{ .frame = 100, .note_id = 1, .event_id = 1 },
+            .{ .frame = 200, .note_id = 2, .event_id = 2 },
+            .{ .frame = 300, .note_id = 3, .event_id = 3 },
+            .{ .frame = 400, .note_id = 4, .event_id = 4 },
+            .{ .frame = 500, .note_id = 5, .event_id = 5 },
         },
-        .paramses = [_]MyNoteParams {
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
+        .paramses = &[_]MyNoteParams {
+            .{ .note_on = true },
+            .{ .note_on = true },
+            .{ .note_on = true },
+            .{ .note_on = true },
+            .{ .note_on = true },
         },
     };
 
@@ -42,19 +42,19 @@ test "PolyphonyDispatcher: 5 note-ons with 3 slots" {
 
 test "PolyphonyDispatcher: single note on and off" {
     const iap = Notes(MyNoteParams).ImpulsesAndParamses {
-        .impulses = [_]Impulse {
-            Impulse { .frame = 100, .note_id = 1, .event_id = 1 },
-            Impulse { .frame = 200, .note_id = 1, .event_id = 2 },
-            Impulse { .frame = 300, .note_id = 2, .event_id = 3 },
-            Impulse { .frame = 400, .note_id = 2, .event_id = 4 },
-            Impulse { .frame = 500, .note_id = 3, .event_id = 5 },
+        .impulses = &[_]Impulse {
+            .{ .frame = 100, .note_id = 1, .event_id = 1 },
+            .{ .frame = 200, .note_id = 1, .event_id = 2 },
+            .{ .frame = 300, .note_id = 2, .event_id = 3 },
+            .{ .frame = 400, .note_id = 2, .event_id = 4 },
+            .{ .frame = 500, .note_id = 3, .event_id = 5 },
         },
-        .paramses = [_]MyNoteParams {
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = false },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = false },
-            MyNoteParams { .note_on = true },
+        .paramses = &[_]MyNoteParams {
+            .{ .note_on = true },
+            .{ .note_on = false },
+            .{ .note_on = true },
+            .{ .note_on = false },
+            .{ .note_on = true },
         },
     };
 
@@ -75,25 +75,25 @@ test "PolyphonyDispatcher: single note on and off" {
 
 test "PolyphonyDispatcher: reuse least recently released slot" {
     const iap = Notes(MyNoteParams).ImpulsesAndParamses {
-        .impulses = [_]Impulse {
-            Impulse { .frame = 100, .note_id = 1, .event_id = 1 },
-            Impulse { .frame = 200, .note_id = 2, .event_id = 2 },
-            Impulse { .frame = 300, .note_id = 3, .event_id = 3 },
+        .impulses = &[_]Impulse {
+            .{ .frame = 100, .note_id = 1, .event_id = 1 },
+            .{ .frame = 200, .note_id = 2, .event_id = 2 },
+            .{ .frame = 300, .note_id = 3, .event_id = 3 },
 
-            Impulse { .frame = 400, .note_id = 3, .event_id = 4 },
-            Impulse { .frame = 500, .note_id = 2, .event_id = 5 },
-            Impulse { .frame = 600, .note_id = 1, .event_id = 6 },
+            .{ .frame = 400, .note_id = 3, .event_id = 4 },
+            .{ .frame = 500, .note_id = 2, .event_id = 5 },
+            .{ .frame = 600, .note_id = 1, .event_id = 6 },
 
-            Impulse { .frame = 700, .note_id = 4, .event_id = 7 },
+            .{ .frame = 700, .note_id = 4, .event_id = 7 },
         },
-        .paramses = [_]MyNoteParams {
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = true },
-            MyNoteParams { .note_on = false },
-            MyNoteParams { .note_on = false },
-            MyNoteParams { .note_on = false },
-            MyNoteParams { .note_on = true },
+        .paramses = &[_]MyNoteParams {
+            .{ .note_on = true },
+            .{ .note_on = true },
+            .{ .note_on = true },
+            .{ .note_on = false },
+            .{ .note_on = false },
+            .{ .note_on = false },
+            .{ .note_on = true },
         },
     };
 
