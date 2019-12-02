@@ -5,12 +5,12 @@ const Instrument = @import("modules.zig").HardSquareInstrument;
 const StereoEchoes = @import("modules.zig").StereoEchoes(15000);
 
 pub const DESCRIPTION =
-    c\\example_delay
-    c\\
-    c\\Play a square-wave instrument with the keyboard. There
-    c\\is a stereo echo effect.
-    c\\
-    c\\Press spacebar to reset the delay effect.
+    \\example_delay
+    \\
+    \\Play a square-wave instrument with the keyboard. There
+    \\is a stereo echo effect.
+    \\
+    \\Press spacebar to reset the delay effect.
 ;
 
 pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;

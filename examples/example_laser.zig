@@ -8,14 +8,14 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_laser
-    c\\
-    c\\Trigger a "laser" sound effect by pressing the
-    c\\spacebar. Some parameters of the sound are randomly
-    c\\perturbed.
-    c\\
-    c\\Press "a", "s", or "d" for some alternate sound
-    c\\effects based on the same module.
+    \\example_laser
+    \\
+    \\Trigger a "laser" sound effect by pressing the
+    \\spacebar. Some parameters of the sound are randomly
+    \\perturbed.
+    \\
+    \\Press "a", "s", or "d" for some alternate sound
+    \\effects based on the same module.
 ;
 
 const carrier_curve = [_]zang.CurveNode {
@@ -70,7 +70,7 @@ const LaserPlayer = struct {
         self.modulator_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
-            .curve = modulator_curve,
+            .curve = &modulator_curve,
             .freq_mul = params.freq_mul * params.modulator_mul,
         });
         zang.zero(span, temps[1]);
@@ -84,7 +84,7 @@ const LaserPlayer = struct {
         self.carrier_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
-            .curve = carrier_curve,
+            .curve = &carrier_curve,
             .freq_mul = params.freq_mul * params.carrier_mul,
         });
         zang.zero(span, temps[2]);
@@ -97,7 +97,7 @@ const LaserPlayer = struct {
         self.volume_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
-            .curve = volume_curve,
+            .curve = &volume_curve,
             .freq_mul = 1.0,
         });
         zang.multiply(span, out, temps[0], temps[2]);

@@ -7,12 +7,12 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_stereo
-    c\\
-    c\\A wind-like noise effect slowly oscillates between the
-    c\\left and right speakers.
-    c\\
-    c\\This example is not interactive.
+    \\example_stereo
+    \\
+    \\A wind-like noise effect slowly oscillates between the
+    \\left and right speakers.
+    \\
+    \\This example is not interactive.
 ;
 
 // take input (-1 to +1) and scale it to (min to max)

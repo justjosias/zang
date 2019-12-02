@@ -11,11 +11,11 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_subsong
-    c\\
-    c\\Play with the keyboard - a little melody is played
-    c\\with each keypress. This demonstrates "notes within
-    c\\notes".
+    \\example_subsong
+    \\
+    \\Play with the keyboard - a little melody is played
+    \\with each keypress. This demonstrates "notes within
+    \\notes".
 ;
 
 const a4 = 440.0;
@@ -86,7 +86,7 @@ const SubtrackPlayer = struct {
         const t = 0.1;
 
         return SubtrackPlayer {
-            .tracker = zang.Notes(MyNoteParams).NoteTracker.init([_]SongEvent {
+            .tracker = zang.Notes(MyNoteParams).NoteTracker.init(&[_]SongEvent {
                 SongEvent { .t = 0.0 * t, .note_id = 1, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
                 SongEvent { .t = 1.0 * t, .note_id = 2, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
                 SongEvent { .t = 2.0 * t, .note_id = 3, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},

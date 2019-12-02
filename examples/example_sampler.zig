@@ -9,17 +9,17 @@ pub const AUDIO_SAMPLE_RATE = 44100;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_sampler
-    c\\
-    c\\Loop a WAV file.
-    c\\
-    c\\Press spacebar to reset the sampler with a randomly
-    c\\selected speed between 50% and 150%.
-    c\\
-    c\\Press 'b' to do the same, but with the sound playing
-    c\\in reverse.
-    c\\
-    c\\Press 'd' to toggle distortion.
+    \\example_sampler
+    \\
+    \\Loop a WAV file.
+    \\
+    \\Press spacebar to reset the sampler with a randomly
+    \\selected speed between 50% and 150%.
+    \\
+    \\Press 'b' to do the same, but with the sound playing
+    \\in reverse.
+    \\
+    \\Press 'd' to toggle distortion.
 ;
 
 fn readWav(comptime filename: []const u8) !zang.Sample {

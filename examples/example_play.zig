@@ -10,12 +10,12 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_play
-    c\\
-    c\\Play a simple monophonic synthesizer with the
-    c\\keyboard.
-    c\\
-    c\\Press spacebar to create a low drone in another voice.
+    \\example_play
+    \\
+    \\Play a simple monophonic synthesizer with the
+    \\keyboard.
+    \\
+    \\Press spacebar to create a low drone in another voice.
 ;
 
 const a4 = 440.0;

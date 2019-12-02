@@ -10,12 +10,12 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 
 pub const DESCRIPTION =
-    c\\example_song
-    c\\
-    c\\Plays a canned melody (Bach's Toccata and Fugue in D
-    c\\Minor).
-    c\\
-    c\\Press spacebar to restart the song.
+    \\example_song
+    \\
+    \\Plays a canned melody (Bach's Toccata and Fugue in D
+    \\Minor).
+    \\
+    \\Press spacebar to restart the song.
 ;
 
 const a4 = 440.0;

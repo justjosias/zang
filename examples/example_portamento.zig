@@ -7,11 +7,11 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_portamento
-    c\\
-    c\\Play an instrument with the keyboard. If you press
-    c\\multiple keys, the frequency will slide toward the
-    c\\highest held key.
+    \\example_portamento
+    \\
+    \\Play an instrument with the keyboard. If you press
+    \\multiple keys, the frequency will slide toward the
+    \\highest held key.
 ;
 
 const a4 = 440.0;

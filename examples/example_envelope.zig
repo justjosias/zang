@@ -8,10 +8,10 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_envelope
-    c\\
-    c\\Basic example demonstrating the ADSR envelope. Press
-    c\\spacebar to trigger the envelope.
+    \\example_envelope
+    \\
+    \\Basic example demonstrating the ADSR envelope. Press
+    \\spacebar to trigger the envelope.
 ;
 
 const a4 = 440.0;

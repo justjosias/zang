@@ -93,7 +93,7 @@ pub fn main() !void {
     var main_module = example.MainModule.init();
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
-        c.SDL_Log(c"Unable to initialize SDL: %s", c.SDL_GetError());
+        c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     }
     errdefer c.SDL_Quit();
@@ -102,13 +102,13 @@ pub fn main() !void {
 
     const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
     const window = c.SDL_CreateWindow(
-        c"zang",
+        "zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
         screen_w, screen_h,
         0,
     ) orelse {
-        c.SDL_Log(c"Unable to create window: %s", c.SDL_GetError());
+        c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     };
     errdefer c.SDL_DestroyWindow(window);
@@ -134,7 +134,7 @@ pub fn main() !void {
         0, // allowed changes: 0 means `obtained` will not differ from `want`, and SDL will do any necessary resampling behind the scenes
     );
     if (device == 0) {
-        c.SDL_Log(c"Failed to open audio: %s", c.SDL_GetError());
+        c.SDL_Log("Failed to open audio: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     }
     errdefer c.SDL_CloseAudio();
@@ -163,7 +163,7 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F1 and down) {
                     c.SDL_LockAudioDevice(device);
                     g_drawing = !g_drawing;
-                    c.clear(window, screen, fontdata[0..].ptr, c"Press F1 to re-enable drawing");
+                    c.clear(window, screen, fontdata[0..].ptr, "Press F1 to re-enable drawing");
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {

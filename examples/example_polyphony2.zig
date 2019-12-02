@@ -11,10 +11,10 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_polyphony2
-    c\\
-    c\\Play an instrument with the keyboard. There are 3
-    c\\voice slots.
+    \\example_polyphony2
+    \\
+    \\Play an instrument with the keyboard. There are 3
+    \\voice slots.
 ;
 
 const a4 = 220.0;

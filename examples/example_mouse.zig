@@ -8,14 +8,14 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_mouse
-    c\\
-    c\\Play a phase-modulation instrument with the keyboard,
-    c\\while controlling the sound parameters with the mouse
-    c\\position.
-    c\\
-    c\\Press spacebar to toggle between relative (the
-    c\\default) and absolute modulator frequency.
+    \\example_mouse
+    \\
+    \\Play a phase-modulation instrument with the keyboard,
+    \\while controlling the sound parameters with the mouse
+    \\position.
+    \\
+    \\Press spacebar to toggle between relative (the
+    \\default) and absolute modulator frequency.
 ;
 
 const a4 = 440.0;

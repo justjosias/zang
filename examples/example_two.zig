@@ -8,13 +8,13 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_two
-    c\\
-    c\\A single instrument triggered by two input sources.
-    c\\Play the lower half of the keyboard to control the
-    c\\note frequency. Press the number keys to change the
-    c\\"colour" of the oscillator - from triangle to
-    c\\sawtooth. Both input sources trigger the envelope.
+    \\example_two
+    \\
+    \\A single instrument triggered by two input sources.
+    \\Play the lower half of the keyboard to control the
+    \\note frequency. Press the number keys to change the
+    \\"colour" of the oscillator - from triangle to
+    \\sawtooth. Both input sources trigger the envelope.
 ;
 
 const a4 = 880.0;

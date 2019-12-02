@@ -7,11 +7,11 @@ pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
-    c\\example_curve
-    c\\
-    c\\Trigger a weird sound effect with the keyboard. The
-    c\\sound is defined using a curve, and scales with the
-    c\\frequency of the key you press.
+    \\example_curve
+    \\
+    \\Trigger a weird sound effect with the keyboard. The
+    \\sound is defined using a curve, and scales with the
+    \\frequency of the key you press.
 ;
 
 const carrier_curve = [_]zang.CurveNode {
@@ -58,7 +58,7 @@ const CurvePlayer = struct {
         self.modulator_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
-            .curve = modulator_curve,
+            .curve = &modulator_curve,
             .freq_mul = freq_mul,
         });
         zang.zero(span, temps[1]);
@@ -71,7 +71,7 @@ const CurvePlayer = struct {
         self.carrier_curve.paint(span, [1][]f32{temps[0]}, [0][]f32{}, note_id_changed, zang.Curve.Params {
             .sample_rate = params.sample_rate,
             .function = .SmoothStep,
-            .curve = carrier_curve,
+            .curve = &carrier_curve,
             .freq_mul = freq_mul,
         });
         self.carrier.paint(span, outputs, [0][]f32{}, zang.SineOsc.Params {
