@@ -201,9 +201,9 @@ fn doParse(parser: *Parser) !void {
 
     // i = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
     //     if (i == 1) {
-    //         std.debug.warn("instrument {}:\n", i);
+    //         std.debug.warn("instrument {}:\n", .{ i });
     //         for (all_notes[i]) |note| {
-    //             std.debug.warn("t={}  id={}  freq={}  note_on={}\n", note.t, note.id, note.params.freq, note.params.note_on);
+    //             std.debug.warn("t={}  id={}  freq={}  note_on={}\n", .{ note.t, note.id, note.params.freq, note.params.note_on });
     //         }
     //     }
     // }
@@ -213,7 +213,7 @@ fn parse() void {
     var buffer: [150000]u8 = undefined;
 
     const contents = util.readFile(buffer[0..]) catch {
-        std.debug.warn("failed to read file\n");
+        std.debug.warn("failed to read file\n", .{});
         return;
     };
 
@@ -225,7 +225,7 @@ fn parse() void {
     };
 
     doParse(&parser) catch {
-        std.debug.warn("parse failed on line {}\n", parser.line_index + 1);
+        std.debug.warn("parse failed on line {}\n", .{ parser.line_index + 1 });
     };
 }
 
