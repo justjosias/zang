@@ -15,7 +15,7 @@ pub const SampleFormat = enum {
 };
 
 inline fn decodeSigned(comptime byte_count: u16, slice: []const u8, index: usize) f32 {
-    const T = @IntType(true, byte_count * 8);
+    const T = std.meta.IntType(true, byte_count * 8);
     const sval = std.mem.readIntSliceLittle(T, slice[index * byte_count .. (index + 1) * byte_count]);
     const max = 1 << @as(u32, byte_count * 8 - 1);
     return @intToFloat(f32, sval) / @intToFloat(f32, max);

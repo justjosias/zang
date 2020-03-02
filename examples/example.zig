@@ -34,7 +34,7 @@ fn pushRedrawEvent() void {
     _ = c.SDL_PushEvent(&event);
 }
 
-extern fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) void {
+fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) callconv(.C) void {
     const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
