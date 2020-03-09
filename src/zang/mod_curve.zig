@@ -2,8 +2,8 @@ const std = @import("std");
 const Span = @import("basics.zig").Span;
 
 pub const InterpolationFunction = enum {
-    Linear,
-    SmoothStep,
+    linear,
+    smoothstep,
 };
 
 pub const CurveNode = struct {
@@ -51,7 +51,7 @@ pub const Curve = struct {
     curve_nodes: [32]CurveSpanNode,
 
     pub fn init() Curve {
-        return Curve {
+        return .{
             .current_song_note = 0,
             .current_song_note_offset = 0,
             .next_song_note = 0,
@@ -60,7 +60,14 @@ pub const Curve = struct {
         };
     }
 
-    pub fn paint(self: *Curve, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(
+        self: *Curve,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         if (note_id_changed) {
             self.current_song_note = 0;
             self.current_song_note_offset = 0;
@@ -69,7 +76,11 @@ pub const Curve = struct {
         }
 
         const out = outputs[0][span.start .. span.end];
-        const curve_nodes = self.getCurveSpanNodes(params.sample_rate, out.len, params.curve);
+        const curve_nodes = self.getCurveSpanNodes(
+            params.sample_rate,
+            out.len,
+            params.curve,
+        );
 
         var start: usize = 0;
 
@@ -90,17 +101,19 @@ pub const Curve = struct {
                 // std.debug.assert(curve_span.end <= fend);
 
                 // 'x' values are 0-1
-                const start_x = @intToFloat(f32, paint_start - fstart) / @intToFloat(f32, fend - fstart);
+                const start_x = @intToFloat(f32, paint_start - fstart) /
+                    @intToFloat(f32, fend - fstart);
 
                 const start_value = params.freq_mul * values.start_node.value;
-                const value_delta = params.freq_mul * (values.end_node.value - values.start_node.value);
+                const value_delta = params.freq_mul *
+                    (values.end_node.value - values.start_node.value);
 
                 const x_step = 1.0 / @intToFloat(f32, fend - fstart);
 
                 var i: usize = curve_span.start;
 
                 switch (params.function) {
-                    .Linear => {
+                    .linear => {
                         var y = start_value + start_x * value_delta;
                         var y_step = x_step * value_delta;
 
@@ -109,11 +122,12 @@ pub const Curve = struct {
                             y += y_step;
                         }
                     },
-                    .SmoothStep => {
+                    .smoothstep => {
                         var x = start_x;
 
                         while (i < curve_span.end) : (i += 1) {
-                            out[i] += start_value + x * x * (3.0 - 2.0 * x) * value_delta;
+                            const v = x * x * (3.0 - 2.0 * x) * value_delta;
+                            out[i] += start_value + v;
                             x += x_step;
                         }
                     },
@@ -124,7 +138,12 @@ pub const Curve = struct {
         }
     }
 
-    fn getCurveSpanNodes(self: *Curve, sample_rate: f32, out_len: usize, curve_nodes: []const CurveNode) []CurveSpanNode {
+    fn getCurveSpanNodes(
+        self: *Curve,
+        sample_rate: f32,
+        out_len: usize,
+        curve_nodes: []const CurveNode,
+    ) []CurveSpanNode {
         var count: usize = 0;
 
         const buf_time = @intToFloat(f32, out_len) / sample_rate;
@@ -151,10 +170,14 @@ pub const Curve = struct {
                 }
             }
             const f = (note_t - self.t) / buf_time; // 0 to 1
-            const rel_frame_index = @floatToInt(i32, f * @intToFloat(f32, out_len));
+            const rel_frame_index =
+                @floatToInt(i32, f * @intToFloat(f32, out_len));
             // if there's already a note at this frame (from the previous note
             // carry-over), this should overwrite that one
-            if (count > 0 and self.curve_nodes[count - 1].frame == rel_frame_index) {
+            if (
+                count > 0 and
+                self.curve_nodes[count - 1].frame == rel_frame_index
+            ) {
                 count -= 1;
             }
             self.curve_nodes[count] = CurveSpanNode {
@@ -176,8 +199,13 @@ pub const Curve = struct {
     }
 };
 
-// note: will possibly emit an end node past the end of the buffer (necessary for interpolation)
-fn getNextCurveSpan(curve_nodes: []const CurveSpanNode, dest_start_: usize, dest_end_: usize) CurveSpan {
+// note: will possibly emit an end node past the end of the buffer (necessary
+// for interpolation)
+fn getNextCurveSpan(
+    curve_nodes: []const CurveSpanNode,
+    dest_start_: usize,
+    dest_end_: usize,
+) CurveSpan {
     std.debug.assert(dest_start_ < dest_end_);
 
     const dest_start = @intCast(i32, dest_start_);
@@ -187,13 +215,13 @@ fn getNextCurveSpan(curve_nodes: []const CurveSpanNode, dest_start_: usize, dest
         const start_pos = curve_node.frame;
 
         if (start_pos >= dest_end) {
-            // this curve_node (and all after it, since they're in chronological order)
-            // starts after the end of the buffer
+            // this curve_node (and all after it, since they're in
+            // chronological order) starts after the end of the buffer
             break;
         }
 
-        // this span ends at the start of the next curve_node (if one exists), or the
-        // end of the buffer, whichever comes first
+        // this span ends at the start of the next curve_node (if one exists),
+        // or the end of the buffer, whichever comes first
         const end_pos =
             if (i < curve_nodes.len - 1)
                 std.math.min(dest_end, curve_nodes[i + 1].frame)

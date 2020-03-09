@@ -3,7 +3,7 @@ const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -29,25 +29,32 @@ pub const Instrument = struct {
     env: zang.Envelope,
 
     pub fn init() Instrument {
-        return Instrument {
+        return .{
             .osc = zang.PulseOsc.init(),
             .env = zang.Envelope.init(),
         };
     }
 
-    pub fn paint(self: *Instrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(
+        self: *Instrument,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.PulseOsc.Params {
+        self.osc.paint(span, .{temps[0]}, .{}, .{
             .sample_rate = params.sample_rate,
             .freq = zang.constant(params.freq),
             .color = 0.5,
         });
         zang.zero(span, temps[1]);
-        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
+        self.env.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
-            .attack = zang.Painter.Curve { .Cubed = 1.0 },
-            .decay = zang.Painter.Curve { .Cubed = 1.0 },
-            .release = zang.Painter.Curve { .Cubed = 1.0 },
+            .attack = .{ .cubed = 1.0 },
+            .decay = .{ .cubed = 1.0 },
+            .release = .{ .cubed = 1.0 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
@@ -66,7 +73,7 @@ pub const MainModule = struct {
     trig: zang.Trigger(Instrument.Params),
 
     pub fn init() MainModule {
-        return MainModule {
+        return .{
             .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
@@ -74,16 +81,32 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.instr.paint(
+                result.span,
+                outputs,
+                temps,
+                result.note_id_changed,
+                result.params,
+            );
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (key == c.SDLK_SPACE) {
-            self.iq.push(impulse_frame, self.idgen.nextId(), Instrument.Params {
+            self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .freq = a4 * note_frequencies.c2,
                 .note_on = down,

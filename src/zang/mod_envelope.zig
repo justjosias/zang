@@ -1,5 +1,7 @@
+const std = @import("std");
 const Span = @import("basics.zig").Span;
-const Painter = @import("paint_line.zig").Painter;
+const PaintState = @import("painter.zig").PaintState;
+const Painter = @import("painter.zig").Painter;
 
 pub const Envelope = struct {
     pub const num_outputs = 1;
@@ -13,20 +15,14 @@ pub const Envelope = struct {
         note_on: bool,
     };
 
-    const State = enum {
-        Idle,
-        Attack,
-        Decay,
-        Sustain,
-        Release,
-    };
+    const State = enum { idle, attack, decay, sustain, release };
 
     state: State,
     painter: Painter,
 
     pub fn init() Envelope {
-        return Envelope {
-            .state = .Idle,
+        return .{
+            .state = .idle,
             .painter = Painter.init(),
         };
     }
@@ -36,53 +32,63 @@ pub const Envelope = struct {
         self.painter.newCurve();
     }
 
-    fn paintOn(self: *Envelope, buf: []f32, params: Params, new_note: bool) void {
-        var i: usize = 0;
+    fn paintOn(self: *Envelope, buf: []f32, p: Params, new_note: bool) void {
+        var ps = PaintState.init(buf, p.sample_rate);
 
         if (new_note) {
-            self.changeState(.Attack);
+            self.changeState(.attack);
         }
 
-        if (self.state == .Attack) {
-            if (self.painter.paintToward(buf, &i, params.sample_rate, params.attack, 1.0)) {
-                if (params.sustain_volume < 1.0) {
-                    self.changeState(.Decay);
+        std.debug.assert(self.state != .idle);
+        std.debug.assert(self.state != .release);
+
+        if (self.state == .attack) {
+            if (self.painter.paintToward(&ps, p.attack, 1.0)) {
+                if (p.sustain_volume < 1.0) {
+                    self.changeState(.decay);
                 } else {
-                    self.changeState(.Sustain);
+                    self.changeState(.sustain);
                 }
             }
         }
 
-        if (self.state == .Decay) {
-            if (self.painter.paintToward(buf, &i, params.sample_rate, params.decay, params.sustain_volume)) {
-                self.changeState(.Sustain);
+        if (self.state == .decay) {
+            if (self.painter.paintToward(&ps, p.decay, p.sustain_volume)) {
+                self.changeState(.sustain);
             }
         }
 
-        if (self.state == .Sustain) {
-            while (i < buf.len) : (i += 1) {
-                buf[i] += params.sustain_volume;
-            }
+        if (self.state == .sustain) {
+            self.painter.paintFlat(&ps, p.sustain_volume);
         }
+
+        std.debug.assert(ps.i == buf.len);
     }
 
-    fn paintOff(self: *Envelope, buf: []f32, params: Params) void {
-        if (self.state == .Idle) {
+    fn paintOff(self: *Envelope, buf: []f32, p: Params) void {
+        if (self.state == .idle) {
             return;
         }
 
-        var i: usize = 0;
+        var ps = PaintState.init(buf, p.sample_rate);
 
-        if (self.state != .Release) {
-            self.changeState(.Release);
+        if (self.state != .release) {
+            self.changeState(.release);
         }
 
-        if (self.painter.paintToward(buf, &i, params.sample_rate, params.release, 0.0)) {
-            self.changeState(.Idle);
+        if (self.painter.paintToward(&ps, p.release, 0.0)) {
+            self.changeState(.idle);
         }
     }
 
-    pub fn paint(self: *Envelope, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(
+        self: *Envelope,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         const output = outputs[0][span.start..span.end];
 
         if (params.note_on) {

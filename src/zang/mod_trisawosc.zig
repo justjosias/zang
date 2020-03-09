@@ -39,24 +39,46 @@ pub const TriSawOsc = struct {
     t: f32, // TODO - remove (see below)
 
     pub fn init() TriSawOsc {
-        return TriSawOsc {
+        return .{
             .cnt = 0,
             .t = 0.0,
         };
     }
 
-    pub fn paint(self: *TriSawOsc, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *TriSawOsc,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         switch (params.freq) {
-            .Constant => |freq| {
-                self.paintConstantFrequency(outputs[0][span.start..span.end], params.sample_rate, freq, params.color);
+            .constant => |freq| {
+                self.paintConstantFrequency(
+                    outputs[0][span.start..span.end],
+                    params.sample_rate,
+                    freq,
+                    params.color,
+                );
             },
-            .Buffer => |freq| {
-                self.paintControlledFrequency(outputs[0][span.start..span.end], params.sample_rate, freq[span.start..span.end], params.color);
+            .buffer => |freq| {
+                self.paintControlledFrequency(
+                    outputs[0][span.start..span.end],
+                    params.sample_rate,
+                    freq[span.start..span.end],
+                    params.color,
+                );
             }
         }
     }
 
-    fn paintConstantFrequency(self: *TriSawOsc, output: []f32, sample_rate: f32, freq: f32, color: f32) void {
+    fn paintConstantFrequency(
+        self: *TriSawOsc,
+        output: []f32,
+        sample_rate: f32,
+        freq: f32,
+        color: f32,
+    ) void {
         if (freq < 0 or freq > sample_rate / 8.0) {
             return;
         }
@@ -77,7 +99,8 @@ pub const TriSawOsc = struct {
         var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt) - col;
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            output[i] += gain + switch (state | (@as(u32, @boolToInt(cnt < ifreq)) << 2)) {
+            const s = state | (@as(u32, @boolToInt(cnt < ifreq)) << 2);
+            output[i] += gain + switch (s) {
                 0b011 => c1 * (p + p - f), // up
                 0b000 => c2 * (p + p - f), // down
                 0b010 => rcpf * (c2 * sqr(p) - c1 * sqr(p - f)), // up down
@@ -91,11 +114,18 @@ pub const TriSawOsc = struct {
         self.cnt = cnt;
     }
 
-    fn paintControlledFrequency(self: *TriSawOsc, output: []f32, sample_rate: f32, freq: []const f32, color: f32) void {
+    fn paintControlledFrequency(
+        self: *TriSawOsc,
+        output: []f32,
+        sample_rate: f32,
+        freq: []const f32,
+        color: f32,
+    ) void {
         // TODO - implement color properly
         // TODO - rewrite using self.cnt and get rid of self.t
         // TODO - antialiasing
-        // TODO - add equivalent of the bad frequency check at the top of paintConstantFrequency
+        // TODO - add equivalent of the bad frequency check at the top of
+        // paintConstantFrequency
         var t = self.t;
         const gain = 0.7;
         var i: usize = 0; while (i < output.len) : (i += 1) {
@@ -117,6 +147,7 @@ pub const TriSawOsc = struct {
             output[i] += gain * frac;
             t += freq[i] / sample_rate;
         }
-        self.t = t - std.math.trunc(t); // it actually goes out of tune without this!...
+        // it actually goes out of tune without this!...
+        self.t = t - std.math.trunc(t);
     }
 };

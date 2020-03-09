@@ -1,4 +1,5 @@
-const Painter = @import("paint_line.zig").Painter;
+const PaintState = @import("painter.zig").PaintState;
+const Painter = @import("painter.zig").Painter;
 const Span = @import("basics.zig").Span;
 const addScalarInto = @import("basics.zig").addScalarInto;
 
@@ -16,28 +17,36 @@ pub const Portamento = struct {
     painter: Painter,
 
     pub fn init() Portamento {
-        return Portamento {
+        return .{
             .painter = Painter.init(),
         };
     }
 
-    pub fn paint(self: *Portamento, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(
+        self: *Portamento,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         const output = outputs[0][span.start..span.end];
-
-        if (params.note_on and note_id_changed) {
-            self.painter.newCurve();
-        }
 
         const curve =
             if (params.note_on and params.prev_note_on)
                 params.curve
             else
-                .Instantaneous;
+                .instantaneous;
 
-        var i: usize = 0;
-        if (self.painter.paintToward(output, &i, params.sample_rate, curve, params.goal)) {
-            // reached goal before end of buffer
-            addScalarInto(Span { .start = i, .end = span.end }, output, params.goal);
+        if (params.note_on and note_id_changed) {
+            self.painter.newCurve();
+        }
+
+        var paint_state = PaintState.init(output, params.sample_rate);
+        if (self.painter.paintToward(&paint_state, curve, params.goal)) {
+            // reached goal before end of buffer. set all subsequent samples
+            // to `goal`
+            self.painter.paintFlat(&paint_state, params.goal);
         }
     }
 };

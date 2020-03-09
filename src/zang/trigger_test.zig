@@ -5,10 +5,7 @@ const Impulse = @import("notes.zig").Impulse;
 const Notes = @import("notes.zig").Notes;
 const Span = @import("basics.zig").Span;
 
-const span = Span {
-    .start = 0,
-    .end = 1024,
-};
+const span = Span.init(0, 1024);
 
 const ExpectedResult = struct {
     start: usize,
@@ -17,7 +14,11 @@ const ExpectedResult = struct {
     note_id_changed: bool,
 };
 
-fn testAll(trigger: *Trigger(f32), iap: Notes(f32).ImpulsesAndParamses, expected: []const ExpectedResult) void {
+fn testAll(
+    trigger: *Trigger(f32),
+    iap: Notes(f32).ImpulsesAndParamses,
+    expected: []const ExpectedResult,
+) void {
     var ctr = trigger.counter(span, iap);
 
     for (expected) |e| {
@@ -28,7 +29,10 @@ fn testAll(trigger: *Trigger(f32), iap: Notes(f32).ImpulsesAndParamses, expected
         std.testing.expectEqual(e.note_id_changed, r.note_id_changed);
     }
 
-    std.testing.expectEqual(@as(?Trigger(f32).NewPaintReturnValue, null), trigger.next(&ctr));
+    std.testing.expectEqual(
+        @as(?Trigger(f32).NewPaintReturnValue, null),
+        trigger.next(&ctr),
+    );
 }
 
 test "Trigger: no notes" {

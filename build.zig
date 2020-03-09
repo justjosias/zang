@@ -22,12 +22,17 @@ const examples = [_][]const u8 {
 pub fn build(b: *std.build.Builder) void {
     b.step("test", "Run all tests").dependOn(&b.addTest("test.zig").step);
     inline for (examples) |name| {
-        b.step(name, "Run example '" ++ name ++ "'").dependOn(&example(b, name).run().step);
+        b.step(name, "Run example '" ++ name ++ "'")
+            .dependOn(&example(b, name).run().step);
     }
-    b.step("write_wav", "Run example 'write_wav'").dependOn(&writeWav(b).run().step);
+    b.step("write_wav", "Run example 'write_wav'")
+        .dependOn(&writeWav(b).run().step);
 }
 
-fn example(b: *std.build.Builder, comptime name: []const u8) *std.build.LibExeObjStep {
+fn example(
+    b: *std.build.Builder,
+    comptime name: []const u8,
+) *std.build.LibExeObjStep {
     var o = b.addExecutable(name, "examples/example.zig");
     o.setBuildMode(b.standardReleaseOptions());
     o.addPackagePath("wav", "examples/zig-wav/wav.zig");

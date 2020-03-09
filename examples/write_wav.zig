@@ -11,10 +11,16 @@ const bytes_per_sample = switch (example.AUDIO_FORMAT) {
     .S16LSB => 2,
 };
 
-var g_outputs: [example.MainModule.num_outputs][example.AUDIO_BUFFER_SIZE]f32 = undefined;
-var g_temps: [example.MainModule.num_temps][example.AUDIO_BUFFER_SIZE]f32 = undefined;
+var g_outputs:
+    [example.MainModule.num_outputs][example.AUDIO_BUFFER_SIZE]f32
+    = undefined;
+var g_temps:
+    [example.MainModule.num_temps][example.AUDIO_BUFFER_SIZE]f32
+    = undefined;
 
-var g_big_buffer: [TOTAL_TIME * bytes_per_sample * example.MainModule.num_outputs]u8 = undefined;
+var g_big_buffer:
+    [TOTAL_TIME * bytes_per_sample * example.MainModule.num_outputs]u8
+    = undefined;
 
 pub fn main() !void {
     var main_module = example.MainModule.init();

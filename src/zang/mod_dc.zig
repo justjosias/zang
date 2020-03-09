@@ -9,10 +9,16 @@ pub const DC = struct {
     };
 
     pub fn init() DC {
-        return DC {};
+        return .{};
     }
 
-    pub fn paint(self: *DC, span: Span, outputs: [num_outputs][]f32, tmp: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *DC,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        tmp: [num_temps][]f32,
+        params: Params,
+    ) void {
         addScalarInto(span, outputs[0], params.value);
     }
 };

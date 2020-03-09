@@ -9,12 +9,12 @@ const Span = @import("basics.zig").Span;
 const fcdcoffset: f32 = 3.814697265625e-6; // 2^-18
 
 pub const FilterType = enum {
-    Bypass,
-    LowPass,
-    BandPass,
-    HighPass,
-    Notch,
-    AllPass,
+    bypass,
+    low_pass,
+    band_pass,
+    high_pass,
+    notch,
+    all_pass,
 };
 
 // convert a frequency into a cutoff value so it can be used with the filter
@@ -40,22 +40,42 @@ pub const Filter = struct {
     b: f32,
 
     pub fn init() Filter {
-        return Filter {
+        return .{
             .l = 0.0,
             .b = 0.0,
         };
     }
 
-    pub fn paint(self: *Filter, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *Filter,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         // TODO make resonance a ConstantOrBuffer as well
         const output = outputs[0][span.start..span.end];
         const input = params.input[span.start..span.end];
 
         switch (params.cutoff) {
-            .Constant => |cutoff|
-                self.paintSimple(output, input, params.filter_type, cutoff, params.resonance),
-            .Buffer => |cutoff|
-                self.paintControlledCutoff(output, input, params.filter_type, cutoff[span.start..span.end], params.resonance),
+            .constant => |cutoff| {
+                self.paintSimple(
+                    output,
+                    input,
+                    params.filter_type,
+                    cutoff,
+                    params.resonance,
+                );
+            },
+            .buffer => |cutoff| {
+                self.paintControlledCutoff(
+                    output,
+                    input,
+                    params.filter_type,
+                    cutoff[span.start..span.end],
+                    params.resonance,
+                );
+            },
         }
     }
 
@@ -72,24 +92,24 @@ pub const Filter = struct {
         var h_mul: f32 = 0.0;
 
         switch (filter_type) {
-            .Bypass => {
+            .bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
             },
-            .LowPass => {
+            .low_pass => {
                 l_mul = 1.0;
             },
-            .BandPass => {
+            .band_pass => {
                 b_mul = 1.0;
             },
-            .HighPass => {
+            .high_pass => {
                 h_mul = 1.0;
             },
-            .Notch => {
+            .notch => {
                 l_mul = 1.0;
                 h_mul = 1.0;
             },
-            .AllPass => {
+            .all_pass => {
                 l_mul = 1.0;
                 b_mul = 1.0;
                 h_mul = 1.0;
@@ -144,24 +164,24 @@ pub const Filter = struct {
         var h_mul: f32 = 0.0;
 
         switch (filter_type) {
-            .Bypass => {
+            .bypass => {
                 std.mem.copy(f32, buf, input);
                 return;
             },
-            .LowPass => {
+            .low_pass => {
                 l_mul = 1.0;
             },
-            .BandPass => {
+            .band_pass => {
                 b_mul = 1.0;
             },
-            .HighPass => {
+            .high_pass => {
                 h_mul = 1.0;
             },
-            .Notch => {
+            .notch => {
                 l_mul = 1.0;
                 h_mul = 1.0;
             },
-            .AllPass => {
+            .all_pass => {
                 l_mul = 1.0;
                 b_mul = 1.0;
                 h_mul = 1.0;

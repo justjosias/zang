@@ -5,9 +5,9 @@
 const std = @import("std");
 const Span = @import("basics.zig").Span;
 
-pub const DistortionType = enum{
-    Overdrive,
-    Clip,
+pub const DistortionType = enum {
+    overdrive,
+    clip,
 };
 
 pub const Distortion = struct {
@@ -22,24 +22,31 @@ pub const Distortion = struct {
     };
 
     pub fn init() Distortion {
-        return Distortion {};
+        return .{};
     }
 
-    pub fn paint(self: *Distortion, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *Distortion,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         const output = outputs[0];
 
         const gain1 = std.math.pow(f32, 2.0, params.ingain * 8.0 - 2.0);
 
         switch (params.distortion_type) {
-            .Overdrive => {
+            .overdrive => {
                 const gain2 = params.outgain / std.math.atan(gain1);
                 const offs = gain1 * params.offset;
 
                 var i = span.start; while (i < span.end) : (i += 1) {
-                    output[i] += gain2 * std.math.atan(params.input[i] * gain1 + offs);
+                    const a = std.math.atan(params.input[i] * gain1 + offs);
+                    output[i] += gain2 * a;
                 }
             },
-            .Clip => {
+            .clip => {
                 const gain2 = params.outgain;
                 const offs = gain1 * params.offset;
 

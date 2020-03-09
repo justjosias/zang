@@ -14,13 +14,19 @@ pub const Decimator = struct {
     dcount: f32,
 
     pub fn init() Decimator {
-        return Decimator {
+        return .{
             .dval = 0.0,
             .dcount = 1.0,
         };
     }
 
-    pub fn paint(self: *Decimator, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *Decimator,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         const output = outputs[0];
 
         if (params.fake_sample_rate >= params.sample_rate) {

@@ -9,12 +9,18 @@ pub const Noise = struct {
     r: std.rand.Xoroshiro128,
 
     pub fn init(seed: u64) Noise {
-        return Noise {
+        return .{
             .r = std.rand.DefaultPrng.init(seed),
         };
     }
 
-    pub fn paint(self: *Noise, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *Noise,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         const buf = outputs[0][span.start..span.end];
         var r = self.r;
         var i: usize = 0;

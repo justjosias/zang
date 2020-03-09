@@ -7,7 +7,7 @@ const std = @import("std");
 pub fn Delay(comptime delay_samples: usize) type {
     return struct {
         delay_buffer: [delay_samples]f32,
-        delay_buffer_index: usize, // this will wrap around. always < delay_samples
+        delay_buffer_index: usize, // this wraps around. always < delay_samples
 
         pub fn init() @This() {
             return @This() {
@@ -32,8 +32,9 @@ pub fn Delay(comptime delay_samples: usize) type {
                 else
                     out;
 
-            const len = std.math.min(delay_samples - self.delay_buffer_index, actual_out.len);
-            const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
+            const index = self.delay_buffer_index;
+            const len = std.math.min(delay_samples - index, actual_out.len);
+            const delay_slice = self.delay_buffer[index .. index + len];
 
             // paint from delay buffer to output
             var i: usize = 0; while (i < len) : (i += 1) {
@@ -63,8 +64,9 @@ pub fn Delay(comptime delay_samples: usize) type {
             // copy input to delay buffer and increment delay_buffer_index.
             // we'll have to do this in up to two steps (in case we are
             // wrapping around the delay buffer)
-            const len = std.math.min(delay_samples - self.delay_buffer_index, input.len);
-            const delay_slice = self.delay_buffer[self.delay_buffer_index .. self.delay_buffer_index + len];
+            const index = self.delay_buffer_index;
+            const len = std.math.min(delay_samples - index, input.len);
+            const delay_slice = self.delay_buffer[index .. index + len];
 
             // paint from input into delay buffer
             std.mem.copy(f32, delay_slice, input[0..len]);

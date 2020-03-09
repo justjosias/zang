@@ -37,23 +37,45 @@ pub const PulseOsc = struct {
     cnt: u32,
 
     pub fn init() PulseOsc {
-        return PulseOsc {
+        return .{
             .cnt = 0,
         };
     }
 
-    pub fn paint(self: *PulseOsc, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *PulseOsc,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         switch (params.freq) {
-            .Constant => |freq| {
-                self.paintConstantFrequency(outputs[0][span.start..span.end], params.sample_rate, freq, params.color);
+            .constant => |freq| {
+                self.paintConstantFrequency(
+                    outputs[0][span.start..span.end],
+                    params.sample_rate,
+                    freq,
+                    params.color,
+                );
             },
-            .Buffer => |freq| {
-                self.paintControlledFrequency(outputs[0][span.start..span.end], params.sample_rate, freq[span.start..span.end], params.color);
+            .buffer => |freq| {
+                self.paintControlledFrequency(
+                    outputs[0][span.start..span.end],
+                    params.sample_rate,
+                    freq[span.start..span.end],
+                    params.color,
+                );
             }
         }
     }
 
-    fn paintConstantFrequency(self: *PulseOsc, output: []f32, sample_rate: f32, freq: f32, color: f32) void {
+    fn paintConstantFrequency(
+        self: *PulseOsc,
+        output: []f32,
+        sample_rate: f32,
+        freq: f32,
+        color: f32,
+    ) void {
         if (freq < 0 or freq > sample_rate / 8.0) {
             return;
         }
@@ -72,7 +94,8 @@ pub const PulseOsc = struct {
         var i: usize = 0; while (i < output.len) : (i += 1) {
             const p = utof23(cnt);
             state = ((state << 1) | @boolToInt(cnt < brpt)) & 3;
-            output[i] += switch (state | (@as(u32, @boolToInt(cnt < ifreq)) << 2)) {
+            const s = state | (@as(u32, @boolToInt(cnt < ifreq)) << 2);
+            output[i] += switch (s) {
                 0b011 => gain, // up
                 0b000 => -gain, // down
                 0b010 => gdf * 2.0 * (col - p) + gain, // up down
@@ -86,9 +109,16 @@ pub const PulseOsc = struct {
         self.cnt = cnt;
     }
 
-    fn paintControlledFrequency(self: *PulseOsc, output: []f32, sample_rate: f32, freq: []const f32, color: f32) void {
+    fn paintControlledFrequency(
+        self: *PulseOsc,
+        output: []f32,
+        sample_rate: f32,
+        freq: []const f32,
+        color: f32,
+    ) void {
         // TODO - implement antialiasing here
-        // TODO - add equivalent of the bad frequency check at the top of paintConstantFrequency
+        // TODO - add equivalent of the bad frequency check at the top of
+        // paintConstantFrequency
         var cnt = self.cnt;
         const SRfcobasefrq = fc32bit / sample_rate;
         const brpt = ftou32(clamp01(color));

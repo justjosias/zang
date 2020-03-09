@@ -6,7 +6,7 @@ const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -33,25 +33,32 @@ const InnerInstrument = struct {
     env: zang.Envelope,
 
     fn init() InnerInstrument {
-        return InnerInstrument {
+        return .{
             .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
         };
     }
 
-    fn paint(self: *InnerInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    fn paint(
+        self: *InnerInstrument,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, [1][]f32{temps[0]}, [0][]f32{}, zang.TriSawOsc.Params {
+        self.osc.paint(span, .{temps[0]}, .{}, .{
             .sample_rate = params.sample_rate,
             .freq = zang.constant(params.freq),
             .color = 0.0,
         });
         zang.zero(span, temps[1]);
-        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
+        self.env.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
-            .attack = zang.Painter.Curve { .Cubed = 0.025 },
-            .decay = zang.Painter.Curve { .Cubed = 0.1 },
-            .release = zang.Painter.Curve { .Cubed = 0.15 },
+            .attack = .{ .cubed = 0.025 },
+            .decay = .{ .cubed = 0.1 },
+            .release = .{ .cubed = 0.15 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
@@ -63,6 +70,19 @@ const MyNoteParams = struct {
     freq: f32,
     note_on: bool,
 };
+
+fn makeNote(
+    t: f32,
+    id: usize,
+    freq: f32,
+    note_on: bool,
+) zang.Notes(MyNoteParams).SongEvent {
+    return .{
+        .t = 0.1 * t,
+        .note_id = id,
+        .params = .{ .freq = freq, .note_on = note_on },
+    };
+}
 
 // an example of a custom "module"
 const SubtrackPlayer = struct {
@@ -85,29 +105,39 @@ const SubtrackPlayer = struct {
         const f = note_frequencies;
         const t = 0.1;
 
-        return SubtrackPlayer {
+        return .{
             .tracker = zang.Notes(MyNoteParams).NoteTracker.init(&[_]SongEvent {
-                SongEvent { .t = 0.0 * t, .note_id = 1, .params = MyNoteParams { .freq = a4 * f.c4, .note_on = true }},
-                SongEvent { .t = 1.0 * t, .note_id = 2, .params = MyNoteParams { .freq = a4 * f.ab3, .note_on = true }},
-                SongEvent { .t = 2.0 * t, .note_id = 3, .params = MyNoteParams { .freq = a4 * f.g3, .note_on = true }},
-                SongEvent { .t = 3.0 * t, .note_id = 4, .params = MyNoteParams { .freq = a4 * f.eb3, .note_on = true }},
-                SongEvent { .t = 4.0 * t, .note_id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = true }},
-                SongEvent { .t = 5.0 * t, .note_id = 5, .params = MyNoteParams { .freq = a4 * f.c3, .note_on = false }},
+                comptime makeNote(0.0, 1, a4 * f.c4, true),
+                comptime makeNote(1.0, 2, a4 * f.ab3, true),
+                comptime makeNote(2.0, 3, a4 * f.g3, true),
+                comptime makeNote(3.0, 4, a4 * f.eb3, true),
+                comptime makeNote(4.0, 5, a4 * f.c3, true),
+                comptime makeNote(5.0, 5, a4 * f.c3, false),
             }),
             .instr = InnerInstrument.init(),
             .trigger = zang.Trigger(MyNoteParams).init(),
         };
     }
 
-    fn paint(self: *SubtrackPlayer, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    fn paint(
+        self: *SubtrackPlayer,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         if (params.note_on and note_id_changed) {
             self.tracker.reset();
             self.trigger.reset();
         }
-
-        var ctr = self.trigger.counter(span, self.tracker.consume(params.sample_rate, span.end - span.start));
+        const iap =
+            self.tracker.consume(params.sample_rate, span.end - span.start);
+        var ctr = self.trigger.counter(span, iap);
         while (self.trigger.next(&ctr)) |result| {
-            self.instr.paint(result.span, outputs, temps, (params.note_on and note_id_changed) or result.note_id_changed, InnerInstrument.Params {
+            const new_note =
+                (params.note_on and note_id_changed) or result.note_id_changed;
+            self.instr.paint(result.span, outputs, temps, new_note, .{
                 .sample_rate = params.sample_rate,
                 .freq = result.params.freq * params.freq / BaseFrequency,
                 .note_on = result.params.note_on,
@@ -127,7 +157,7 @@ pub const MainModule = struct {
     trigger: zang.Trigger(SubtrackPlayer.Params),
 
     pub fn init() MainModule {
-        return MainModule {
+        return .{
             .key = null,
             .iq = zang.Notes(SubtrackPlayer.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
@@ -136,18 +166,34 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.player.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.player.paint(
+                result.span,
+                outputs,
+                temps,
+                result.note_id_changed,
+                result.params,
+            );
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.iq.push(impulse_frame, self.idgen.nextId(), SubtrackPlayer.Params {
+                self.iq.push(impulse_frame, self.idgen.nextId(), .{
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * rel_freq,
                     .note_on = down,

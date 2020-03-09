@@ -6,7 +6,7 @@ const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").NiceInstrument;
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -41,7 +41,7 @@ const Polyphony = struct {
     voices: [common.key_bindings.len]Voice,
 
     fn init() Polyphony {
-        var self = Polyphony {
+        var self: Polyphony = .{
             .voices = undefined,
         };
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
@@ -56,10 +56,16 @@ const Polyphony = struct {
         return self;
     }
 
-    fn paint(self: *Polyphony, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    fn paint(
+        self: *Polyphony,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
-                self.voices[i].iq.push(0, self.voices[i].idgen.nextId(), Instrument.Params {
+                self.voices[i].iq.push(0, self.voices[i].idgen.nextId(), .{
                     .sample_rate = params.sample_rate,
                     .freq = a4 * common.key_bindings[i].rel_freq,
                     .note_on = params.note_held[i],
@@ -71,7 +77,13 @@ const Polyphony = struct {
         for (self.voices) |*voice| {
             var ctr = voice.trigger.counter(span, voice.iq.consume());
             while (voice.trigger.next(&ctr)) |result| {
-                voice.instrument.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+                voice.instrument.paint(
+                    result.span,
+                    outputs,
+                    temps,
+                    result.note_id_changed,
+                    result.params,
+                );
             }
         }
     }
@@ -94,8 +106,8 @@ pub const MainModule = struct {
     dec_mode: u32,
 
     pub fn init() MainModule {
-        return MainModule{
-            .current_params = Polyphony.Params {
+        return .{
+            .current_params = .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
@@ -108,26 +120,35 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         zang.zero(span, temps[2]);
-        {
-            var ctr = self.trigger.counter(span, self.iq.consume());
-            while (self.trigger.next(&ctr)) |result| {
-                self.polyphony.paint(result.span, [1][]f32{temps[2]}, [2][]f32{temps[0], temps[1]}, result.params);
-            }
+
+        var ctr = self.trigger.counter(span, self.iq.consume());
+        while (self.trigger.next(&ctr)) |result| {
+            self.polyphony.paint(
+                result.span,
+                .{temps[2]},
+                .{temps[0], temps[1]},
+                result.params,
+            );
         }
 
         if (self.dec_mode > 0) {
-            self.dec.paint(span, outputs, [0][]f32{}, zang.Decimator.Params {
+            self.dec.paint(span, outputs, .{}, .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .input = temps[2],
                 .fake_sample_rate = switch (self.dec_mode) {
-                    1 => @as(f32, 6000.0),
-                    2 => @as(f32, 5000.0),
-                    3 => @as(f32, 4000.0),
-                    4 => @as(f32, 3000.0),
-                    5 => @as(f32, 2000.0),
-                    6 => @as(f32, 1000.0),
+                    1 => 6000.0,
+                    2 => 5000.0,
+                    3 => 4000.0,
+                    4 => 3000.0,
+                    5 => 2000.0,
+                    6 => 1000.0,
                     else => unreachable,
                 },
             });
@@ -136,7 +157,12 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (key == c.SDLK_SPACE and down) {
             self.dec_mode = (self.dec_mode + 1) % 7;
             return;
@@ -144,7 +170,11 @@ pub const MainModule = struct {
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
-                self.iq.push(impulse_frame, self.idgen.nextId(), self.current_params);
+                self.iq.push(
+                    impulse_frame,
+                    self.idgen.nextId(),
+                    self.current_params,
+                );
             }
         }
     }

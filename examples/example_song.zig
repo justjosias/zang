@@ -5,7 +5,7 @@ const common = @import("common.zig");
 const c = @import("common/c.zig");
 const util = @import("common/util.zig");
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 4096;
 
@@ -29,9 +29,15 @@ const MyNoteParams = struct {
 
 const Pedal = struct {
     const Module = @import("modules.zig").PMOscInstrument;
-    fn initModule() Module { return Module.init(0.4); }
+    fn initModule() Module {
+        return Module.init(0.4);
+    }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-        return Module.Params { .sample_rate = sample_rate, .freq = src.freq * 0.5, .note_on = src.note_on };
+        return .{
+            .sample_rate = sample_rate,
+            .freq = src.freq * 0.5,
+            .note_on = src.note_on,
+        };
     }
     const polyphony = 3;
     const num_columns = 2;
@@ -39,9 +45,15 @@ const Pedal = struct {
 
 const RegularOrgan = struct {
     const Module = @import("modules.zig").NiceInstrument;
-    fn initModule() Module { return Module.init(0.25); }
+    fn initModule() Module {
+        return Module.init(0.25);
+    }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-        return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+        return .{
+            .sample_rate = sample_rate,
+            .freq = src.freq,
+            .note_on = src.note_on,
+        };
     }
     const polyphony = 10;
     const num_columns = 8;
@@ -49,9 +61,15 @@ const RegularOrgan = struct {
 
 const WeirdOrgan = struct {
     const Module = @import("modules.zig").NiceInstrument;
-    fn initModule() Module { return Module.init(0.1); }
+    fn initModule() Module {
+        return Module.init(0.1);
+    }
     fn makeParams(sample_rate: f32, src: MyNoteParams) Module.Params {
-        return Module.Params { .sample_rate = sample_rate, .freq = src.freq, .note_on = src.note_on };
+        return .{
+            .sample_rate = sample_rate,
+            .freq = src.freq,
+            .note_on = src.note_on,
+        };
     }
     const polyphony = 4;
     const num_columns = 2;
@@ -84,15 +102,23 @@ const TOTAL_COLUMNS = blk: {
 
 const NUM_INSTRUMENTS = COLUMNS_PER_VOICE.len;
 
-// note we can't put params straight into Module.Params because that requires sample_rate which is only known at runtime
-var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongEvent = undefined;
-var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongEvent = undefined;
+// note we can't put params straight into Module.Params because that requires
+// sample_rate which is only known at runtime
+var all_notes_arr:
+    [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongEvent = undefined;
+var all_notes:
+    [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongEvent = undefined;
 
-fn makeSongNote(t: f32, id: usize, freq: f32, note_on: bool) zang.Notes(MyNoteParams).SongEvent {
-    return zang.Notes(MyNoteParams).SongEvent {
+fn makeSongNote(
+    t: f32,
+    id: usize,
+    freq: f32,
+    note_on: bool,
+) zang.Notes(MyNoteParams).SongEvent {
+    return .{
         .t = t,
         .note_id = id,
-        .params = MyNoteParams {
+        .params = .{
             .freq = freq,
             .note_on = note_on,
         },
@@ -129,7 +155,7 @@ fn doParse(parser: *Parser) !void {
             tempo = try parser.requireNumber();
         } else {
             switch (token) {
-                .Notes => |notes| {
+                .notes => |notes| {
                     const old_instrument_num_notes = instrument_num_notes;
 
                     for (notes) |note, col| {
@@ -144,17 +170,26 @@ fn doParse(parser: *Parser) !void {
                             unreachable;
                         };
 
+                        const note_ptr = &all_notes_arr
+                            [instrument_index]
+                            [instrument_num_notes[instrument_index]];
+
                         switch (note) {
-                            .Idle => {},
-                            .Freq => |freq| {
-                                // note-off of previous note in this column (if present)
+                            .idle => {},
+                            .freq => |freq| {
+                                // note-off of previous note in this column
+                                // (if present)
                                 if (column_last_note[col]) |last_note| {
-                                    all_notes_arr[instrument_index][instrument_num_notes[instrument_index]] =
-                                        makeSongNote(t, last_note.id, last_note.freq, false);
+                                    note_ptr.* = makeSongNote(
+                                        t,
+                                        last_note.id,
+                                        last_note.freq,
+                                        false,
+                                    );
                                     instrument_num_notes[instrument_index] += 1;
                                 }
                                 // note-on event for the new frequency
-                                all_notes_arr[instrument_index][instrument_num_notes[instrument_index]] =
+                                note_ptr.* =
                                     makeSongNote(t, next_id, freq, true);
                                 instrument_num_notes[instrument_index] += 1;
                                 column_last_note[col] = LastNote {
@@ -163,10 +198,14 @@ fn doParse(parser: *Parser) !void {
                                 };
                                 next_id += 1;
                             },
-                            .Off => {
+                            .off => {
                                 if (column_last_note[col]) |last_note| {
-                                    all_notes_arr[instrument_index][instrument_num_notes[instrument_index]] =
-                                        makeSongNote(t, last_note.id, last_note.freq, false);
+                                    note_ptr.* = makeSongNote(
+                                        t,
+                                        last_note.id,
+                                        last_note.freq,
+                                        false,
+                                    );
                                     instrument_num_notes[instrument_index] += 1;
                                     column_last_note[col] = null;
                                 }
@@ -176,15 +215,23 @@ fn doParse(parser: *Parser) !void {
 
                     t += NOTE_DURATION / (rate * tempo);
 
-                    // sort the events at this time frame by note id. this puts note-offs before note-ons
+                    // sort the events at this time frame by note id. this
+                    // puts note-offs before note-ons
                     var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
                         const start = old_instrument_num_notes[i];
                         const end = instrument_num_notes[i];
-                        std.sort.sort(zang.Notes(MyNoteParams).SongEvent, all_notes_arr[i][start..end], struct {
-                            fn compare(a: zang.Notes(MyNoteParams).SongEvent, b: zang.Notes(MyNoteParams).SongEvent) bool {
-                                return a.note_id < b.note_id;
-                            }
-                        }.compare);
+                        std.sort.sort(
+                            zang.Notes(MyNoteParams).SongEvent,
+                            all_notes_arr[i][start..end],
+                            struct {
+                                fn compare(
+                                    a: zang.Notes(MyNoteParams).SongEvent,
+                                    b: zang.Notes(MyNoteParams).SongEvent,
+                                ) bool {
+                                    return a.note_id < b.note_id;
+                                }
+                            }.compare,
+                        );
                     }
                 },
                 else => return error.BadToken,
@@ -192,21 +239,27 @@ fn doParse(parser: *Parser) !void {
         }
     }
 
-    // now for each of the 3 instruments, we have chronological list of all note on and off events
-    // (with a lot of overlapping). the notes need to be identified by their frequency, which kind of sucks.
-    // i should probably change the parser above to assign them unique IDs.
+    // now for each of the 3 instruments, we have chronological list of all
+    // note on and off events (with a lot of overlapping). the notes need to
+    // be identified by their frequency, which kind of sucks. i should
+    // probably change the parser above to assign them unique IDs.
     var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
         all_notes[i] = all_notes_arr[i][0..instrument_num_notes[i]];
     }
 
-    // i = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
-    //     if (i == 1) {
-    //         std.debug.warn("instrument {}:\n", .{ i });
-    //         for (all_notes[i]) |note| {
-    //             std.debug.warn("t={}  id={}  freq={}  note_on={}\n", .{ note.t, note.id, note.params.freq, note.params.note_on });
-    //         }
-    //     }
-    // }
+    //i = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
+    //    if (i == 1) {
+    //        std.debug.warn("instrument {}:\n", .{ i });
+    //        for (all_notes[i]) |note| {
+    //            std.debug.warn("t={}  id={}  freq={}  note_on={}\n", .{
+    //                note.t,
+    //                note.id,
+    //                note.params.freq,
+    //                note.params.note_on,
+    //            });
+    //        }
+    //    }
+    //}
 }
 
 fn parse() void {
@@ -246,13 +299,15 @@ fn Voice(comptime T: type) type {
         sub_voices: [T.polyphony]SubVoice,
 
         fn init(track_index: usize) @This() {
-            var self = @This() {
-                .tracker = zang.Notes(MyNoteParams).NoteTracker.init(all_notes[track_index]),
-                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(T.polyphony).init(),
+            var self: @This() = .{
+                .tracker = zang.Notes(MyNoteParams)
+                    .NoteTracker.init(all_notes[track_index]),
+                .dispatcher = zang.Notes(MyNoteParams)
+                    .PolyphonyDispatcher(T.polyphony).init(),
                 .sub_voices = undefined,
             };
             var i: usize = 0; while (i < T.polyphony) : (i += 1) {
-                self.sub_voices[i] = SubVoice {
+                self.sub_voices[i] = .{
                     .module = T.initModule(),
                     .trigger = zang.Trigger(MyNoteParams).init(),
                 };
@@ -268,8 +323,16 @@ fn Voice(comptime T: type) type {
             }
         }
 
-        fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
-            const iap = self.tracker.consume(AUDIO_SAMPLE_RATE, span.end - span.start);
+        fn paint(
+            self: *@This(),
+            span: zang.Span,
+            outputs: [num_outputs][]f32,
+            temps: [num_temps][]f32,
+        ) void {
+            const iap = self.tracker.consume(
+                AUDIO_SAMPLE_RATE,
+                span.end - span.start,
+            );
 
             const poly_iap = self.dispatcher.dispatch(iap);
 
@@ -277,8 +340,13 @@ fn Voice(comptime T: type) type {
                 var ctr = sub_voice.trigger.counter(span, poly_iap[i]);
 
                 while (sub_voice.trigger.next(&ctr)) |result| {
-                    const params = T.makeParams(AUDIO_SAMPLE_RATE, result.params);
-                    sub_voice.module.paint(result.span, outputs, temps, result.note_id_changed, params);
+                    sub_voice.module.paint(
+                        result.span,
+                        outputs,
+                        temps,
+                        result.note_id_changed,
+                        T.makeParams(AUDIO_SAMPLE_RATE, result.params),
+                    );
                 }
             }
         }
@@ -300,27 +368,40 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         parse();
 
-        var mod = MainModule {
+        var mod: MainModule = .{
             .voices = undefined,
         };
 
         inline for (@typeInfo(Voices).Struct.fields) |field, track_index| {
-            @field(mod.voices, field.name) = field.field_type.init(track_index);
+            @field(mod.voices, field.name) =
+                field.field_type.init(track_index);
         }
 
         return mod;
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         inline for (@typeInfo(Voices).Struct.fields) |field| {
             const VoiceType = field.field_type;
-            const voice = &@field(self.voices, field.name);
-
-            voice.paint(span, outputs, util.subarray(temps, VoiceType.num_temps));
+            @field(self.voices, field.name).paint(
+                span,
+                outputs,
+                util.subarray(temps, VoiceType.num_temps),
+            );
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (down and key == c.SDLK_SPACE) {
             inline for (@typeInfo(Voices).Struct.fields) |field| {
                 @field(self.voices, field.name).reset();

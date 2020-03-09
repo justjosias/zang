@@ -34,8 +34,15 @@ fn pushRedrawEvent() void {
     _ = c.SDL_PushEvent(&event);
 }
 
-fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) callconv(.C) void {
-    const main_module = @ptrCast(*example.MainModule, @alignCast(@alignOf(*example.MainModule), userdata_.?));
+fn audioCallback(
+    userdata_: ?*c_void,
+    stream_: ?[*]u8,
+    len_: c_int,
+) callconv(.C) void {
+    const main_module =
+        @ptrCast(*example.MainModule,
+            @alignCast(@alignOf(*example.MainModule),
+                userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
     var outputs: [example.MainModule.num_outputs][]f32 = undefined;
@@ -60,7 +67,14 @@ fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) callconv(.C)
     const mul = 0.25;
 
     i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
-        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
+        zang.mixDown(
+            stream,
+            outputs[i][0..],
+            AUDIO_FORMAT,
+            example.MainModule.num_outputs,
+            i,
+            mul,
+        );
     }
 
     if (!g_drawing) {
@@ -82,7 +96,12 @@ fn audioCallback(userdata_: ?*c_void, stream_: ?[*]u8, len_: c_int) callconv(.C)
             std.mem.set(f32, g_fft_imag[0..], 0.0);
             fft(1024, g_fft_real[0..], g_fft_imag[0..]);
 
-            c.plot(min * mul, max * mul, g_fft_real[0..].ptr, if (g_fft_log) @as(c_int, 1) else @as(c_int, 0));
+            c.plot(
+                min * mul,
+                max * mul,
+                g_fft_real[0..].ptr,
+                if (g_fft_log) 1 else 0,
+            );
         }
     }
 
@@ -100,7 +119,8 @@ pub fn main() !void {
 
     g_redraw_event = c.SDL_RegisterEvents(1);
 
-    const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
+    const SDL_WINDOWPOS_UNDEFINED =
+        @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
     const window = c.SDL_CreateWindow(
         "zang",
         SDL_WINDOWPOS_UNDEFINED,
@@ -118,8 +138,8 @@ pub fn main() !void {
     var want: c.SDL_AudioSpec = undefined;
     want.freq = AUDIO_SAMPLE_RATE;
     want.format = switch (AUDIO_FORMAT) {
-        zang.AudioFormat.S8 => @as(u16, c.AUDIO_S8),
-        zang.AudioFormat.S16LSB => @as(u16, c.AUDIO_S16LSB),
+        .signed8 => c.AUDIO_S8,
+        .signed16_lsb => c.AUDIO_S16LSB,
     };
     want.channels = example.MainModule.num_outputs;
     want.samples = AUDIO_BUFFER_SIZE;
@@ -131,7 +151,8 @@ pub fn main() !void {
         0, // non-zero to open for recording instead of playback
         &want, // desired output format
         0, // obtained output format (NULL)
-        0, // allowed changes: 0 means `obtained` will not differ from `want`, and SDL will do any necessary resampling behind the scenes
+        0, // allowed changes: 0 means `obtained` will not differ from `want`,
+           // and SDL will do any necessary resampling behind the scenes
     );
     if (device == 0) {
         c.SDL_Log("Failed to open audio: %s", c.SDL_GetError());
@@ -163,7 +184,12 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F1 and down) {
                     c.SDL_LockAudioDevice(device);
                     g_drawing = !g_drawing;
-                    c.clear(window, screen, fontdata[0..].ptr, "Press F1 to re-enable drawing");
+                    c.clear(
+                        window,
+                        screen,
+                        fontdata[0..].ptr,
+                        "Press F1 to re-enable drawing",
+                    );
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {
@@ -175,17 +201,27 @@ pub fn main() !void {
                 if (@hasDecl(example.MainModule, "keyEvent")) {
                     if (event.key.repeat == 0) {
                         c.SDL_LockAudioDevice(device);
-                        // const impulse_frame = getImpulseFrame(AUDIO_BUFFER_SIZE, AUDIO_SAMPLE_RATE, start_time);
+                        //const impulse_frame = getImpulseFrame(
+                        //    AUDIO_BUFFER_SIZE,
+                        //    AUDIO_SAMPLE_RATE,
+                        //    start_time,
+                        //);
                         const impulse_frame = getImpulseFrame();
-                        main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
+                        main_module.keyEvent(
+                            event.key.keysym.sym,
+                            down,
+                            impulse_frame,
+                        );
                         c.SDL_UnlockAudioDevice(device);
                     }
                 }
             },
             c.SDL_MOUSEMOTION => {
                 if (@hasDecl(example.MainModule, "mouseEvent")) {
-                    const x = @intToFloat(f32, event.motion.x) / @intToFloat(f32, screen_w - 1);
-                    const y = @intToFloat(f32, event.motion.y) / @intToFloat(f32, screen_h - 1);
+                    const x = @intToFloat(f32, event.motion.x) /
+                        @intToFloat(f32, screen_w - 1);
+                    const y = @intToFloat(f32, event.motion.y) /
+                        @intToFloat(f32, screen_h - 1);
                     const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
@@ -198,7 +234,13 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(window, screen, fontdata[0..].ptr, example.DESCRIPTION, if (g_full_fft) @as(c_int, 1) else @as(c_int, 0));
+            c.draw(
+                window,
+                screen,
+                fontdata[0..].ptr,
+                example.DESCRIPTION,
+                if (g_full_fft) 1 else 0,
+            );
             c.SDL_UnlockAudioDevice(device);
         }
     }
@@ -217,38 +259,47 @@ pub fn main() !void {
 var r = std.rand.DefaultPrng.init(0);
 
 fn getImpulseFrame() usize {
-    // FIXME - i was using random values as a kind of test, but this is actually bad.
-    // it means if you press two keys at the same time, they get different values, and
-    // the second might have an earlier value than the first, which will cause it to
-    // get discarded by the ImpulseQueue!
-    // return r.random.intRangeLessThan(usize, 0, example.AUDIO_BUFFER_SIZE);
-
+    // FIXME - i was using random values as a kind of test, but this is
+    // actually bad. it means if you press two keys at the same time, they get
+    // different values, and the second might have an earlier value than the
+    // first, which will cause it to get discarded by the ImpulseQueue!
+    //return r.random.intRangeLessThan(usize, 0, example.AUDIO_BUFFER_SIZE);
     return 0;
 }
 
-// // come up with a frame index to start the sound at
-// fn getImpulseFrame(buffer_size: usize, sample_rate: usize, start_time: f32, current_frame_index: usize) usize {
-//     // `current_frame_index` is the END of the mix frame currently queued to be heard next
-//     const one_mix_frame = @intToFloat(f32, buffer_size) / @intToFloat(f32, sample_rate);
-
-//     // time of the start of the mix frame currently underway
-//     const mix_end = @intToFloat(f32, current_frame_index) / @intToFloat(f32, sample_rate);
-//     const mix_start = mix_end - one_mix_frame;
-
-//     const current_time = @intToFloat(f32, c.SDL_GetTicks()) / 1000.0 - start_time;
-
-//     // if everything is working properly, current_time should be
-//     // between mix_start and mix_end. there might be a little bit of an
-//     // offset but i'm not going to deal with that for now.
-
-//     // i just need to make sure that if this code queues up an impulse
-//     // that's in the "past" when it actually gets picked up by the
-//     // audio thread, it will still be picked up (somehow)!
-
-//     // FIXME - shouldn't be multiplied by 2! this is only to
-//     // compensate for the clocks sometimes starting out of sync
-//     const impulse_time = current_time + one_mix_frame * 2.0;
-//     const impulse_frame = @floatToInt(usize, impulse_time * @intToFloat(f32, sample_rate));
-
-//     return impulse_frame;
-// }
+//// come up with a frame index to start the sound at
+//fn getImpulseFrame(
+//    buffer_size: usize,
+//    sample_rate: usize,
+//    start_time: f32,
+//    current_frame_index: usize,
+//) usize {
+//    // `current_frame_index` is the END of the mix frame currently queued to
+//    // be heard next
+//    const one_mix_frame = @intToFloat(f32, buffer_size) /
+//        @intToFloat(f32, sample_rate);
+//
+//    // time of the start of the mix frame currently underway
+//    const mix_end = @intToFloat(f32, current_frame_index) /
+//        @intToFloat(f32, sample_rate);
+//    const mix_start = mix_end - one_mix_frame;
+//
+//    const current_time =
+//        @intToFloat(f32, c.SDL_GetTicks()) / 1000.0 - start_time;
+//
+//    // if everything is working properly, current_time should be
+//    // between mix_start and mix_end. there might be a little bit of an
+//    // offset but i'm not going to deal with that for now.
+//
+//    // i just need to make sure that if this code queues up an impulse
+//    // that's in the "past" when it actually gets picked up by the
+//    // audio thread, it will still be picked up (somehow)!
+//
+//    // FIXME - shouldn't be multiplied by 2! this is only to
+//    // compensate for the clocks sometimes starting out of sync
+//    const impulse_time = current_time + one_mix_frame * 2.0;
+//    const impulse_frame =
+//        @floatToInt(usize, impulse_time * @intToFloat(f32, sample_rate));
+//
+//    return impulse_frame;
+//}

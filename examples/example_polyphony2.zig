@@ -6,7 +6,7 @@ const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Module = @import("modules.zig").NiceInstrument;
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -38,15 +38,16 @@ pub const MainModule = struct {
     iq: zang.Notes(Module.Params).ImpulseQueue,
 
     pub fn init() MainModule {
-        var self = MainModule {
+        var self: MainModule = .{
             .note_ids = [1]?usize{null} ** common.key_bindings.len,
             .next_note_id = 1,
             .iq = zang.Notes(Module.Params).ImpulseQueue.init(),
-            .dispatcher = zang.Notes(Module.Params).PolyphonyDispatcher(polyphony).init(),
+            .dispatcher = zang.Notes(Module.Params)
+                .PolyphonyDispatcher(polyphony).init(),
             .voices = undefined,
         };
         var i: usize = 0; while (i < polyphony) : (i += 1) {
-            self.voices[i] = Voice {
+            self.voices[i] = .{
                 .module = Module.init(0.3),
                 .trigger = zang.Trigger(Module.Params).init(),
             };
@@ -54,24 +55,39 @@ pub const MainModule = struct {
         return self;
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         const iap = self.iq.consume();
 
         const poly_iap = self.dispatcher.dispatch(iap);
 
         var i: usize = 0; while (i < polyphony) : (i += 1) {
             var ctr = self.voices[i].trigger.counter(span, poly_iap[i]);
-
             while (self.voices[i].trigger.next(&ctr)) |result| {
-                self.voices[i].module.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+                self.voices[i].module.paint(
+                    result.span,
+                    outputs,
+                    temps,
+                    result.note_id_changed,
+                    result.params,
+                );
             }
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
-                const params = Module.Params {
+                const params: Module.Params = .{
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .freq = a4 * common.key_bindings[i].rel_freq,
                     .note_on = down,

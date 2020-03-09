@@ -10,10 +10,16 @@ pub const Gate = struct {
     };
 
     pub fn init() Gate {
-        return Gate {};
+        return .{};
     }
 
-    pub fn paint(self: *Gate, span: Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    pub fn paint(
+        self: *Gate,
+        span: Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         if (params.note_on) {
             addScalarInto(span, outputs[0], 1.0);
         }

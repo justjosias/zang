@@ -3,7 +3,7 @@ const common = @import("common.zig");
 const c = @import("common/c.zig");
 const PhaseModOscillator = @import("modules.zig").PhaseModOscillator;
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -36,15 +36,22 @@ const PMOscInstrument = struct {
     env: zang.Envelope,
 
     pub fn init() PMOscInstrument {
-        return PMOscInstrument {
+        return .{
             .osc = PhaseModOscillator.init(),
             .env = zang.Envelope.init(),
         };
     }
 
-    pub fn paint(self: *PMOscInstrument, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {
+    pub fn paint(
+        self: *PMOscInstrument,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        note_id_changed: bool,
+        params: Params,
+    ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, [1][]f32{temps[0]}, [3][]f32{temps[1], temps[2], temps[3]}, PhaseModOscillator.Params {
+        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,
@@ -52,11 +59,11 @@ const PMOscInstrument = struct {
             .multiplier = zang.buffer(params.multiplier),
         });
         zang.zero(span, temps[1]);
-        self.env.paint(span, [1][]f32{temps[1]}, [0][]f32{}, note_id_changed, zang.Envelope.Params {
+        self.env.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
-            .attack = zang.Painter.Curve { .Cubed = 0.025 },
-            .decay = zang.Painter.Curve { .Cubed = 0.1 },
-            .release = zang.Painter.Curve { .Cubed = 1.0 },
+            .attack = .{ .cubed = 0.025 },
+            .decay = .{ .cubed = 0.1 },
+            .release = .{ .cubed = 1.0 },
             .sustain_volume = 0.5,
             .note_on = params.note_on,
         });
@@ -97,25 +104,25 @@ pub const MainModule = struct {
     multiplier: Porta,
 
     pub fn init() MainModule {
-        return MainModule {
+        return .{
             .key = null,
             .first = true,
             .mode = 0,
             .mode_iq = zang.Notes(u32).ImpulseQueue.init(),
             .mode_idgen = zang.IdGenerator.init(),
-            .instr = Instr {
+            .instr = .{
                 .iq = zang.Notes(Instr.Params).ImpulseQueue.init(),
                 .idgen = zang.IdGenerator.init(),
                 .mod = PMOscInstrument.init(),
                 .trig = zang.Trigger(Instr.Params).init(),
             },
-            .ratio = Porta {
+            .ratio = .{
                 .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
                 .idgen = zang.IdGenerator.init(),
                 .mod = zang.Portamento.init(),
                 .trig = zang.Trigger(Porta.Params).init(),
             },
-            .multiplier = Porta {
+            .multiplier = .{
                 .iq = zang.Notes(Porta.Params).ImpulseQueue.init(),
                 .idgen = zang.IdGenerator.init(),
                 .mod = zang.Portamento.init(),
@@ -124,7 +131,12 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         if (self.first) {
             self.first = false;
             self.mode_iq.push(0, self.mode_idgen.nextId(), self.mode);
@@ -134,54 +146,89 @@ pub const MainModule = struct {
         {
             var ctr = self.ratio.trig.counter(span, self.ratio.iq.consume());
             while (self.ratio.trig.next(&ctr)) |result| {
-                self.ratio.mod.paint(result.span, [1][]f32{temps[0]}, [0][]f32{}, result.note_id_changed, zang.Portamento.Params {
-                    .sample_rate = AUDIO_SAMPLE_RATE,
-                    .curve = zang.Painter.Curve { .Linear = 0.1 },
-                    .goal = switch (self.mode) {
-                        0 => result.params.value * 4.0,
-                        else => result.params.value * 880.0,
+                self.ratio.mod.paint(
+                    result.span,
+                    .{temps[0]},
+                    .{},
+                    result.note_id_changed,
+                    .{
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .curve = .{ .linear = 0.1 },
+                        .goal = switch (self.mode) {
+                            0 => result.params.value * 4.0,
+                            else => result.params.value * 880.0,
+                        },
+                        .note_on = result.params.note_on,
+                        .prev_note_on = true,
                     },
-                    .note_on = result.params.note_on,
-                    .prev_note_on = true,
-                });
+                );
             }
         }
         // multiplier
         zang.zero(span, temps[1]);
         {
-            var ctr = self.multiplier.trig.counter(span, self.multiplier.iq.consume());
+            const iap = self.multiplier.iq.consume();
+            var ctr = self.multiplier.trig.counter(span, iap);
             while (self.multiplier.trig.next(&ctr)) |result| {
-                self.multiplier.mod.paint(result.span, [1][]f32{temps[1]}, [0][]f32{}, result.note_id_changed, zang.Portamento.Params {
-                    .sample_rate = AUDIO_SAMPLE_RATE,
-                    .curve = zang.Painter.Curve { .Linear = 0.1 },
-                    .goal = result.params.value * 2.0,
-                    .note_on = result.params.note_on,
-                    .prev_note_on = true,
-                });
+                self.multiplier.mod.paint(
+                    result.span,
+                    .{temps[1]},
+                    .{},
+                    result.note_id_changed,
+                    .{
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .curve = .{ .linear = 0.1 },
+                        .goal = result.params.value * 2.0,
+                        .note_on = result.params.note_on,
+                        .prev_note_on = true,
+                    },
+                );
             }
         }
         // instr
         {
             var ctr = self.instr.trig.counter(span, self.instr.iq.consume());
             while (self.instr.trig.next(&ctr)) |result| {
-                self.instr.mod.paint(result.span, outputs, [4][]f32{temps[2], temps[3], temps[4], temps[5]}, result.note_id_changed, PMOscInstrument.Params {
-                    .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = result.params.freq,
-                    .note_on = result.params.note_on,
-                    .relative = self.mode == 0,
-                    .ratio = temps[0],
-                    .multiplier = temps[1],
-                });
+                self.instr.mod.paint(
+                    result.span,
+                    outputs,
+                    .{temps[2], temps[3], temps[4], temps[5]},
+                    result.note_id_changed,
+                    .{
+                        .sample_rate = AUDIO_SAMPLE_RATE,
+                        .freq = result.params.freq,
+                        .note_on = result.params.note_on,
+                        .relative = self.mode == 0,
+                        .ratio = temps[0],
+                        .multiplier = temps[1],
+                    },
+                );
             }
         }
     }
 
-    pub fn mouseEvent(self: *MainModule, x: f32, y: f32, impulse_frame: usize) void {
-        self.ratio.iq.push(impulse_frame, self.ratio.idgen.nextId(), Porta.Params { .value = x, .note_on = true });
-        self.multiplier.iq.push(impulse_frame, self.multiplier.idgen.nextId(), Porta.Params { .value = y, .note_on = true });
+    pub fn mouseEvent(
+        self: *MainModule,
+        x: f32,
+        y: f32,
+        impulse_frame: usize,
+    ) void {
+        self.ratio.iq.push(impulse_frame, self.ratio.idgen.nextId(), .{
+            .value = x,
+            .note_on = true,
+        });
+        self.multiplier.iq.push(impulse_frame, self.multiplier.idgen.nextId(), .{
+            .value = y,
+            .note_on = true,
+        });
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (key == c.SDLK_SPACE and down) {
             self.mode = (self.mode + 1) % 2;
             self.mode_iq.push(impulse_frame, self.mode_idgen.nextId(), self.mode);
@@ -189,7 +236,7 @@ pub const MainModule = struct {
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
-                self.instr.iq.push(impulse_frame, self.instr.idgen.nextId(), Instr.Params {
+                self.instr.iq.push(impulse_frame, self.instr.idgen.nextId(), .{
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });

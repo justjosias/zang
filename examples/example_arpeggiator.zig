@@ -6,7 +6,7 @@ const common = @import("common.zig");
 const c = @import("common/c.zig");
 const Instrument = @import("modules.zig").HardSquareInstrument;
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -36,7 +36,7 @@ const Arpeggiator = struct {
     last_note: ?usize,
 
     fn init() Arpeggiator {
-        return Arpeggiator {
+        return .{
             .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
             .instrument = Instrument.init(),
@@ -46,7 +46,13 @@ const Arpeggiator = struct {
         };
     }
 
-    fn paint(self: *Arpeggiator, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
+    fn paint(
+        self: *Arpeggiator,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+        params: Params,
+    ) void {
         const note_duration = @floatToInt(usize, 0.03 * params.sample_rate);
 
         // TODO - if only one key is held, try to reuse the previous impulse id
@@ -61,8 +67,13 @@ const Arpeggiator = struct {
 
         while (self.next_frame < outputs[0].len) {
             const next_note_index = blk: {
-                const start = if (self.last_note) |last_note| last_note + 1 else 0;
-                var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
+                const start =
+                    if (self.last_note) |last_note|
+                        last_note + 1
+                    else
+                        0;
+                var i: usize = 0;
+                while (i < common.key_bindings.len) : (i += 1) {
                     const index = (start + i) % common.key_bindings.len;
                     if (params.note_held[index]) {
                         break :blk index;
@@ -73,7 +84,7 @@ const Arpeggiator = struct {
 
             if (next_note_index) |index| {
                 const freq = a4 * common.key_bindings[index].rel_freq;
-                self.iq.push(self.next_frame, self.idgen.nextId(), Instrument.Params {
+                self.iq.push(self.next_frame, self.idgen.nextId(), .{
                     .sample_rate = params.sample_rate,
                     .freq = freq,
                     .note_on = true,
@@ -81,7 +92,7 @@ const Arpeggiator = struct {
                 self.last_note = index;
             } else if (self.last_note) |last_note| {
                 const freq = a4 * common.key_bindings[last_note].rel_freq;
-                self.iq.push(self.next_frame, self.idgen.nextId(), Instrument.Params {
+                self.iq.push(self.next_frame, self.idgen.nextId(), .{
                     .sample_rate = params.sample_rate,
                     .freq = freq,
                     .note_on = false,
@@ -95,7 +106,13 @@ const Arpeggiator = struct {
 
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.instrument.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.instrument.paint(
+                result.span,
+                outputs,
+                temps,
+                result.note_id_changed,
+                result.params,
+            );
         }
     }
 };
@@ -111,8 +128,8 @@ pub const MainModule = struct {
     trigger: zang.Trigger(Arpeggiator.Params),
 
     pub fn init() MainModule {
-        return MainModule {
-            .current_params = Arpeggiator.Params {
+        return .{
+            .current_params = .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .note_held = [1]bool{false} ** common.key_bindings.len,
             },
@@ -123,18 +140,32 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
             self.arpeggiator.paint(result.span, outputs, temps, result.params);
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
-                self.iq.push(impulse_frame, self.idgen.nextId(), self.current_params);
+                self.iq.push(
+                    impulse_frame,
+                    self.idgen.nextId(),
+                    self.current_params,
+                );
             }
         }
     }

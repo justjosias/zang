@@ -1,8 +1,8 @@
 const std = @import("std");
 
 pub const AudioFormat = enum {
-    S8,
-    S16LSB,
+    signed8,
+    signed16_lsb,
 };
 
 pub fn mixDown(
@@ -14,10 +14,10 @@ pub fn mixDown(
     vol: f32,
 ) void {
     switch (audio_format) {
-        .S8 => {
+        .signed8 => {
             mixDownS8(dst, mix_buffer, num_channels, channel_index, vol);
         },
-        .S16LSB => {
+        .signed16_lsb => {
             mixDownS16LSB(dst, mix_buffer, num_channels, channel_index, vol);
         },
     }
@@ -25,7 +25,13 @@ pub fn mixDown(
 
 // convert from float to 16-bit, applying clamping
 // `vol` should be set to something lower than 1.0 to avoid clipping
-fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize, vol: f32) void {
+fn mixDownS16LSB(
+    dst: []u8,
+    mix_buffer: []const f32,
+    num_channels: usize,
+    channel_index: usize,
+    vol: f32,
+) void {
     std.debug.assert(dst.len == mix_buffer.len * 2 * num_channels);
 
     const mul = vol * 32767.0;
@@ -43,12 +49,19 @@ fn mixDownS16LSB(dst: []u8, mix_buffer: []const f32, num_channels: usize, channe
             else
                 @floatToInt(i16, value);
 
-        dst[(i * num_channels + channel_index) * 2 + 0] = @intCast(u8, clamped_value & 0xFF);
-        dst[(i * num_channels + channel_index) * 2 + 1] = @intCast(u8, (clamped_value >> 8) & 0xFF);
+        const index = (i * num_channels + channel_index) * 2;
+        dst[index + 0] = @intCast(u8, clamped_value & 0xFF);
+        dst[index + 1] = @intCast(u8, (clamped_value >> 8) & 0xFF);
     }
 }
 
-fn mixDownS8(dst: []u8, mix_buffer: []const f32, num_channels: usize, channel_index: usize, vol: f32) void {
+fn mixDownS8(
+    dst: []u8,
+    mix_buffer: []const f32,
+    num_channels: usize,
+    channel_index: usize,
+    vol: f32,
+) void {
     std.debug.assert(dst.len == mix_buffer.len * num_channels);
 
     const mul = vol * 127.0;

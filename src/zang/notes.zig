@@ -48,10 +48,11 @@ pub fn Notes(comptime NoteParamsType: type) type {
             }
 
             // return impulses and advance state.
-            // make sure to use the returned impulse list before pushing more stuff
+            // make sure to use the returned impulse list before pushing more
+            // stuff
             // FIXME shouldn't this take in a span?
-            // although it's probably fine now because we're never using an impulse queue
-            // within something...
+            // although it's probably fine now because we're never using an
+            // impulse queue within something...
             pub fn consume(self: *ImpulseQueue) ImpulsesAndParamses {
                 defer self.length = 0;
 
@@ -61,12 +62,20 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 };
             }
 
-            pub fn push(self: *ImpulseQueue, impulse_frame: usize, note_id: usize, params: NoteParamsType) void {
+            pub fn push(
+                self: *ImpulseQueue,
+                impulse_frame: usize,
+                note_id: usize,
+                params: NoteParamsType,
+            ) void {
                 if (self.length >= self.impulses_array.len) {
                     // std.debug.warn("ImpulseQueue: no more slots\n"); // FIXME
                     return;
                 }
-                if (self.length > 0 and impulse_frame < self.impulses_array[self.length - 1].frame) {
+                if (
+                    self.length > 0 and
+                    impulse_frame < self.impulses_array[self.length - 1].frame
+                ) {
                     // you must push impulses in order. this could even be a panic
                     // std.debug.warn("ImpulseQueue: notes pushed out of order\n");
                     return;
@@ -88,7 +97,8 @@ pub fn Notes(comptime NoteParamsType: type) type {
             note_id: usize,
         };
 
-        // follow a canned melody, creating impulses from it, one mix buffer at a time
+        // follow a canned melody, creating impulses from it, one mix buffer
+        // at a time
         pub const NoteTracker = struct {
             song: []const SongEvent,
             next_song_event: usize,
@@ -97,7 +107,7 @@ pub fn Notes(comptime NoteParamsType: type) type {
             paramses_array: [32]NoteParamsType,
 
             pub fn init(song: []const SongEvent) NoteTracker {
-                return NoteTracker {
+                return .{
                     .song = song,
                     .next_song_event = 0,
                     .t = 0.0,
@@ -111,8 +121,13 @@ pub fn Notes(comptime NoteParamsType: type) type {
                 self.t = 0.0;
             }
 
-            // return impulses for notes that fall within the upcoming buffer frame.
-            pub fn consume(self: *NoteTracker, sample_rate: f32, out_len: usize) ImpulsesAndParamses {
+            // return impulses for notes that fall within the upcoming buffer
+            // frame.
+            pub fn consume(
+                self: *NoteTracker,
+                sample_rate: f32,
+                out_len: usize,
+            ) ImpulsesAndParamses {
                 var count: usize = 0;
 
                 const buf_time = @intToFloat(f32, out_len) / sample_rate;
@@ -122,8 +137,12 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     const note_t = song_event.t;
                     if (note_t < end_t) {
                         const f = (note_t - self.t) / buf_time; // 0 to 1
-                        const rel_frame_index = std.math.min(@floatToInt(usize, f * @intToFloat(f32, out_len)), out_len - 1);
-                        // TODO - do something graceful-ish when count >= self.impulse_array.len
+                        const rel_frame_index = std.math.min(
+                            @floatToInt(usize, f * @intToFloat(f32, out_len)),
+                            out_len - 1,
+                        );
+                        // TODO - do something graceful-ish when count >=
+                        // self.impulse_array.len
                         self.next_song_event += 1;
                         self.impulses_array[count] = Impulse {
                             .frame = rel_frame_index,
@@ -162,9 +181,10 @@ pub fn Notes(comptime NoteParamsType: type) type {
 
             return struct {
                 slots: [polyphony]?SlotState,
-                // TODO - i should be able to use a single array for each of these
-                // because only 32 impulses can come in, only 32 impulses could come out...
-                // or can i even reuse the storage of the NoteTracker?
+                // TODO - i should be able to use a single array for each of
+                // these because only 32 impulses can come in, only 32
+                // impulses could come out... or can i even reuse the storage
+                // of the NoteTracker?
                 impulses_array: [polyphony][32]Impulse, // internal storage
                 paramses_array: [polyphony][32]NoteParamsType,
 
@@ -182,11 +202,16 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     }
                 }
 
-                fn chooseSlot(self: *const @This(), note_id: usize, event_id: usize, note_on: bool) ?usize {
+                fn chooseSlot(
+                    self: *const @This(),
+                    note_id: usize,
+                    event_id: usize,
+                    note_on: bool,
+                ) ?usize {
                     if (!note_on) {
-                        // this is a note-off event. try to find the slot where the note
-                        // lives. if we don't find it (meaning it got overridden at some
-                        // point), return null
+                        // this is a note-off event. try to find the slot where
+                        // the note lives. if we don't find it (meaning it got
+                        // overridden at some point), return null
                         return for (self.slots) |maybe_slot, slot_index| {
                             if (maybe_slot) |slot| {
                                 if (slot.note_id == note_id and slot.note_on) {
@@ -195,16 +220,18 @@ pub fn Notes(comptime NoteParamsType: type) type {
                             }
                         } else null;
                     }
-                    // otherwise, this is a note-on event. find the slot in note-off state
-                    // with the oldest event_id. this will reuse will reuse the slot that
-                    // had its note-off the longest time ago.
+                    // otherwise, this is a note-on event. find the slot in
+                    // note-off state with the oldest event_id. this will reuse
+                    // will reuse the slot that had its note-off the longest
+                    // time ago.
                     {
                         var maybe_best: ?usize = null;
                         for (self.slots) |maybe_slot, slot_index| {
                             if (maybe_slot) |slot| {
                                 if (!slot.note_on) {
                                     if (maybe_best) |best| {
-                                        if (slot.event_id < self.slots[best].?.event_id) {
+                                        if (slot.event_id <
+                                                self.slots[best].?.event_id) {
                                             maybe_best = slot_index;
                                         }
                                     } else { // maybe_best == null
@@ -212,7 +239,8 @@ pub fn Notes(comptime NoteParamsType: type) type {
                                     }
                                 }
                             } else { // maybe_slot == null
-                                // if there's still an empty slot, jump on that right now
+                                // if there's still an empty slot, jump on
+                                // that right now
                                 return slot_index;
                             }
                         }
@@ -223,31 +251,43 @@ pub fn Notes(comptime NoteParamsType: type) type {
                     // otherwise, we have no choice but to take over a track
                     // that's still in note-on state.
                     var best: usize = 0;
-                    var slot_index: usize = 1; while (slot_index < polyphony) : (slot_index += 1) {
-                        if (self.slots[slot_index].?.event_id < self.slots[best].?.event_id) {
+                    var slot_index: usize = 1;
+                    while (slot_index < polyphony) : (slot_index += 1) {
+                        if (self.slots[slot_index].?.event_id <
+                                self.slots[best].?.event_id) {
                             best = slot_index;
                         }
                     }
                     return best;
                 }
 
-                // FIXME can this be changed to a generator pattern so we don't need the static arrays?
-                pub fn dispatch(self: *@This(), iap: ImpulsesAndParamses) [polyphony]ImpulsesAndParamses {
+                // FIXME can this be changed to a generator pattern so we don't
+                // need the static arrays?
+                pub fn dispatch(
+                    self: *@This(),
+                    iap: ImpulsesAndParamses,
+                ) [polyphony]ImpulsesAndParamses {
                     var counts = [1]usize{0} ** polyphony;
 
                     var i: usize = 0; while (i < iap.paramses.len) : (i += 1) {
                         const impulse = iap.impulses[i];
                         const params = iap.paramses[i];
 
-                        if (self.chooseSlot(impulse.note_id, impulse.event_id, params.note_on)) |slot_index| {
+                        if (self.chooseSlot(
+                            impulse.note_id,
+                            impulse.event_id,
+                            params.note_on,
+                        )) |slot_index| {
                             self.slots[slot_index] = SlotState {
                                 .note_id = impulse.note_id,
                                 .event_id = impulse.event_id,
                                 .note_on = params.note_on,
                             };
 
-                            self.impulses_array[slot_index][counts[slot_index]] = impulse;
-                            self.paramses_array[slot_index][counts[slot_index]] = params;
+                            self.impulses_array[slot_index][counts[slot_index]]
+                                = impulse;
+                            self.paramses_array[slot_index][counts[slot_index]]
+                                = params;
                             counts[slot_index] += 1;
                         }
                     }

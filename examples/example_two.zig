@@ -3,7 +3,7 @@ const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 
-pub const AUDIO_FORMAT = zang.AudioFormat.S16LSB;
+pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
@@ -42,7 +42,7 @@ pub const MainModule = struct {
     trig1: zang.Trigger(Params1),
 
     pub fn init() MainModule {
-        return MainModule{
+        return .{
             .first = true,
             .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
@@ -57,11 +57,22 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
+    pub fn paint(
+        self: *MainModule,
+        span: zang.Span,
+        outputs: [num_outputs][]f32,
+        temps: [num_temps][]f32,
+    ) void {
         if (self.first) {
             self.first = false;
-            self.iq0.push(0, self.idgen0.nextId(), Params0 { .freq = a4 * 0.5, .note_on = false });
-            self.iq1.push(0, self.idgen1.nextId(), Params1 { .color = 0.5, .note_on = false });
+            self.iq0.push(0, self.idgen0.nextId(), .{
+                .freq = a4 * 0.5,
+                .note_on = false,
+            });
+            self.iq1.push(0, self.idgen1.nextId(), .{
+                .color = 0.5,
+                .note_on = false,
+            });
         }
 
         zang.zero(span, temps[0]);
@@ -87,15 +98,15 @@ pub const MainModule = struct {
 
             if (maybe_result0) |result0| {
             if (maybe_result1) |result1| {
-                const inner_span = zang.Span {
+                const inner_span: zang.Span = .{
                     .start = start,
                     .end = std.math.min(result0.span.end, result1.span.end),
                 };
                 self.osc.paint(
                     inner_span,
-                    [1][]f32{temps[0]},
-                    [0][]f32{},
-                    zang.TriSawOsc.Params {
+                    .{temps[0]},
+                    .{},
+                    .{
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = zang.constant(result0.params.freq),
                         .color = result1.params.color,
@@ -103,22 +114,25 @@ pub const MainModule = struct {
                 );
                 self.env.paint(
                     inner_span,
-                    [1][]f32{temps[1]},
-                    [0][]f32{},
+                    .{temps[1]},
+                    .{},
+                    // only reset the envelope when a button is depressed when
+                    // no buttons were previous depressed
                     (
-                        // only reset the envelope when a button is depressed
-                        // when no buttons were previous depressed
-                        (result0.note_id_changed and result0.params.note_on and !result1.note_id_changed)
-                        or
-                        (result1.note_id_changed and result1.params.note_on and !result0.note_id_changed)
+                        result0.note_id_changed and result0.params.note_on and
+                            !result1.note_id_changed
+                    ) or (
+                        result1.note_id_changed and result1.params.note_on and
+                            !result0.note_id_changed
                     ),
-                    zang.Envelope.Params {
+                    .{
                         .sample_rate = AUDIO_SAMPLE_RATE,
-                        .attack = zang.Painter.Curve { .Cubed = 0.025 },
-                        .decay = zang.Painter.Curve { .Cubed = 0.1 },
-                        .release = zang.Painter.Curve { .Cubed = 1.0 },
+                        .attack = .{ .cubed = 0.025 },
+                        .decay = .{ .cubed = 0.1 },
+                        .release = .{ .cubed = 1.0 },
                         .sustain_volume = 0.5,
-                        .note_on = result0.params.note_on or result1.params.note_on,
+                        .note_on =
+                            result0.params.note_on or result1.params.note_on,
                     },
                 );
                 if (result0.span.end == inner_span.end) {
@@ -137,22 +151,27 @@ pub const MainModule = struct {
         zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(
+        self: *MainModule,
+        key: i32,
+        down: bool,
+        impulse_frame: usize,
+    ) void {
         if (common.getKeyRelFreqFromRow(0, key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
-                self.iq0.push(impulse_frame, self.idgen0.nextId(), Params0 {
+                self.iq0.push(impulse_frame, self.idgen0.nextId(), .{
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });
             }
         }
-
         if (key >= c.SDLK_1 and key <= c.SDLK_9) {
-            const f = @intToFloat(f32, key - c.SDLK_1) / @intToFloat(f32, c.SDLK_9 - c.SDLK_1);
+            const f = @intToFloat(f32, key - c.SDLK_1) /
+                @intToFloat(f32, c.SDLK_9 - c.SDLK_1);
             if (down or (if (self.key1) |nh| nh == key else false)) {
                 self.key1 = if (down) key else null;
-                self.iq1.push(impulse_frame, self.idgen1.nextId(), Params1 {
+                self.iq1.push(impulse_frame, self.idgen1.nextId(), .{
                     .color = 0.5 + std.math.sqrt(f) * 0.5,
                     .note_on = down,
                 });

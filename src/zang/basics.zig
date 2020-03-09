@@ -3,6 +3,10 @@ const std = @import("std");
 pub const Span = struct {
     start: usize,
     end: usize,
+
+    pub inline fn init(start: usize, end: usize) Span {
+        return .{ .start = start, .end = end };
+    }
 };
 
 pub fn zero(span: Span, dest: []f32) void {
