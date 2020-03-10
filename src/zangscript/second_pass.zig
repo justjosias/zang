@@ -8,15 +8,60 @@ const tokenize = @import("tokenizer.zig").tokenize;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
 
+fn parseCallArg(self: *Parser, token: Token) !void {
+    switch (token.tt) {
+        .identifier => |identifier| {
+            if (self.peekSymbol(.sym_colon)) {
+                var token2 = try self.expect();
+                if (token2.tt != .sym_colon) {
+                    return fail(self.source, token2, "expected `:`, found `%`", .{ token2 });
+                }
+                token2 = try self.expect();
+                switch (token2.tt) {
+                    .number => |n| {
+                        std.debug.warn("    arg {} = {d}\n", .{
+                            identifier,
+                            n,
+                        });
+                    },
+                    else => {
+                        return fail(
+                            self.source,
+                            token2,
+                            "expected arg value, found `%`",
+                            .{ token2 },
+                        );
+                    },
+                }
+            } else {
+                // just a name. my idea is that this is shorthand for
+                // `property: params.property` (passing along own param)
+                std.debug.warn("    arg {}\n", .{ identifier });
+            }
+        },
+        else => {
+            return fail(
+                self.source,
+                token,
+                "expected `)` or arg name, found `%`",
+                .{ token },
+            );
+        },
+    }
+}
+
 fn parseCall(self: *Parser) !void {
     // referencing one of the fields. like a function call
     const name = try self.expectIdentifier();
     std.debug.warn("  calling {}\n", .{ name });
     // arguments
-    try self.expectSymbol(.sym_left_paren);
+    var token = try self.expect();
+    if (token.tt != .sym_left_paren) {
+        return fail(self.source, token, "expected `(`, found `%`", .{ token });
+    }
     var first = true;
     while (true) {
-        var token = try self.expect();
+        token = try self.expect();
         if (token.tt == .sym_right_paren) {
             std.debug.warn("  done\n", .{});
             break;
@@ -29,48 +74,13 @@ fn parseCall(self: *Parser) !void {
             } else {
                 return fail(
                     self.source,
-                    token.loc,
+                    token,
                     "expected `,` or `)`, found `%`",
-                    .{ token.tt },
+                    .{ token },
                 );
             }
         }
-        switch (token.tt) {
-            .identifier => |identifier| {
-                if (self.peekSymbol(.sym_colon)) {
-                    try self.expectSymbol(.sym_colon);
-                    const token2 = try self.expect();
-                    switch (token2.tt) {
-                        .number => |n| {
-                            std.debug.warn("    arg {} = {d}\n", .{
-                                identifier,
-                                n,
-                            });
-                        },
-                        else => {
-                            return fail(
-                                self.source,
-                                token2.loc,
-                                "expected arg value, found `%`",
-                                .{ token.tt },
-                            );
-                        },
-                    }
-                } else {
-                    // just a name. my idea is that this is shorthand for
-                    // `property: params.property` (passing along own param)
-                    std.debug.warn("    arg {}\n", .{ identifier });
-                }
-            },
-            else => {
-                return fail(
-                    self.source,
-                    token.loc,
-                    "expected `)` or arg name, found `%`",
-                    .{ token.tt },
-                );
-            },
-        }
+        try parseCallArg(self, token);
     }
 }
 
@@ -93,9 +103,9 @@ fn paintBlock(
             else => {
                 return fail(
                     source,
-                    token.loc,
+                    token,
                     "expected `@` or `end`, found `%`",
-                    .{ token.tt },
+                    .{ token },
                 );
             },
         }

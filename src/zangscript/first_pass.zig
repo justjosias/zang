@@ -6,13 +6,36 @@ const Token = @import("tokenizer.zig").Token;
 const TokenType = @import("tokenizer.zig").TokenType;
 const SourceLocation = @import("tokenizer.zig").SourceLocation;
 
+pub const ResolvedParamType = enum {
+    boolean,
+    number,
+};
+
+pub const ResolvedFieldType = union(enum) {
+    builtin_module: usize, // FIXME
+    script_module: usize,
+};
+
+pub const ModuleParamDecl = struct {
+    name: []const u8,
+    type_token: Token,
+    type_name: []const u8, // UNRESOLVED type name
+    // in between the first and second passes, we'll resolve these types. (it's undefined during the first pass.)
+    // then, type will be resolved to point to either one of a bunch of known builtin types,
+    // or another script module.
+    resolved_type: ResolvedParamType,
+};
+
 pub const ModuleFieldDecl = struct {
     name: []const u8,
-    type_name: []const u8,
+    type_token: Token,
+    type_name: []const u8, // UNRESOLVED type name
+    resolved_type: ResolvedFieldType,
 };
 
 pub const ModuleDef = struct {
     name: []const u8,
+    params: std.ArrayList(ModuleParamDecl),
     fields: std.ArrayList(ModuleFieldDecl),
     begin_token: usize,
     end_token: usize,
@@ -44,36 +67,68 @@ pub const FirstPass = struct {
 
 pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
     const module_name = try self.parser.expectIdentifier();
-    try self.parser.expectSymbol(.sym_colon);
+
+    const ctoken = try self.parser.expect();
+    if (ctoken.tt != .sym_colon) {
+        return fail(self.parser.source, ctoken, "expected `:`, found `%`", .{ ctoken });
+    }
 
     var module_def: ModuleDef = .{
         .name = module_name,
+        .params = std.ArrayList(ModuleParamDecl).init(allocator),
         .fields = std.ArrayList(ModuleFieldDecl).init(allocator),
         .begin_token = undefined,
         .end_token = undefined,
     };
 
     while (true) {
-        const token = try self.parser.expect();
+        var token = try self.parser.expect();
         switch (token.tt) {
             .kw_begin => break,
+            .kw_param => {
+                // param declaration
+                const field_name = try self.parser.expectIdentifier();
+                const type_token = try self.parser.expect();
+                const type_name = switch (type_token.tt) {
+                    .identifier => |identifier| identifier,
+                    else => return fail(self.parser.source, type_token, "expected param type, found `%`", .{ type_token }),
+                };
+                token = try self.parser.expect();
+                if (token.tt != .sym_semicolon) {
+                    return fail(self.parser.source, token, "expected `;`, found `%`", .{ token });
+                }
+                try module_def.params.append(.{
+                    .name = field_name,
+                    .type_token = type_token,
+                    .type_name = type_name,
+                    .resolved_type = undefined,
+                });
+            },
             .identifier => |identifier| {
                 // field declaration
                 const field_name = identifier;
-                const field_type = try self.parser.expectIdentifier();
-                try self.parser.expectSymbol(.sym_semicolon);
+                const type_token = try self.parser.expect();
+                const type_name = switch (type_token.tt) {
+                    .identifier => |identifier2| identifier2,
+                    else => return fail(self.parser.source, type_token, "expected field type, found `%`", .{ type_token }),
+                };
+                const ctoken2 = try self.parser.expect();
+                if (ctoken2.tt != .sym_semicolon) {
+                    return fail(self.parser.source, ctoken2, "expected `;`, found `%`", .{ ctoken2 });
+                }
                 try module_def.fields.append(.{
                     .name = field_name,
-                    .type_name = field_type,
+                    .type_token = type_token,
+                    .type_name = type_name,
+                    .resolved_type = undefined,
                 });
-                continue;
             },
             else => {
                 return fail(
                     self.parser.source,
-                    token.loc,
+                    token,
                     "expected field declaration or `begin`, found `%`",
-                    .{ token.tt },
+                    .{ token },
                 );
             },
         }
@@ -111,15 +166,70 @@ pub fn firstPass(
             else => {
                 return fail(
                     self.parser.source,
-                    token.loc,
+                    token,
                     "expected `def` or end of file, found `%`",
-                    .{ token.tt },
+                    .{ token },
                 );
             },
         }
     }
 
+    var module_defs = self.module_defs.toOwnedSlice();
+
+    try resolveTypes(source, module_defs);
+
     return FirstPassResult {
-        .module_defs = self.module_defs.toOwnedSlice(),
+        .module_defs = module_defs,
     };
+}
+
+// this is the 1 1/2 pass
+fn resolveParamType(
+    source: Source,
+    param: *const ModuleParamDecl,
+) !ResolvedParamType {
+    if (std.mem.eql(u8, param.type_name, "boolean")) {
+        return .boolean;
+    }
+    if (std.mem.eql(u8, param.type_name, "number")) {
+        return .number;
+    }
+    // TODO if a module was referenced, be nice and recognize that but say it's not allowed
+    return fail(source, param.type_token, "could not resolve param type `%`", .{ param.type_token });
+}
+
+fn resolveFieldType(
+    source: Source,
+    module_defs: []const ModuleDef,
+    current_module_index: usize,
+    field: *const ModuleFieldDecl,
+) !ResolvedFieldType {
+    // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
+    if (std.mem.eql(u8, field.type_name, "PulseOsc")) {
+        return ResolvedFieldType{ .builtin_module = 0 };
+    }
+    if (std.mem.eql(u8, field.type_name, "TriSawOsc")) {
+        return ResolvedFieldType{ .builtin_module = 1 };
+    }
+    for (module_defs) |*module_def2, j| {
+        if (std.mem.eql(u8, field.type_name, module_def2.name)) {
+            if (j == current_module_index) {
+                // FIXME - do a full circular dependency detection
+                return fail(source, field.type_token, "cannot use self as field", .{});
+            }
+            return ResolvedFieldType{ .script_module = j };
+        }
+    }
+    return fail(source, field.type_token, "could not resolve field type `%`", .{ field.type_token });
+}
+
+fn resolveTypes(source: Source, module_defs: []ModuleDef) !void {
+    for (module_defs) |*module_def, i| {
+        for (module_def.params.span()) |*param| {
+            param.resolved_type = try resolveParamType(source, param);
+        }
+        for (module_def.fields.span()) |*field| {
+            field.resolved_type = try resolveFieldType(source, module_defs, i, field);
+        }
+    }
 }

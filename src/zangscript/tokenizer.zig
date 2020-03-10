@@ -4,6 +4,7 @@ const SourceLocation = @import("common.zig").SourceLocation;
 const fail = @import("common.zig").fail;
 
 pub const TokenType = union(enum) {
+    illegal,
     sym_at,
     sym_colon,
     sym_comma,
@@ -13,13 +14,15 @@ pub const TokenType = union(enum) {
     kw_begin,
     kw_def,
     kw_end,
+    kw_param,
     identifier: []const u8,
     number: f32,
 };
 
 pub const Token = struct {
     tt: TokenType,
-    loc: SourceLocation,
+    loc0: SourceLocation, // start
+    loc1: SourceLocation, // end
 };
 
 inline fn isWhitespace(ch: u8) bool {
@@ -40,10 +43,11 @@ pub const Tokenizer = struct {
     tokens: std.ArrayList(Token),
 };
 
-fn addToken(tokenizer: *Tokenizer, loc: SourceLocation, tt: TokenType) !void {
+fn addToken(tokenizer: *Tokenizer, loc0: SourceLocation, loc1: SourceLocation, tt: TokenType) !void {
     try tokenizer.tokens.append(.{
         .tt = tt,
-        .loc = loc,
+        .loc0 = loc0,
+        .loc1 = loc1,
     });
 }
 
@@ -64,38 +68,38 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (loc.index == src.len) {
             break;
         }
+        const start = loc;
         if (src[loc.index] == '@') {
-            try addToken(tokenizer, loc, .sym_at);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_at);
             continue;
         }
         if (src[loc.index] == ':') {
-            try addToken(tokenizer, loc, .sym_colon);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_colon);
             continue;
         }
         if (src[loc.index] == ',') {
-            try addToken(tokenizer, loc, .sym_comma);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_comma);
             continue;
         }
         if (src[loc.index] == '(') {
-            try addToken(tokenizer, loc, .sym_left_paren);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_left_paren);
             continue;
         }
         if (src[loc.index] == ')') {
-            try addToken(tokenizer, loc, .sym_right_paren);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_right_paren);
             continue;
         }
         if (src[loc.index] == ';') {
-            try addToken(tokenizer, loc, .sym_semicolon);
             loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_semicolon);
             continue;
         }
         if (src[loc.index] >= '0' and src[loc.index] <= '9') {
-            const start = loc;
             loc.index += 1;
             while (loc.index < src.len and
                     ((src[loc.index] >= '0' and src[loc.index] <= '9')
@@ -104,28 +108,33 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             }
             const number =
                 try std.fmt.parseFloat(f32, src[start.index..loc.index]);
-            try addToken(tokenizer, start, .{ .number = number });
+            try addToken(tokenizer, start, loc, .{ .number = number });
             continue;
         }
         if (!isStartOfIdentifier(src[loc.index])) {
-            return fail(tokenizer.source, loc, "illegal character: `#`", .{
-                src[loc.index..loc.index + 1],
-            });
+            loc.index += 1;
+            const token: Token = .{
+                .tt = .illegal,
+                .loc0 = start,
+                .loc1 = loc,
+            };
+            return fail(tokenizer.source, token, "illegal character: `%`", .{ token });
         }
-        const start = loc;
         loc.index += 1;
         while (loc.index < src.len and isIdentifierInterior(src[loc.index])) {
             loc.index += 1;
         }
         const token = src[start.index..loc.index];
         if (std.mem.eql(u8, token, "begin")) {
-            try addToken(tokenizer, start, .kw_begin);
+            try addToken(tokenizer, start, loc, .kw_begin);
         } else if (std.mem.eql(u8, token, "def")) {
-            try addToken(tokenizer, start, .kw_def);
+            try addToken(tokenizer, start, loc, .kw_def);
         } else if (std.mem.eql(u8, token, "end")) {
-            try addToken(tokenizer, start, .kw_end);
+            try addToken(tokenizer, start, loc, .kw_end);
+        } else if (std.mem.eql(u8, token, "param")) {
+            try addToken(tokenizer, start, loc, .kw_param);
         } else {
-            try addToken(tokenizer, start, .{ .identifier = token });
+            try addToken(tokenizer, start, loc, .{ .identifier = token });
         }
     }
 }

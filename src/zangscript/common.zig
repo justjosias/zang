@@ -15,58 +15,52 @@ pub const SourceLocation = struct {
     index: usize,
 };
 
-fn printToken(stderr: var, tt: TokenType) void {
-    // TODO i could get rid of this if i had the tokens track start and end pos
-    // then i could just print out the span
-    (switch (tt) {
-        .sym_at => noasync stderr.writeByte('@'),
-        .sym_colon => noasync stderr.writeByte(':'),
-        .sym_comma => noasync stderr.writeByte(','),
-        .sym_left_paren => noasync stderr.writeByte('('),
-        .sym_right_paren => noasync stderr.writeByte(')'),
-        .sym_semicolon => noasync stderr.writeByte(';'),
-        .kw_begin => noasync stderr.write("begin"),
-        .kw_def => noasync stderr.write("def"),
-        .kw_end => noasync stderr.write("end"),
-        .identifier => |identifier| noasync stderr.write(identifier),
-        .number => |number| noasync stderr.print("{d}", .{ number }),
-    }) catch {};
+fn printToken(stderr: var, contents: []const u8, token: Token) void {
+    // TODO would be nice if it could say "keyword `param`" instead of just "`param`"
+    // first i need to move the backquotes into here...
+    stderr.write(contents[token.loc0.index..token.loc1.index]) catch {};
 }
 
-fn failPrint(stderr: var, comptime fmt: []const u8, args: var) void {
+fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: var) void {
     comptime var j: usize = 0;
     inline for (fmt) |ch| {
         if (ch == '%') {
             // token
-            printToken(stderr, args[j]);
+            printToken(stderr, contents, args[j]);
             j += 1;
         } else if (ch == '#') {
             // string
-            noasync stderr.write(args[j]) catch {};
+            stderr.write(args[j]) catch {};
         } else {
-            noasync stderr.writeByte(ch) catch {};
+            stderr.writeByte(ch) catch {};
         }
     }
 }
 
+const KNRM = "\x1B[0m";
+const KBOLD = "\x1B[1m";
+const KRED = "\x1B[31m";
+const KYEL = "\x1B[33m";
+const KWHITE = "\x1B[37m";
+
 pub fn fail(
     source: Source,
-    maybe_loc: ?SourceLocation,
+    maybe_token: ?Token,
     comptime fmt: []const u8,
     args: var,
 ) error{Failed} {
-    const loc = maybe_loc orelse {
+    const token = maybe_token orelse {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.debug.getStderrStream();
-        noasync stderr.print("{}: ", .{ source.filename }) catch {};
-        failPrint(stderr, fmt, args);
-        noasync stderr.print("\n\n", .{}) catch {};
+        stderr.print("{}: ", .{ source.filename }) catch {};
+        failPrint(stderr, source.contents, fmt, args);
+        stderr.print("\n\n", .{}) catch {};
         return error.Failed;
     };
     // display the problematic line
     // look backward for newline.
-    var i: usize = loc.index;
+    var i: usize = token.loc0.index;
     while (i > 0) {
         i -= 1;
         if (source.contents[i] == '\n') {
@@ -76,7 +70,7 @@ pub fn fail(
     }
     const start = i;
     // look forward for newline.
-    i = loc.index;
+    i = token.loc0.index;
     while (i < source.contents.len) {
         if (source.contents[i] == '\n' or source.contents[i] == '\r') {
             break;
@@ -84,25 +78,30 @@ pub fn fail(
         i += 1;
     }
     const end = i;
-    const col = loc.index - start;
+    const col = token.loc0.index - start;
     // ok
     const held = std.debug.getStderrMutex().acquire();
     defer held.release();
     const stderr = std.debug.getStderrStream();
-    noasync stderr.print("{}:{}:{}: ", .{
+    stderr.print(KYEL ++ KBOLD ++ "{}:{}:{}: " ++ KWHITE, .{
         source.filename,
-        loc.line + 1,
+        token.loc0.line + 1,
         col + 1,
     }) catch {};
-    failPrint(stderr, fmt, args);
-    noasync stderr.print("\n\n", .{}) catch {};
+    failPrint(stderr, source.contents, fmt, args);
+    stderr.print(KNRM ++ "\n\n", .{}) catch {};
     // display line
-    noasync stderr.print("{}\n", .{ source.contents[start..end] }) catch {};
+    stderr.print("{}\n", .{ source.contents[start..end] }) catch {};
     // show arrow pointing at column
     i = 0; while (i < col) : (i += 1) {
-        noasync stderr.print(" ", .{}) catch {};
+        stderr.print(" ", .{}) catch {};
     }
-    noasync stderr.print("^\n", .{}) catch {};
+    stderr.write(KRED ++ KBOLD) catch {};
+    while (i < end - start and i < token.loc1.index - start) : (i += 1) {
+        stderr.print("^", .{}) catch {};
+    }
+    stderr.write(KNRM) catch {};
+    stderr.print("\n", .{}) catch {};
     return error.Failed;
 }
 
@@ -141,23 +140,26 @@ pub const Parser = struct {
             else => {
                 return fail(
                     self.source,
-                    token.loc,
+                    token,
                     "expected identifier, found `%`",
-                    .{ token.tt },
+                    .{ token },
                 );
             },
         }
     }
 
-    pub fn expectSymbol(self: *Parser, expected: var) !void {
-        const found = try self.expect();
-        if (found.tt != expected) {
-            return fail(self.source, found.loc, "expected `%`, found `%`", .{
-                expected,
-                found.tt,
-            });
-        }
-    }
+    // this is not great because we don't have a stringifier, and the function
+    // wouldn't be useful if caller wanted e.g. one of two symbols
+    // (e.g. `,` or `)` in function args)
+    //pub fn expectSymbol(self: *Parser, expected: var) !void {
+    //    const found = try self.expect();
+    //    if (found.tt != expected) {
+    //        return fail(self.source, found, "expected `%`, found `%`", .{
+    //            expected,
+    //            found.tt,
+    //        });
+    //    }
+    //}
 
     pub fn peekSymbol(self: *Parser, expected: var) bool {
         if (self.peek()) |found| {

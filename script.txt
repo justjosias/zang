@@ -1,4 +1,6 @@
 def FilteredSawtoothInstrument:
+    param color number;
+    param note_on boolean;
 
     osc TriSawOsc;
 begin
