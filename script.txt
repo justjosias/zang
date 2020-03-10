@@ -1,0 +1,12 @@
+def FilteredSawtoothInstrument:
+
+    osc TriSawOsc;
+begin
+    @osc(color: 0.5, sample_rate, freq)
+end
+
+def OuterInstrument:
+    instr FilteredSawtoothInstrument;
+begin
+    @instr(color: 0.7)
+end

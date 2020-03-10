@@ -27,6 +27,8 @@ pub fn build(b: *std.build.Builder) void {
     }
     b.step("write_wav", "Run example 'write_wav'")
         .dependOn(&writeWav(b).run().step);
+    b.step("zangscript", "Run 'zangscript' example program")
+        .dependOn(&zangscript(b).run().step);
 }
 
 fn example(
@@ -50,6 +52,14 @@ fn writeWav(b: *std.build.Builder) *std.build.LibExeObjStep {
     var o = b.addExecutable("write_wav", "examples/write_wav.zig");
     o.setBuildMode(b.standardReleaseOptions());
     o.addPackagePath("wav", "examples/zig-wav/wav.zig");
+    o.addPackagePath("zang", "src/zang.zig");
+    o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+    return o;
+}
+
+fn zangscript(b: *std.build.Builder) *std.build.LibExeObjStep {
+    var o = b.addExecutable("zangscript", "src/zangscript/zangscript.zig");
+    o.setBuildMode(b.standardReleaseOptions());
     o.addPackagePath("zang", "src/zang.zig");
     o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
     return o;
