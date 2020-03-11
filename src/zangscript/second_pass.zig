@@ -26,7 +26,7 @@ fn parseCallArg(self: *Parser, token: Token) !void {
             if (self.peekSymbol(.sym_colon)) {
                 var token2 = try self.expect();
                 if (token2.tt != .sym_colon) {
-                    return fail(self.source, token2, "expected `:`, found `%`", .{ token2 });
+                    return fail(self.source, token2, "expected `:`, found `%`", .{token2});
                 }
                 token2 = try self.expect();
                 switch (token2.tt) {
@@ -41,14 +41,14 @@ fn parseCallArg(self: *Parser, token: Token) !void {
                             self.source,
                             token2,
                             "expected arg value, found `%`",
-                            .{ token2 },
+                            .{token2},
                         );
                     },
                 }
             } else {
                 // just a name. my idea is that this is shorthand for
                 // `property: params.property` (passing along own param)
-                std.debug.warn("    arg {}\n", .{ identifier });
+                std.debug.warn("    arg {}\n", .{identifier});
             }
         },
         else => {
@@ -56,7 +56,7 @@ fn parseCallArg(self: *Parser, token: Token) !void {
                 self.source,
                 token,
                 "expected `)` or arg name, found `%`",
-                .{ token },
+                .{token},
             );
         },
     }
@@ -67,7 +67,7 @@ fn parseCall(self: *Parser, module_def: *ModuleDef) !Call {
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
         .identifier => |identifier| identifier,
-        else => return fail(self.source, name_token, "expected field name, found `%`", .{ name_token }),
+        else => return fail(self.source, name_token, "expected field name, found `%`", .{name_token}),
     };
     const field_index = for (module_def.fields.span()) |*field, i| {
         if (std.mem.eql(u8, field.name, name)) {
@@ -75,13 +75,13 @@ fn parseCall(self: *Parser, module_def: *ModuleDef) !Call {
         }
     } else {
         //return fail(self.source, name_token, "not a field of `#`: `%`", .{ module_def.name, name_token }); // FIXME not working?
-        return fail(self.source, name_token, "not a field of self: `%`", .{ name_token });
+        return fail(self.source, name_token, "not a field of self: `%`", .{name_token});
     };
-    std.debug.warn("  calling {}\n", .{ name });
+    std.debug.warn("  calling {}\n", .{name});
     // arguments
     var token = try self.expect();
     if (token.tt != .sym_left_paren) {
-        return fail(self.source, token, "expected `(`, found `%`", .{ token });
+        return fail(self.source, token, "expected `(`, found `%`", .{token});
     }
     var first = true;
     while (true) {
@@ -100,13 +100,13 @@ fn parseCall(self: *Parser, module_def: *ModuleDef) !Call {
                     self.source,
                     token,
                     "expected `,` or `)`, found `%`",
-                    .{ token },
+                    .{token},
                 );
             }
         }
         try parseCallArg(self, token);
     }
-    return Call {
+    return Call{
         .field_index = field_index,
     };
 }
@@ -135,7 +135,7 @@ fn paintBlock(
                     source,
                     token,
                     "expected `@` or `end`, found `%`",
-                    .{ token },
+                    .{token},
                 );
             },
         }
@@ -150,7 +150,7 @@ pub fn secondPass(
     module_defs: []ModuleDef,
 ) !void {
     for (module_defs) |*module_def| {
-        std.debug.warn("module '{}'\n", .{ module_def.name });
+        std.debug.warn("module '{}'\n", .{module_def.name});
         for (module_def.fields.span()) |field| {
             std.debug.warn("field {}: {}\n", .{ field.name, field.type_name });
         }

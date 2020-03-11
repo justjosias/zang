@@ -53,7 +53,7 @@ pub fn fail(
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.debug.getStderrStream();
-        stderr.print("{}: ", .{ source.filename }) catch {};
+        stderr.print("{}: ", .{source.filename}) catch {};
         failPrint(stderr, source.contents, fmt, args);
         stderr.print("\n\n", .{}) catch {};
         return error.Failed;
@@ -91,9 +91,10 @@ pub fn fail(
     failPrint(stderr, source.contents, fmt, args);
     stderr.print(KNRM ++ "\n\n", .{}) catch {};
     // display line
-    stderr.print("{}\n", .{ source.contents[start..end] }) catch {};
+    stderr.print("{}\n", .{source.contents[start..end]}) catch {};
     // show arrow pointing at column
-    i = 0; while (i < col) : (i += 1) {
+    i = 0;
+    while (i < col) : (i += 1) {
         stderr.print(" ", .{}) catch {};
     }
     stderr.write(KRED ++ KBOLD) catch {};
@@ -142,7 +143,7 @@ pub const Parser = struct {
                     self.source,
                     token,
                     "expected identifier, found `%`",
-                    .{ token },
+                    .{token},
                 );
             },
         }

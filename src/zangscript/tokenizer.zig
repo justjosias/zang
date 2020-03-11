@@ -102,12 +102,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] >= '0' and src[loc.index] <= '9') {
             loc.index += 1;
             while (loc.index < src.len and
-                    ((src[loc.index] >= '0' and src[loc.index] <= '9')
-                     or src[loc.index] == '.')) {
+                ((src[loc.index] >= '0' and src[loc.index] <= '9') or src[loc.index] == '.'))
+            {
                 loc.index += 1;
             }
-            const number =
-                try std.fmt.parseFloat(f32, src[start.index..loc.index]);
+            const number = try std.fmt.parseFloat(f32, src[start.index..loc.index]);
             try addToken(tokenizer, start, loc, .{ .number = number });
             continue;
         }
@@ -118,7 +117,7 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
                 .loc0 = start,
                 .loc1 = loc,
             };
-            return fail(tokenizer.source, token, "illegal character: `%`", .{ token });
+            return fail(tokenizer.source, token, "illegal character: `%`", .{token});
         }
         loc.index += 1;
         while (loc.index < src.len and isIdentifierInterior(src[loc.index])) {

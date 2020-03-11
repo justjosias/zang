@@ -77,7 +77,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
 
     const ctoken = try self.parser.expect();
     if (ctoken.tt != .sym_colon) {
-        return fail(self.parser.source, ctoken, "expected `:`, found `%`", .{ ctoken });
+        return fail(self.parser.source, ctoken, "expected `:`, found `%`", .{ctoken});
     }
 
     var module_def: ModuleDef = .{
@@ -99,11 +99,11 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
                     .identifier => |identifier| identifier,
-                    else => return fail(self.parser.source, type_token, "expected param type, found `%`", .{ type_token }),
+                    else => return fail(self.parser.source, type_token, "expected param type, found `%`", .{type_token}),
                 };
                 token = try self.parser.expect();
                 if (token.tt != .sym_semicolon) {
-                    return fail(self.parser.source, token, "expected `;`, found `%`", .{ token });
+                    return fail(self.parser.source, token, "expected `;`, found `%`", .{token});
                 }
                 try module_def.params.append(.{
                     .name = field_name,
@@ -118,11 +118,11 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
                     .identifier => |identifier2| identifier2,
-                    else => return fail(self.parser.source, type_token, "expected field type, found `%`", .{ type_token }),
+                    else => return fail(self.parser.source, type_token, "expected field type, found `%`", .{type_token}),
                 };
                 const ctoken2 = try self.parser.expect();
                 if (ctoken2.tt != .sym_semicolon) {
-                    return fail(self.parser.source, ctoken2, "expected `;`, found `%`", .{ ctoken2 });
+                    return fail(self.parser.source, ctoken2, "expected `;`, found `%`", .{ctoken2});
                 }
                 try module_def.fields.append(.{
                     .name = field_name,
@@ -136,7 +136,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                     self.parser.source,
                     token,
                     "expected field declaration or `begin`, found `%`",
-                    .{ token },
+                    .{token},
                 );
             },
         }
@@ -176,7 +176,7 @@ pub fn firstPass(
                     self.parser.source,
                     token,
                     "expected `def` or end of file, found `%`",
-                    .{ token },
+                    .{token},
                 );
             },
         }
@@ -186,7 +186,7 @@ pub fn firstPass(
 
     try resolveTypes(source, module_defs);
 
-    return FirstPassResult {
+    return FirstPassResult{
         .module_defs = module_defs,
     };
 }
@@ -203,7 +203,7 @@ fn resolveParamType(
         return .number;
     }
     // TODO if a module was referenced, be nice and recognize that but say it's not allowed
-    return fail(source, param.type_token, "could not resolve param type `%`", .{ param.type_token });
+    return fail(source, param.type_token, "could not resolve param type `%`", .{param.type_token});
 }
 
 fn resolveFieldType(
@@ -228,7 +228,7 @@ fn resolveFieldType(
             return ResolvedFieldType{ .script_module = j };
         }
     }
-    return fail(source, field.type_token, "could not resolve field type `%`", .{ field.type_token });
+    return fail(source, field.type_token, "could not resolve field type `%`", .{field.type_token});
 }
 
 fn resolveTypes(source: Source, module_defs: []ModuleDef) !void {

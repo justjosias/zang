@@ -51,7 +51,7 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
 
     try secondPass(source, tokens, result.module_defs);
 
-    return Script {
+    return Script{
         .module_defs = result.module_defs,
     };
 }
@@ -84,7 +84,7 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                     try checkParamType(param, field.field_type);
                     self.param_lookup[field_index] = maybe_param_index;
                 } else {
-                    std.debug.warn("WARNING: discarding param `{}`\n", .{ field.name });
+                    std.debug.warn("WARNING: discarding param `{}`\n", .{field.name});
                 }
             }
             return self;
@@ -137,13 +137,9 @@ pub fn main() u8 {
     var output: [1024]f32 = undefined;
     mod.paint(
         zang.Span.init(0, 1024),
-        .{ &output },
+        .{&output},
         .{},
-        .{
-            .freq = 440.0,
-            .color = 0.5,
-            .note_on = true,
-        },
+        .{ .freq = 440.0, .color = 0.5, .note_on = true },
     );
     return 0;
 }

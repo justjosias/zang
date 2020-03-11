@@ -6,8 +6,6 @@ const zang = @import("zang");
 // need to provide those, too. it will be known only at runtime, i think.
 
 pub fn ScriptModule(comptime filename: []const u8, comptime ParamsType: type) type {
-
-
     return struct {
         pub const num_outputs = 1; // FIXME
         pub const num_temps = 0; // FIXME
@@ -33,7 +31,8 @@ pub fn ScriptModule(comptime filename: []const u8, comptime ParamsType: type) ty
                     const gain2 = params.outgain / std.math.atan(gain1);
                     const offs = gain1 * params.offset;
 
-                    var i = span.start; while (i < span.end) : (i += 1) {
+                    var i = span.start;
+                    while (i < span.end) : (i += 1) {
                         const a = std.math.atan(params.input[i] * gain1 + offs);
                         output[i] += gain2 * a;
                     }
@@ -42,7 +41,8 @@ pub fn ScriptModule(comptime filename: []const u8, comptime ParamsType: type) ty
                     const gain2 = params.outgain;
                     const offs = gain1 * params.offset;
 
-                    var i = span.start; while (i < span.end) : (i += 1) {
+                    var i = span.start;
+                    while (i < span.end) : (i += 1) {
                         const a = params.input[i] * gain1 + offs;
                         const b = if (a < -1.0) -1.0 else if (a > 1.0) 1.0 else a;
                         output[i] += gain2 * b;
@@ -50,6 +50,5 @@ pub fn ScriptModule(comptime filename: []const u8, comptime ParamsType: type) ty
                 },
             }
         }
-    };
     };
 }
