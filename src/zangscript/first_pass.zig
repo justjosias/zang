@@ -5,15 +5,21 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const TokenType = @import("tokenizer.zig").TokenType;
 const SourceLocation = @import("tokenizer.zig").SourceLocation;
+const Expression = @import("second_pass.zig").Expression;
 
 pub const ResolvedParamType = enum {
     boolean,
     number,
 };
 
+pub const BuiltinModule = enum {
+    pulse_osc,
+    tri_saw_osc,
+};
+
 pub const ResolvedFieldType = union(enum) {
-    builtin_module: usize, // FIXME
-    script_module: usize,
+    builtin_module: BuiltinModule,
+    script_module: usize, // index into module_defs
 };
 
 pub const ModuleParamDecl = struct {
@@ -39,6 +45,7 @@ pub const ModuleDef = struct {
     fields: std.ArrayList(ModuleFieldDecl),
     begin_token: usize,
     end_token: usize,
+    expression: Expression,
 };
 
 pub const FirstPassResult = struct {
@@ -79,6 +86,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
         .fields = std.ArrayList(ModuleFieldDecl).init(allocator),
         .begin_token = undefined,
         .end_token = undefined,
+        .expression = undefined,
     };
 
     while (true) {
@@ -206,10 +214,10 @@ fn resolveFieldType(
 ) !ResolvedFieldType {
     // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
     if (std.mem.eql(u8, field.type_name, "PulseOsc")) {
-        return ResolvedFieldType{ .builtin_module = 0 };
+        return ResolvedFieldType{ .builtin_module = .pulse_osc };
     }
     if (std.mem.eql(u8, field.type_name, "TriSawOsc")) {
-        return ResolvedFieldType{ .builtin_module = 1 };
+        return ResolvedFieldType{ .builtin_module = .tri_saw_osc };
     }
     for (module_defs) |*module_def2, j| {
         if (std.mem.eql(u8, field.type_name, module_def2.name)) {

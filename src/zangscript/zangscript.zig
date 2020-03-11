@@ -133,8 +133,7 @@ pub fn main() u8 {
         color: f32,
         note_on: bool,
     };
-    var mod = ScriptModule(Params).init(&script.module_defs[0]) catch return 1; 
-    std.debug.warn("painting\n", .{});
+    var mod = ScriptModule(Params).init(&script.module_defs[0]) catch return 1;
     var output: [1024]f32 = undefined;
     mod.paint(
         zang.Span.init(0, 1024),

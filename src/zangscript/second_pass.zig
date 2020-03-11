@@ -5,8 +5,20 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
+const BuiltinModule = @import("first_pass.zig").BuiltinModule;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
+
+// this will be a lisp like syntax tree... stuff like order of operations will be applied before we get in here
+// then an additional pass will be made to bake this down and get temps
+pub const Call = struct {
+    field_index: usize, // index of the field in the "self" module
+    // TODO args
+};
+
+pub const Expression = union(enum) {
+    call: Call,
+};
 
 fn parseCallArg(self: *Parser, token: Token) !void {
     switch (token.tt) {
@@ -50,9 +62,21 @@ fn parseCallArg(self: *Parser, token: Token) !void {
     }
 }
 
-fn parseCall(self: *Parser) !void {
+fn parseCall(self: *Parser, module_def: *ModuleDef) !Call {
     // referencing one of the fields. like a function call
-    const name = try self.expectIdentifier();
+    const name_token = try self.expect();
+    const name = switch (name_token.tt) {
+        .identifier => |identifier| identifier,
+        else => return fail(self.source, name_token, "expected field name, found `%`", .{ name_token }),
+    };
+    const field_index = for (module_def.fields.span()) |*field, i| {
+        if (std.mem.eql(u8, field.name, name)) {
+            break i;
+        }
+    } else {
+        //return fail(self.source, name_token, "not a field of `#`: `%`", .{ module_def.name, name_token }); // FIXME not working?
+        return fail(self.source, name_token, "not a field of self: `%`", .{ name_token });
+    };
     std.debug.warn("  calling {}\n", .{ name });
     // arguments
     var token = try self.expect();
@@ -82,13 +106,16 @@ fn parseCall(self: *Parser) !void {
         }
         try parseCallArg(self, token);
     }
+    return Call {
+        .field_index = field_index,
+    };
 }
 
 fn paintBlock(
     source: Source,
     tokens: []const Token,
     module_def: *ModuleDef,
-) !void {
+) !Expression {
     var self: Parser = .{
         .source = source,
         .tokens = tokens[module_def.begin_token..module_def.end_token],
@@ -99,7 +126,10 @@ fn paintBlock(
         const token = try self.expect();
         switch (token.tt) {
             .kw_end => break,
-            .sym_at => try parseCall(&self),
+            .sym_at => {
+                const call = try parseCall(&self, module_def);
+                return Expression{ .call = call };
+            },
             else => {
                 return fail(
                     source,
@@ -110,6 +140,8 @@ fn paintBlock(
             },
         }
     }
+
+    return fail(source, null, "?", .{}); // FIXME
 }
 
 pub fn secondPass(
@@ -123,6 +155,6 @@ pub fn secondPass(
             std.debug.warn("field {}: {}\n", .{ field.name, field.type_name });
         }
 
-        try paintBlock(source, tokens, module_def);
+        module_def.expression = try paintBlock(source, tokens, module_def);
     }
 }
