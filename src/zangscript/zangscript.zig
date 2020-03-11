@@ -5,6 +5,7 @@ const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
+const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ModuleParamDecl = @import("first_pass.zig").ModuleParamDecl;
 const firstPass = @import("first_pass.zig").firstPass;
 const secondPass = @import("second_pass.zig").secondPass;
@@ -49,7 +50,7 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
         //result.module_defs.deinit();
     }
 
-    try secondPass(source, tokens, result.module_defs);
+    try secondPass(source, tokens, result.module_defs, allocator);
 
     return Script{
         .module_defs = result.module_defs,
@@ -62,19 +63,21 @@ pub fn ScriptModule(comptime ParamsType: type) type {
         pub const num_temps = 0; // FIXME
         pub const Params = ParamsType;
 
+        module_defs: []const ModuleDef,
         module_def: *const ModuleDef,
         param_lookup: [@typeInfo(Params).Struct.fields.len]usize,
 
-        pub fn init(module_def: *const ModuleDef) !@This() {
+        pub fn init(module_defs: []const ModuleDef, module_def: *const ModuleDef) !@This() {
             var self: @This() = .{
+                .module_defs = module_defs,
                 .module_def = module_def,
                 .param_lookup = undefined,
             };
             // TODO detect params in the module def that are not set in `params`. this should be an error
             inline for (@typeInfo(Params).Struct.fields) |field, field_index| {
-                var maybe_param: ?*const ModuleParamDecl = null;
+                var maybe_param: ?ModuleParam = null;
                 var maybe_param_index: usize = undefined;
-                for (self.module_def.params.span()) |*param, param_index| {
+                for (self.module_def.params) |param, param_index| {
                     if (std.mem.eql(u8, param.name, field.name)) {
                         maybe_param = param;
                         maybe_param_index = param_index;
@@ -90,8 +93,8 @@ pub fn ScriptModule(comptime ParamsType: type) type {
             return self;
         }
 
-        fn checkParamType(param: *const ModuleParamDecl, comptime field_type: type) !void {
-            switch (param.resolved_type) {
+        fn checkParamType(param: ModuleParam, comptime field_type: type) !void {
+            switch (param.param_type) {
                 .boolean => {
                     if (field_type != bool) {
                         std.debug.warn("ERROR: type mismatch\n", .{});
@@ -108,18 +111,42 @@ pub fn ScriptModule(comptime ParamsType: type) type {
         }
 
         pub fn paint(self: *@This(), span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {
-            for (self.module_def.params.span()) |*param, param_index| {
+            for (self.module_def.params) |param, param_index| {
                 inline for (@typeInfo(Params).Struct.fields) |field, field_index| {
                     if (self.param_lookup[field_index] == param_index) {
                         std.debug.warn("set param `{}` to {}\n", .{ param.name, @field(params, field.name) });
                     }
                 }
             }
-            //const output = outputs[0];
-            //var i = span.start; while (i < span.end) : (i += 1) {
-            //    const a = std.math.atan(params.input[i] * gain1 + offs);
-            //    output[i] += gain2 * a;
-            //}
+
+            switch (self.module_def.expression) {
+                .call => |call| {
+                    const field = &self.module_def.fields.span()[call.field_index];
+                    switch (field.resolved_type) {
+                        .builtin_module => |bmod| {
+                            switch (bmod) {
+                                .pulse_osc => {
+                                    // TODO need an instance of it
+                                    std.debug.warn("paint pulse_osc\n", .{});
+                                },
+                                .tri_saw_osc => {
+                                    // TODO need an instance of it
+                                    std.debug.warn("paint tri_saw_osc\n", .{});
+                                },
+                            }
+                        },
+                        .script_module => |module_index| {
+                            // TODO need an instance of it
+                            const mod = &self.module_defs[module_index];
+                            std.debug.warn("paint {}\n", .{mod.name});
+                        },
+                    }
+                    for (call.args.span()) |arg| {
+                        std.debug.warn("- arg {} = {}\n", .{ arg.arg_name, arg.value });
+                    }
+                },
+                .nothing => {},
+            }
         }
     };
 }
@@ -133,7 +160,7 @@ pub fn main() u8 {
         color: f32,
         note_on: bool,
     };
-    var mod = ScriptModule(Params).init(&script.module_defs[0]) catch return 1;
+    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[0]) catch return 1;
     var output: [1024]f32 = undefined;
     mod.paint(
         zang.Span.init(0, 1024),

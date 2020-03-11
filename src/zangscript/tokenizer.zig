@@ -14,7 +14,9 @@ pub const TokenType = union(enum) {
     kw_begin,
     kw_def,
     kw_end,
+    kw_false,
     kw_param,
+    kw_true,
     identifier: []const u8,
     number: f32,
 };
@@ -64,6 +66,12 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
                 loc.line += 1;
             }
             loc.index += 1;
+        }
+        if (loc.index + 2 < src.len and src[loc.index] == '/' and src[loc.index + 1] == '/') {
+            while (loc.index < src.len and src[loc.index] != '\r' and src[loc.index] != '\n') {
+                loc.index += 1;
+            }
+            continue;
         }
         if (loc.index == src.len) {
             break;
@@ -130,8 +138,12 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .kw_def);
         } else if (std.mem.eql(u8, token, "end")) {
             try addToken(tokenizer, start, loc, .kw_end);
+        } else if (std.mem.eql(u8, token, "false")) {
+            try addToken(tokenizer, start, loc, .kw_false);
         } else if (std.mem.eql(u8, token, "param")) {
             try addToken(tokenizer, start, loc, .kw_param);
+        } else if (std.mem.eql(u8, token, "true")) {
+            try addToken(tokenizer, start, loc, .kw_true);
         } else {
             try addToken(tokenizer, start, loc, .{ .identifier = token });
         }

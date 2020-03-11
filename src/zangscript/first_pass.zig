@@ -22,14 +22,16 @@ pub const ResolvedFieldType = union(enum) {
     script_module: usize, // index into module_defs
 };
 
+// this is separate because it's also used for builtin modules
+pub const ModuleParam = struct {
+    name: []const u8,
+    param_type: ResolvedParamType,
+};
+
 pub const ModuleParamDecl = struct {
     name: []const u8,
     type_token: Token,
     type_name: []const u8, // UNRESOLVED type name
-    // in between the first and second passes, we'll resolve these types. (it's undefined during the first pass.)
-    // then, type will be resolved to point to either one of a bunch of known builtin types,
-    // or another script module.
-    resolved_type: ResolvedParamType,
 };
 
 pub const ModuleFieldDecl = struct {
@@ -41,7 +43,9 @@ pub const ModuleFieldDecl = struct {
 
 pub const ModuleDef = struct {
     name: []const u8,
-    params: std.ArrayList(ModuleParamDecl),
+    param_decls: std.ArrayList(ModuleParamDecl),
+    // in between the first and second passes, we'll resolve params from param_decls. (it's undefined during the first pass.)
+    params: []const ModuleParam,
     fields: std.ArrayList(ModuleFieldDecl),
     begin_token: usize,
     end_token: usize,
@@ -82,7 +86,8 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
 
     var module_def: ModuleDef = .{
         .name = module_name,
-        .params = std.ArrayList(ModuleParamDecl).init(allocator),
+        .param_decls = std.ArrayList(ModuleParamDecl).init(allocator),
+        .params = undefined,
         .fields = std.ArrayList(ModuleFieldDecl).init(allocator),
         .begin_token = undefined,
         .end_token = undefined,
@@ -105,11 +110,10 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 if (token.tt != .sym_semicolon) {
                     return fail(self.parser.source, token, "expected `;`, found `%`", .{token});
                 }
-                try module_def.params.append(.{
+                try module_def.param_decls.append(.{
                     .name = field_name,
                     .type_token = type_token,
                     .type_name = type_name,
-                    .resolved_type = undefined,
                 });
             },
             .identifier => |identifier| {
@@ -171,20 +175,13 @@ pub fn firstPass(
     while (self.parser.next()) |token| {
         switch (token.tt) {
             .kw_def => try defineModule(&self, allocator),
-            else => {
-                return fail(
-                    self.parser.source,
-                    token,
-                    "expected `def` or end of file, found `%`",
-                    .{token},
-                );
-            },
+            else => return fail(self.parser.source, token, "expected `def` or end of file, found `%`", .{token}),
         }
     }
 
     var module_defs = self.module_defs.toOwnedSlice();
 
-    try resolveTypes(source, module_defs);
+    try resolveTypes(source, module_defs, allocator);
 
     return FirstPassResult{
         .module_defs = module_defs,
@@ -192,10 +189,7 @@ pub fn firstPass(
 }
 
 // this is the 1 1/2 pass
-fn resolveParamType(
-    source: Source,
-    param: *const ModuleParamDecl,
-) !ResolvedParamType {
+fn resolveParamType(source: Source, param: ModuleParamDecl) !ResolvedParamType {
     if (std.mem.eql(u8, param.type_name, "boolean")) {
         return .boolean;
     }
@@ -231,10 +225,14 @@ fn resolveFieldType(
     return fail(source, field.type_token, "could not resolve field type `%`", .{field.type_token});
 }
 
-fn resolveTypes(source: Source, module_defs: []ModuleDef) !void {
+fn resolveTypes(source: Source, module_defs: []ModuleDef, allocator: *std.mem.Allocator) !void {
     for (module_defs) |*module_def, i| {
-        for (module_def.params.span()) |*param| {
-            param.resolved_type = try resolveParamType(source, param);
+        module_def.params = try allocator.alloc(ModuleParam, module_def.param_decls.span().len); // FIXME never freed
+        for (module_def.param_decls.span()) |param_decl, j| {
+            module_def.params[j] = .{
+                .name = param_decl.name,
+                .param_type = try resolveParamType(source, param_decl),
+            };
         }
         for (module_def.fields.span()) |*field| {
             field.resolved_type = try resolveFieldType(source, module_defs, i, field);
