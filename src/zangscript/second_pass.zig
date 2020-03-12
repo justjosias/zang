@@ -14,7 +14,7 @@ const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
 
 pub const CallArg = struct {
     arg_name: []const u8,
-    value: ?f32,
+    value: f32,
 };
 // this will be a lisp like syntax tree... stuff like order of operations will be applied before we get in here
 // then an additional pass will be made to bake this down and get temps

@@ -57,6 +57,11 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
     };
 }
 
+pub const BuiltinInstance = union(enum) {
+    pulse_osc: *zang.PulseOsc,
+    tri_saw_osc: *zang.TriSawOsc,
+};
+
 pub fn ScriptModule(comptime ParamsType: type) type {
     return struct {
         pub const num_outputs = 1; // FIXME
@@ -67,12 +72,38 @@ pub fn ScriptModule(comptime ParamsType: type) type {
         module_def: *const ModuleDef,
         param_lookup: [@typeInfo(Params).Struct.fields.len]usize,
 
-        pub fn init(module_defs: []const ModuleDef, module_def: *const ModuleDef) !@This() {
+        // TODO make an instance of each of the fields, somehow
+        instances: []BuiltinInstance,
+
+        pub fn init(module_defs: []const ModuleDef, module_def: *const ModuleDef, allocator: *std.mem.Allocator) !@This() {
             var self: @This() = .{
                 .module_defs = module_defs,
                 .module_def = module_def,
                 .param_lookup = undefined,
+                .instances = undefined,
             };
+            // instantiate fields
+            self.instances = try allocator.alloc(BuiltinInstance, module_def.fields.span().len);
+            for (module_def.fields.span()) |field, i| {
+                switch (field.resolved_type) {
+                    .builtin_module => |bmod| {
+                        switch (bmod) {
+                            .pulse_osc => {
+                                const mod = try allocator.create(zang.PulseOsc);
+                                mod.* = zang.PulseOsc.init();
+                                self.instances[i] = .{ .pulse_osc = mod };
+                            },
+                            .tri_saw_osc => {
+                                const mod = try allocator.create(zang.TriSawOsc);
+                                mod.* = zang.TriSawOsc.init();
+                                self.instances[i] = .{ .tri_saw_osc = mod };
+                            },
+                        }
+                    },
+                    .script_module => |module_index| unreachable, // TODO
+                }
+            }
+            // verify that ParamsType is compatible with the script's params
             // TODO detect params in the module def that are not set in `params`. this should be an error
             inline for (@typeInfo(Params).Struct.fields) |field, field_index| {
                 var maybe_param: ?ModuleParam = null;
@@ -92,6 +123,8 @@ pub fn ScriptModule(comptime ParamsType: type) type {
             }
             return self;
         }
+
+        // TODO - deinit
 
         fn checkParamType(param: ModuleParam, comptime field_type: type) !void {
             switch (param.param_type) {
@@ -121,28 +154,60 @@ pub fn ScriptModule(comptime ParamsType: type) type {
 
             switch (self.module_def.expression) {
                 .call => |call| {
+                    const instance = self.instances[call.field_index];
                     const field = &self.module_def.fields.span()[call.field_index];
                     switch (field.resolved_type) {
                         .builtin_module => |bmod| {
                             switch (bmod) {
                                 .pulse_osc => {
-                                    // TODO need an instance of it
-                                    std.debug.warn("paint pulse_osc\n", .{});
+                                    switch (instance) {
+                                        .pulse_osc => |mod| {
+                                            // TODO manage outputs and temps
+                                            var sub_params: zang.PulseOsc.Params = undefined;
+                                            for (call.args.span()) |arg| {
+                                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+                                                    sub_params.sample_rate = arg.value;
+                                                }
+                                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
+                                                    sub_params.freq = zang.constant(arg.value);
+                                                }
+                                                if (std.mem.eql(u8, arg.arg_name, "color")) {
+                                                    sub_params.color = arg.value;
+                                                }
+                                            }
+                                            mod.paint(span, outputs, temps, sub_params);
+                                        },
+                                        else => unreachable,
+                                    }
                                 },
                                 .tri_saw_osc => {
-                                    // TODO need an instance of it
-                                    std.debug.warn("paint tri_saw_osc\n", .{});
+                                    switch (instance) {
+                                        .tri_saw_osc => |mod| {
+                                            // TODO manage outputs and temps
+                                            var sub_params: zang.TriSawOsc.Params = undefined;
+                                            for (call.args.span()) |arg| {
+                                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+                                                    sub_params.sample_rate = arg.value;
+                                                }
+                                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
+                                                    sub_params.freq = zang.constant(arg.value);
+                                                }
+                                                if (std.mem.eql(u8, arg.arg_name, "color")) {
+                                                    sub_params.color = arg.value;
+                                                }
+                                            }
+                                            mod.paint(span, outputs, temps, sub_params);
+                                        },
+                                        else => unreachable,
+                                    }
                                 },
                             }
                         },
                         .script_module => |module_index| {
                             // TODO need an instance of it
                             const mod = &self.module_defs[module_index];
-                            std.debug.warn("paint {}\n", .{mod.name});
+                            unreachable;
                         },
-                    }
-                    for (call.args.span()) |arg| {
-                        std.debug.warn("- arg {} = {}\n", .{ arg.arg_name, arg.value });
                     }
                 },
                 .nothing => {},
@@ -160,13 +225,19 @@ pub fn main() u8 {
         color: f32,
         note_on: bool,
     };
-    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[0]) catch return 1;
+    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[0], allocator) catch return 1;
+    // TODO defer mod deinit
     var output: [1024]f32 = undefined;
+    zang.zero(zang.Span.init(0, 1024), &output);
     mod.paint(
         zang.Span.init(0, 1024),
         .{&output},
         .{},
         .{ .freq = 440.0, .color = 0.5, .note_on = true },
     );
+    //var i: usize = 0;
+    //while (i < 100) : (i += 1) {
+    //    std.debug.warn("{d}\n", .{output[i]});
+    //}
     return 0;
 }
