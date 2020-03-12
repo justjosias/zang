@@ -62,6 +62,11 @@ pub const BuiltinInstance = union(enum) {
     tri_saw_osc: *zang.TriSawOsc,
 };
 
+pub const Instance = union(enum) {
+    builtin: BuiltinInstance,
+    script_module: void,
+};
+
 pub fn ScriptModule(comptime ParamsType: type) type {
     return struct {
         pub const num_outputs = 1; // FIXME
@@ -72,8 +77,7 @@ pub fn ScriptModule(comptime ParamsType: type) type {
         module_def: *const ModuleDef,
         param_lookup: [@typeInfo(Params).Struct.fields.len]usize,
 
-        // TODO make an instance of each of the fields, somehow
-        instances: []BuiltinInstance,
+        instances: []Instance,
 
         pub fn init(module_defs: []const ModuleDef, module_def: *const ModuleDef, allocator: *std.mem.Allocator) !@This() {
             var self: @This() = .{
@@ -83,7 +87,7 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                 .instances = undefined,
             };
             // instantiate fields
-            self.instances = try allocator.alloc(BuiltinInstance, module_def.fields.span().len);
+            self.instances = try allocator.alloc(Instance, module_def.fields.span().len);
             for (module_def.fields.span()) |field, i| {
                 switch (field.resolved_type) {
                     .builtin_module => |bmod| {
@@ -91,16 +95,20 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                             .pulse_osc => {
                                 const mod = try allocator.create(zang.PulseOsc);
                                 mod.* = zang.PulseOsc.init();
-                                self.instances[i] = .{ .pulse_osc = mod };
+                                self.instances[i] = .{ .builtin = .{ .pulse_osc = mod } };
                             },
                             .tri_saw_osc => {
                                 const mod = try allocator.create(zang.TriSawOsc);
                                 mod.* = zang.TriSawOsc.init();
-                                self.instances[i] = .{ .tri_saw_osc = mod };
+                                self.instances[i] = .{ .builtin = .{ .tri_saw_osc = mod } };
                             },
                         }
                     },
-                    .script_module => |module_index| unreachable, // TODO
+                    .script_module => |module_index| {
+                        // TODO how do i instantiate other script modules?
+                        // i need another ScriptModule class, but not generic. or this generic one should be a wrapper around that.
+                        unreachable;
+                    },
                 }
             }
             // verify that ParamsType is compatible with the script's params
@@ -161,44 +169,54 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                             switch (bmod) {
                                 .pulse_osc => {
                                     switch (instance) {
-                                        .pulse_osc => |mod| {
-                                            // TODO manage outputs and temps
-                                            var sub_params: zang.PulseOsc.Params = undefined;
-                                            for (call.args.span()) |arg| {
-                                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
-                                                    sub_params.sample_rate = arg.value;
-                                                }
-                                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
-                                                    sub_params.freq = zang.constant(arg.value);
-                                                }
-                                                if (std.mem.eql(u8, arg.arg_name, "color")) {
-                                                    sub_params.color = arg.value;
-                                                }
+                                        .builtin => |builtin| {
+                                            switch (builtin) {
+                                                .pulse_osc => |mod| {
+                                                    // TODO manage outputs and temps
+                                                    var sub_params: zang.PulseOsc.Params = undefined;
+                                                    for (call.args.span()) |arg| {
+                                                        if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+                                                            sub_params.sample_rate = arg.value;
+                                                        }
+                                                        if (std.mem.eql(u8, arg.arg_name, "freq")) {
+                                                            sub_params.freq = zang.constant(arg.value);
+                                                        }
+                                                        if (std.mem.eql(u8, arg.arg_name, "color")) {
+                                                            sub_params.color = arg.value;
+                                                        }
+                                                    }
+                                                    mod.paint(span, outputs, temps, sub_params);
+                                                },
+                                                else => unreachable,
                                             }
-                                            mod.paint(span, outputs, temps, sub_params);
                                         },
-                                        else => unreachable,
+                                        .script_module => unreachable,
                                     }
                                 },
                                 .tri_saw_osc => {
                                     switch (instance) {
-                                        .tri_saw_osc => |mod| {
-                                            // TODO manage outputs and temps
-                                            var sub_params: zang.TriSawOsc.Params = undefined;
-                                            for (call.args.span()) |arg| {
-                                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
-                                                    sub_params.sample_rate = arg.value;
-                                                }
-                                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
-                                                    sub_params.freq = zang.constant(arg.value);
-                                                }
-                                                if (std.mem.eql(u8, arg.arg_name, "color")) {
-                                                    sub_params.color = arg.value;
-                                                }
+                                        .builtin => |builtin| {
+                                            switch (builtin) {
+                                                .tri_saw_osc => |mod| {
+                                                    // TODO manage outputs and temps
+                                                    var sub_params: zang.TriSawOsc.Params = undefined;
+                                                    for (call.args.span()) |arg| {
+                                                        if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+                                                            sub_params.sample_rate = arg.value;
+                                                        }
+                                                        if (std.mem.eql(u8, arg.arg_name, "freq")) {
+                                                            sub_params.freq = zang.constant(arg.value);
+                                                        }
+                                                        if (std.mem.eql(u8, arg.arg_name, "color")) {
+                                                            sub_params.color = arg.value;
+                                                        }
+                                                    }
+                                                    mod.paint(span, outputs, temps, sub_params);
+                                                },
+                                                else => unreachable,
                                             }
-                                            mod.paint(span, outputs, temps, sub_params);
                                         },
-                                        else => unreachable,
+                                        .script_module => unreachable,
                                     }
                                 },
                             }
@@ -206,6 +224,12 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                         .script_module => |module_index| {
                             // TODO need an instance of it
                             const mod = &self.module_defs[module_index];
+                            switch (instance) {
+                                .builtin => unreachable,
+                                .script_module => {
+                                    // ...
+                                },
+                            }
                             unreachable;
                         },
                     }
@@ -225,7 +249,7 @@ pub fn main() u8 {
         color: f32,
         note_on: bool,
     };
-    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[0], allocator) catch return 1;
+    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[1], allocator) catch return 1;
     // TODO defer mod deinit
     var output: [1024]f32 = undefined;
     zang.zero(zang.Span.init(0, 1024), &output);
