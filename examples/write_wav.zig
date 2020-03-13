@@ -7,8 +7,8 @@ const example = @import("example_song.zig");
 const TOTAL_TIME = 19 * example.AUDIO_SAMPLE_RATE;
 
 const bytes_per_sample = switch (example.AUDIO_FORMAT) {
-    .S8 => 1,
-    .S16LSB => 2,
+    .signed8 => 1,
+    .signed16_lsb => 2,
 };
 
 var g_outputs:
@@ -62,7 +62,7 @@ pub fn main() !void {
         start += len;
     }
 
-    if (example.AUDIO_FORMAT == .S8) {
+    if (example.AUDIO_FORMAT == .signed8) {
         // convert from signed to unsigned 8-bit
         for (g_big_buffer) |*byte| {
             const signed_byte = @bitCast(i8, byte.*);
@@ -70,7 +70,7 @@ pub fn main() !void {
         }
     }
 
-    const file = try std.fs.File.openWrite("out.wav");
+    const file = try std.fs.cwd().createFile("out.wav", .{});
     defer file.close();
     var fos = file.outStream();
     const Saver = wav.Saver(std.fs.File.WriteError);
@@ -78,8 +78,8 @@ pub fn main() !void {
         .num_channels = example.MainModule.num_outputs,
         .sample_rate = example.AUDIO_SAMPLE_RATE,
         .format = switch (example.AUDIO_FORMAT) {
-            .S8 => .U8,
-            .S16LSB => .S16LSB,
+            .signed8 => .unsigned8,
+            .signed16_lsb => .signed16_lsb,
         },
         .data = g_big_buffer[0..],
     });

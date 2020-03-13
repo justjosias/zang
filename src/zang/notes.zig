@@ -135,6 +135,8 @@ pub fn Notes(comptime NoteParamsType: type) type {
 
                 for (self.song[self.next_song_event..]) |song_event| {
                     const note_t = song_event.t;
+                    // the notes must have been provided in chronological order
+                    std.debug.assert(note_t >= self.t);
                     if (note_t < end_t) {
                         const f = (note_t - self.t) / buf_time; // 0 to 1
                         const rel_frame_index = std.math.min(
@@ -151,12 +153,13 @@ pub fn Notes(comptime NoteParamsType: type) type {
                         };
                         self.paramses_array[count] = song_event.params;
                         count += 1;
+                        self.t = note_t;
                     } else {
                         break;
                     }
                 }
 
-                self.t += buf_time;
+                self.t = end_t;
 
                 return ImpulsesAndParamses {
                     .impulses = self.impulses_array[0..count],

@@ -149,6 +149,7 @@ fn doParse(parser: *Parser) !void {
             var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
                 instrument_num_notes[i] = 0;
             }
+            // TODO what about column_last_note?
         } else if (token.isWord("rate")) {
             rate = try parser.requireNumber();
         } else if (token.isWord("tempo")) {
@@ -170,7 +171,7 @@ fn doParse(parser: *Parser) !void {
                             unreachable;
                         };
 
-                        const note_ptr = &all_notes_arr
+                        var note_ptr = &all_notes_arr
                             [instrument_index]
                             [instrument_num_notes[instrument_index]];
 
@@ -187,6 +188,9 @@ fn doParse(parser: *Parser) !void {
                                         false,
                                     );
                                     instrument_num_notes[instrument_index] += 1;
+                                    note_ptr = &all_notes_arr
+                                        [instrument_index]
+                                        [instrument_num_notes[instrument_index]];
                                 }
                                 // note-on event for the new frequency
                                 note_ptr.* =
