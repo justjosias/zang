@@ -57,6 +57,60 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
     };
 }
 
+pub fn generateCode(script: Script) !void {
+    const stdout_file = std.io.getStdOut();
+    var stdout_file_out_stream = stdout_file.outStream();
+    const out = &stdout_file_out_stream.stream;
+
+    try out.print("const zang = @import(\"zang\");\n", .{});
+    for (script.module_defs) |module_def| {
+        try out.print("\n", .{});
+        try out.print("pub const {} = struct {{\n", .{module_def.name});
+        try out.print("    pub const num_outputs = 1;\n", .{}); // FIXME
+        try out.print("    pub const num_temps = 0;\n", .{}); // FIXME
+        try out.print("    pub const Params = struct {{\n", .{});
+        for (module_def.params) |param| {
+            const type_name = switch (param.param_type) {
+                .boolean => "bool",
+                .number => "f32",
+            };
+            try out.print("        {}: {},\n", .{param.name, type_name});
+        }
+        try out.print("    }};\n", .{});
+        try out.print("\n", .{});
+        for (module_def.fields.span()) |field| {
+            const type_name = switch (field.resolved_type) {
+                .builtin_module => |bmod| switch (bmod) {
+                    .pulse_osc => "zang.PulseOsc",
+                    .tri_saw_osc => "zang.TriSawOsc",
+                },
+                .script_module => |module_index| script.module_defs[module_index].name,
+            };
+            try out.print("    {}: {},\n", .{field.name, type_name});
+        }
+        try out.print("\n", .{});
+        try out.print("    pub fn init() {} {{\n", .{module_def.name});
+        try out.print("        return .{{\n", .{});
+        for (module_def.fields.span()) |field| {
+            const type_name = switch (field.resolved_type) {
+                .builtin_module => |bmod| switch (bmod) {
+                    .pulse_osc => "zang.PulseOsc",
+                    .tri_saw_osc => "zang.TriSawOsc",
+                },
+                .script_module => |module_index| script.module_defs[module_index].name,
+            };
+            try out.print("            .{} = {}.init(),\n", .{field.name, type_name});
+        }
+        try out.print("        }};\n", .{});
+        try out.print("    }}\n", .{});
+        try out.print("\n", .{});
+        try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module_def.name});
+        try out.print("        zang.zero(span, outputs[0]);\n", .{});
+        try out.print("    }}\n", .{});
+        try out.print("}};\n", .{});
+    }
+}
+
 pub const BuiltinInstance = union(enum) {
     pulse_osc: *zang.PulseOsc,
     tri_saw_osc: *zang.TriSawOsc,
@@ -244,12 +298,18 @@ pub fn main() u8 {
     const allocator = std.heap.page_allocator;
     const script = loadScript("../../script.txt", allocator) catch return 1;
     // TODO defer script deinit
+    // generate zig source
+    generateCode(script) catch |err| {
+        std.debug.warn("{}\n", .{err});
+        return 1;
+    };
+    // try to do stuff at runtime (unrelated to generated zig source)
     const Params = struct {
         freq: f32,
         color: f32,
         note_on: bool,
     };
-    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[1], allocator) catch return 1;
+    var mod = ScriptModule(Params).init(script.module_defs, &script.module_defs[0], allocator) catch return 1;
     // TODO defer mod deinit
     var output: [1024]f32 = undefined;
     zang.zero(zang.Span.init(0, 1024), &output);
