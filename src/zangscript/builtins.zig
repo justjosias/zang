@@ -18,7 +18,8 @@ fn getBuiltinModule(comptime T: type) Module {
             .name = field.name,
             .param_type = switch (field.field_type) {
                 bool => .boolean,
-                f32, zang.ConstantOrBuffer => .number,
+                f32 => .constant,
+                zang.ConstantOrBuffer => .constant_or_buffer,
                 else => @compileError("unsupported builtin field type: " ++ @typeName(field.field_type)),
             },
         };

@@ -14,7 +14,7 @@ const codegen = @import("codegen.zig").codegen;
 
 pub const CallArg = struct {
     arg_name: []const u8,
-    value: f32,
+    value: *const Expression,
 };
 
 pub const Call = struct {
@@ -24,22 +24,34 @@ pub const Call = struct {
 
 pub const Expression = union(enum) {
     call: Call,
+    literal: Literal,
+    // TODO param_value
     nothing,
 };
 
-const Literal = struct {
-    value_type: ResolvedParamType,
-    value: f32, // FIXME
+pub const Literal = union(ResolvedParamType) {
+    boolean: bool,
+    constant: f32,
+    constant_or_buffer: f32,
 };
 
-fn parseLiteral(p: *Parser) !Literal {
-    const token = try p.expect();
-    return switch (token.tt) {
-        .kw_false => Literal{ .value_type = .boolean, .value = 0 }, // FIXME
-        .kw_true => Literal{ .value_type = .boolean, .value = 1 }, // FIXME
-        .number => |n| Literal{ .value_type = .number, .value = n },
-        else => fail(p.source, token, "expected arg value, found `%`", .{token}),
-    };
+const ParseError = error{
+    Failed,
+    OutOfMemory,
+};
+
+fn getExpressionType(expression: *const Expression) ResolvedParamType {
+    switch (expression.*) {
+        .call => |call| {
+            return .constant_or_buffer; // FIXME?
+        },
+        .literal => |literal| {
+            return literal;
+        },
+        .nothing => {
+            unreachable;
+        },
+    }
 }
 
 // `module_def` is the module we're in (the "self").
@@ -51,7 +63,8 @@ fn parseCallArg(
     self: *ModuleDef,
     params: []const ModuleParam,
     field: *const ModuleFieldDecl,
-) !CallArg {
+    allocator: *std.mem.Allocator,
+) ParseError!CallArg {
     switch (token.tt) {
         .identifier => |identifier| {
             // find this param
@@ -70,12 +83,46 @@ fn parseCallArg(
             if (token2.tt != .sym_colon) {
                 return fail(p.source, token2, "expected `:`, found `%`", .{token2});
             }
-            // currently just looking for a literal value. later should support putting own fields through, more calls, and arithmetic expressions
-            const literal = try parseLiteral(p);
-            if (literal.value_type != param_type) {
-                return fail(p.source, token2, "type mismatch", .{}); // TODO better message
+            const token3 = try p.expect();
+            const subexpr = try parseExpression(p, module_defs, self, token3, allocator);
+            // type check!
+            const subexpr_type = getExpressionType(subexpr);
+            switch (param_type) {
+                .boolean => {
+                    if (subexpr_type != .boolean) {
+                        return fail(p.source, token3, "type mismatch (expecting boolean)", .{});
+                    }
+                },
+                .constant => {
+                    if (subexpr_type != .constant) {
+                        return fail(p.source, token3, "type mismatch (expecting constant)", .{});
+                    }
+                },
+                .constant_or_buffer => {
+                    if (subexpr_type == .constant_or_buffer) {
+                        // ok
+                    } else if (subexpr_type == .constant) {
+                        switch (subexpr.*) {
+                            .literal => |*literal| {
+                                switch (literal.*) {
+                                    .constant => |n| {
+                                        // coerce
+                                        literal.* = .{ .constant_or_buffer = n };
+                                    },
+                                    else => {},
+                                }
+                            },
+                            else => unreachable,
+                        }
+                    } else {
+                        return fail(p.source, token3, "type mismatch (expecting number)", .{});
+                    }
+                },
             }
-            return CallArg{ .arg_name = identifier, .value = literal.value };
+            return CallArg{
+                .arg_name = identifier,
+                .value = subexpr,
+            };
         },
         else => {
             return fail(p.source, token, "expected `)` or arg name, found `%`", .{token});
@@ -83,7 +130,7 @@ fn parseCallArg(
     }
 }
 
-fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) !Call {
+fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!Call {
     // referencing one of the fields. like a function call
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
@@ -122,7 +169,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
                 return fail(self.source, token, "expected `,` or `)`, found `%`", .{token});
             }
         }
-        const arg = try parseCallArg(self, token, module_defs, module_def, params, field);
+        const arg = try parseCallArg(self, token, module_defs, module_def, params, field, allocator);
         try args.append(arg);
     }
     // make sure all args are accounted for
@@ -143,27 +190,63 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
     };
 }
 
+fn parseExpression(
+    parser: *Parser,
+    module_defs: []const ModuleDef,
+    module_def: *ModuleDef,
+    token: Token,
+    allocator: *std.mem.Allocator,
+) ParseError!*const Expression {
+    switch (token.tt) {
+        .kw_false => {
+            const expr = try allocator.create(Expression);
+            expr.* = .{ .literal = .{ .boolean = false } };
+            return expr;
+        },
+        .kw_true => {
+            const expr = try allocator.create(Expression);
+            expr.* = .{ .literal = .{ .boolean = true } };
+            return expr;
+        },
+        .number => |n| {
+            const expr = try allocator.create(Expression);
+            expr.* = .{ .literal = .{ .constant = n } };
+            return expr;
+        },
+        .sym_at => {
+            const expr = try allocator.create(Expression);
+            expr.* = Expression{ .call = try parseCall(parser, module_defs, module_def, allocator) };
+            return expr;
+        },
+        else => {
+            //return fail(source, token, "expected `@` or `end`, found `%`", .{token});
+            return fail(parser.source, token, "expected expression, found `%`", .{token});
+        },
+    }
+}
+
 fn paintBlock(
     source: Source,
     tokens: []const Token,
     module_defs: []ModuleDef,
     module_def: *ModuleDef,
     allocator: *std.mem.Allocator,
-) !Expression {
-    var self: Parser = .{
+) !*const Expression {
+    var parser: Parser = .{
         .source = source,
         .tokens = tokens[module_def.begin_token..module_def.end_token],
         .i = 0,
     };
     while (true) {
-        const token = try self.expect();
-        switch (token.tt) {
-            .kw_end => break,
-            .sym_at => return Expression{ .call = try parseCall(&self, module_defs, module_def, allocator) },
-            else => return fail(source, token, "expected `@` or `end`, found `%`", .{token}),
+        const token = try parser.expect();
+        if (token.tt == .kw_end) {
+            break;
         }
+        return try parseExpression(&parser, module_defs, module_def, token, allocator);
     }
-    return Expression.nothing;
+    const expr = try allocator.create(Expression);
+    expr.* = .nothing;
+    return expr;
 }
 
 pub fn secondPass(
@@ -177,29 +260,44 @@ pub fn secondPass(
 
         std.debug.warn("module '{}'\n", .{module_def.name});
         for (module_def.fields.span()) |field| {
-            std.debug.warn("field {}: {}\n", .{ field.name, field.type_name });
+            std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
         }
         std.debug.warn("print expression:\n", .{});
-        printExpression(&module_def.expression, 1);
-        std.debug.warn("\n", .{});
+        printExpression(module_defs, module_def, module_def.expression, 1);
 
-        try codegen(module_def, &module_def.expression, allocator);
+        try codegen(module_def, module_def.expression, allocator);
     }
 }
 
-fn printExpression(expression: *const Expression, indentation: usize) void {
+fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef, expression: *const Expression, indentation: usize) void {
     var i: usize = 0;
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});
     }
     switch (expression.*) {
         .call => |call| {
-            std.debug.warn("call {} (", .{call.field_index});
+            std.debug.warn("call self.{} (\n", .{module_def.fields.span()[call.field_index].name});
             for (call.args.span()) |arg, j| {
-                if (j > 0) std.debug.warn(", ", .{});
-                std.debug.warn("{}={}", .{ arg.arg_name, arg.value });
+                i = 0;
+                while (i < indentation + 1) : (i += 1) {
+                    std.debug.warn("    ", .{});
+                }
+                std.debug.warn("{}:\n", .{arg.arg_name});
+                printExpression(module_defs, module_def, arg.value, indentation + 2);
+                std.debug.warn(",\n", .{});
+            }
+            i = 0;
+            while (i < indentation) : (i += 1) {
+                std.debug.warn("    ", .{});
             }
             std.debug.warn(")\n", .{});
+        },
+        .literal => |literal| {
+            switch (literal) {
+                .boolean => |v| std.debug.warn("{}", .{v}),
+                .constant => |v| std.debug.warn("(constant){d}", .{v}),
+                .constant_or_buffer => |v| std.debug.warn("(constant_or_buffer){d}", .{v}),
+            }
         },
         .nothing => {
             std.debug.warn("(nothing)\n", .{});

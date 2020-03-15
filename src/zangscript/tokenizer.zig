@@ -8,6 +8,7 @@ pub const TokenType = union(enum) {
     sym_at,
     sym_colon,
     sym_comma,
+    sym_dollar,
     sym_left_paren,
     sym_right_paren,
     sym_semicolon,
@@ -90,6 +91,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == ',') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_comma);
+            continue;
+        }
+        if (src[loc.index] == '$') {
+            loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_dollar);
             continue;
         }
         if (src[loc.index] == '(') {

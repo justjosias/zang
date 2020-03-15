@@ -76,7 +76,8 @@ pub fn generateCode(script: Script) !void {
         for (module_def.resolved.params) |param| {
             const type_name = switch (param.param_type) {
                 .boolean => "bool",
-                .number => "f32",
+                .constant => "f32",
+                .constant_or_buffer => "zang.ConstantOrBuffer",
             };
             try out.print("        {}: {},\n", .{ param.name, type_name });
         }
@@ -127,8 +128,12 @@ pub fn generateCode(script: Script) !void {
                             .temp => |v| {
                                 try out.print("temps[{}]", .{v});
                             },
-                            .literal => |v| {
-                                try out.print("zang.constant({d})", .{v});
+                            .literal => |literal| {
+                                switch (literal) {
+                                    .boolean => |v| try out.print("{}", .{v}),
+                                    .constant => |v| try out.print("{d}", .{v}),
+                                    .constant_or_buffer => |v| try out.print("zang.constant({d})", .{v}),
+                                }
                             },
                         }
                         try out.print(",\n", .{});
@@ -226,8 +231,14 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                         return error.Failed;
                     }
                 },
-                .number => {
+                .constant => {
                     if (field_type != f32) {
+                        std.debug.warn("ERROR: type mismatch\n", .{});
+                        return error.Failed;
+                    }
+                },
+                .constant_or_buffer => {
+                    if (field_type != zang.ConstantOrBuffer) {
                         std.debug.warn("ERROR: type mismatch\n", .{});
                         return error.Failed;
                     }
@@ -244,81 +255,81 @@ pub fn ScriptModule(comptime ParamsType: type) type {
                 }
             }
 
-            switch (self.module_def.expression) {
-                .call => |call| {
-                    const instance = self.instances[call.field_index];
-                    const field = &self.module_def.fields.span()[call.field_index];
-                    //switch (field.resolved_type) {
-                    //    .builtin_module => |mod_ptr| {
-                    //        if (std.mem.eql(u8, mod_ptr.name, "PulseOsc")) {
-                    //            switch (instance) {
-                    //                .builtin => |builtin| {
-                    //                    switch (builtin) {
-                    //                        .pulse_osc => |mod| {
-                    //                            // TODO manage outputs and temps
-                    //                            var sub_params: zang.PulseOsc.Params = undefined;
-                    //                            for (call.args.span()) |arg| {
-                    //                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
-                    //                                    sub_params.sample_rate = arg.value;
-                    //                                }
-                    //                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
-                    //                                    sub_params.freq = zang.constant(arg.value);
-                    //                                }
-                    //                                if (std.mem.eql(u8, arg.arg_name, "color")) {
-                    //                                    sub_params.color = arg.value;
-                    //                                }
-                    //                            }
-                    //                            mod.paint(span, outputs, temps, sub_params);
-                    //                        },
-                    //                        else => unreachable,
-                    //                    }
-                    //                },
-                    //                .script_module => unreachable,
-                    //            }
-                    //        } else if (std.mem.eql(u8, mod_ptr.name, "TriSawOsc")) {
-                    //            switch (instance) {
-                    //                .builtin => |builtin| {
-                    //                    switch (builtin) {
-                    //                        .tri_saw_osc => |mod| {
-                    //                            // TODO manage outputs and temps
-                    //                            var sub_params: zang.TriSawOsc.Params = undefined;
-                    //                            for (call.args.span()) |arg| {
-                    //                                if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
-                    //                                    sub_params.sample_rate = arg.value;
-                    //                                }
-                    //                                if (std.mem.eql(u8, arg.arg_name, "freq")) {
-                    //                                    sub_params.freq = zang.constant(arg.value);
-                    //                                }
-                    //                                if (std.mem.eql(u8, arg.arg_name, "color")) {
-                    //                                    sub_params.color = arg.value;
-                    //                                }
-                    //                            }
-                    //                            mod.paint(span, outputs, temps, sub_params);
-                    //                        },
-                    //                        else => unreachable,
-                    //                    }
-                    //                },
-                    //                .script_module => unreachable,
-                    //            }
-                    //        } else {
-                    //            unreachable;
-                    //        }
-                    //    },
-                    //    .script_module => |module_index| {
-                    //        // TODO need an instance of it
-                    //        const mod = &self.module_defs[module_index];
-                    //        switch (instance) {
-                    //            .builtin => unreachable,
-                    //            .script_module => {
-                    //                // ...
-                    //            },
-                    //        }
-                    //        unreachable;
-                    //    },
-                    //}
-                },
-                .nothing => {},
-            }
+            //switch (self.module_def.expression) {
+            //    .call => |call| {
+            //        const instance = self.instances[call.field_index];
+            //        const field = &self.module_def.fields.span()[call.field_index];
+            //        switch (field.resolved_type) {
+            //            .builtin_module => |mod_ptr| {
+            //                if (std.mem.eql(u8, mod_ptr.name, "PulseOsc")) {
+            //                    switch (instance) {
+            //                        .builtin => |builtin| {
+            //                            switch (builtin) {
+            //                                .pulse_osc => |mod| {
+            //                                    // TODO manage outputs and temps
+            //                                    var sub_params: zang.PulseOsc.Params = undefined;
+            //                                    for (call.args.span()) |arg| {
+            //                                        if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+            //                                            sub_params.sample_rate = arg.value;
+            //                                        }
+            //                                        if (std.mem.eql(u8, arg.arg_name, "freq")) {
+            //                                            sub_params.freq = zang.constant(arg.value);
+            //                                        }
+            //                                        if (std.mem.eql(u8, arg.arg_name, "color")) {
+            //                                            sub_params.color = arg.value;
+            //                                        }
+            //                                    }
+            //                                    mod.paint(span, outputs, temps, sub_params);
+            //                                },
+            //                                else => unreachable,
+            //                            }
+            //                        },
+            //                        .script_module => unreachable,
+            //                    }
+            //                } else if (std.mem.eql(u8, mod_ptr.name, "TriSawOsc")) {
+            //                    switch (instance) {
+            //                        .builtin => |builtin| {
+            //                            switch (builtin) {
+            //                                .tri_saw_osc => |mod| {
+            //                                    // TODO manage outputs and temps
+            //                                    var sub_params: zang.TriSawOsc.Params = undefined;
+            //                                    for (call.args.span()) |arg| {
+            //                                        if (std.mem.eql(u8, arg.arg_name, "sample_rate")) {
+            //                                            sub_params.sample_rate = arg.value;
+            //                                        }
+            //                                        if (std.mem.eql(u8, arg.arg_name, "freq")) {
+            //                                            sub_params.freq = zang.constant(arg.value);
+            //                                        }
+            //                                        if (std.mem.eql(u8, arg.arg_name, "color")) {
+            //                                            sub_params.color = arg.value;
+            //                                        }
+            //                                    }
+            //                                    mod.paint(span, outputs, temps, sub_params);
+            //                                },
+            //                                else => unreachable,
+            //                            }
+            //                        },
+            //                        .script_module => unreachable,
+            //                    }
+            //                } else {
+            //                    unreachable;
+            //                }
+            //            },
+            //            .script_module => |module_index| {
+            //                // TODO need an instance of it
+            //                const mod = &self.module_defs[module_index];
+            //                switch (instance) {
+            //                    .builtin => unreachable,
+            //                    .script_module => {
+            //                        // ...
+            //                    },
+            //                }
+            //                unreachable;
+            //            },
+            //        }
+            //    },
+            //    .nothing => {},
+            //}
         }
     };
 }

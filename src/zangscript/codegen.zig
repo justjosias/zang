@@ -3,12 +3,12 @@ const ModuleDef = @import("first_pass.zig").ModuleDef;
 const Expression = @import("second_pass.zig").Expression;
 const CallArg = @import("second_pass.zig").CallArg;
 const Call = @import("second_pass.zig").Call;
+const Literal = @import("second_pass.zig").Literal;
 
 pub const InstrCallArg = union(enum) {
-    // what goes here? -
-    // a value. either a temp or a literal
     temp: usize,
-    literal: f32,
+    literal: Literal,
+    //self_param: usize,
 };
 
 pub const InstrCall = struct {
@@ -47,24 +47,44 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
 
             const callee = module_def.fields.span()[call.field_index].resolved_module;
 
+            // the callee needs temps for its own internal use
             var i: usize = 0;
             while (i < callee.num_temps) : (i += 1) {
                 try icall.temps.append(num_temps);
                 num_temps += 1;
             }
 
-            for (callee.params) |_| {
+            //pub const CallArg = struct {
+            //    arg_name: []const u8,
+            //    value: *const Expression,
+            //};
+            //pub const ModuleParam = struct {
+            //    name: []const u8,
+            //    param_type: ResolvedParamType,
+            //};
+
+            // pass params
+            for (callee.params) |_, j| {
+                const arg = &call.args.span()[j];
+                switch (arg.value.*) {
+                    .literal => |literal| {
+                        try icall.args.append(.{ .literal = literal });
+                    },
+                    .call => unreachable, // not implemented
+                    .nothing => unreachable, // this should be impossible?
+                }
                 // just allocating a temp to use for the param value
                 // TODO do something meaningful instead
                 // add the ability to use one of our own param values
-                try icall.args.append(.{
-                    .temp = num_temps,
-                });
-                num_temps += 1;
+                //try icall.args.append(.{
+                //    .temp = num_temps,
+                //});
+                //num_temps += 1;
             }
 
             try instructions.append(.{ .call = icall });
         },
+        .literal => {},
         .nothing => {},
     }
 
