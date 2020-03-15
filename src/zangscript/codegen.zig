@@ -45,37 +45,22 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
             };
             // TODO deinit
 
-            const callee_temps: usize = 0; // FIXME
+            const callee = module_def.fields.span()[call.field_index].resolved_module;
+
             var i: usize = 0;
-            while (i < callee_temps) : (i += 1) {
+            while (i < callee.num_temps) : (i += 1) {
                 try icall.temps.append(num_temps);
                 num_temps += 1;
             }
 
-            // we need to look at the field being called. get its module "signature" (num outputs, num temps).
-            // we don't actually know that stuff yet.
-            // (it will be a little complicated to get - will have to do codegen lazily)
-            const field = &module_def.fields.span()[call.field_index];
-            switch (field.resolved_type) {
-                .builtin_module => |mod_ptr| {
-                    // we know that zang.PulseOsc has 1 output and 0 temps.
-                    // so WE need a temp in order to store the output.
-                    // also need a step to fill out the inner params. these might be calls in themselves ...
-                    // if they are, then they need temps generated for them.
-                    // bytecode for a call should be:
-                    // each param is either a temp or a literal value.
-                    try icall.args.append(.{
-                        .temp = num_temps,
-                    });
-                    num_temps += 1;
-                },
-                .script_module => |module_index| {
-                    try icall.args.append(.{
-                        .temp = num_temps,
-                    });
-                    num_temps += 1;
-                    //unreachable; // TODO
-                },
+            for (callee.params) |_| {
+                // just allocating a temp to use for the param value
+                // TODO do something meaningful instead
+                // add the ability to use one of our own param values
+                try icall.args.append(.{
+                    .temp = num_temps,
+                });
+                num_temps += 1;
             }
 
             try instructions.append(.{ .call = icall });

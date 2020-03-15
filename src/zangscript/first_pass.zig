@@ -15,11 +15,6 @@ pub const ResolvedParamType = enum {
     number,
 };
 
-pub const ResolvedFieldType = union(enum) {
-    builtin_module: *const Module,
-    script_module: usize, // index into module_defs
-};
-
 // this is separate because it's also used for builtin modules
 pub const ModuleParam = struct {
     name: []const u8,
@@ -36,7 +31,7 @@ pub const ModuleFieldDecl = struct {
     name: []const u8,
     type_token: Token,
     type_name: []const u8, // UNRESOLVED type name
-    resolved_type: ResolvedFieldType,
+    resolved_module: *const Module,
 };
 
 pub const ModuleDef = struct {
@@ -137,16 +132,11 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                     .name = field_name,
                     .type_token = type_token,
                     .type_name = type_name,
-                    .resolved_type = undefined,
+                    .resolved_module = undefined,
                 });
             },
             else => {
-                return fail(
-                    self.parser.source,
-                    token,
-                    "expected field declaration or `begin`, found `%`",
-                    .{token},
-                );
+                return fail(self.parser.source, token, "expected field declaration or `begin`, found `%`", .{token});
             },
         }
     }
@@ -210,10 +200,10 @@ fn resolveFieldType(
     module_defs: []const ModuleDef,
     current_module_index: usize,
     field: *const ModuleFieldDecl,
-) !ResolvedFieldType {
+) !*const Module {
     // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
     if (findBuiltin(field.type_name)) |mod_ptr| {
-        return ResolvedFieldType{ .builtin_module = mod_ptr };
+        return mod_ptr;
     }
     for (module_defs) |*module_def2, j| {
         if (std.mem.eql(u8, field.type_name, module_def2.name)) {
@@ -221,7 +211,8 @@ fn resolveFieldType(
                 // FIXME - do a full circular dependency detection
                 return fail(source, field.type_token, "cannot use self as field", .{});
             }
-            return ResolvedFieldType{ .script_module = j };
+            // is the module even resolved yet? oh well, the pointer should at least be valid
+            return &module_defs[j].resolved;
         }
     }
     return fail(source, field.type_token, "could not resolve field type `%`", .{field.type_token});
@@ -229,10 +220,13 @@ fn resolveFieldType(
 
 fn resolveTypes(source: Source, module_defs: []ModuleDef, allocator: *std.mem.Allocator) !void {
     for (module_defs) |*module_def, i| {
-        module_def.resolved.name = module_def.name;
-        module_def.resolved.num_outputs = 1; // FIXME?
-        module_def.resolved.num_temps = 0; // FIXME?
-        module_def.resolved.params = try allocator.alloc(ModuleParam, module_def.param_decls.span().len); // FIXME never freed
+        module_def.resolved = .{
+            .name = module_def.name,
+            .zig_name = module_def.name,
+            .num_outputs = 1, // FIXME?
+            .num_temps = 0, // FIXME?
+            .params = try allocator.alloc(ModuleParam, module_def.param_decls.span().len), // FIXME never freed
+        };
         for (module_def.param_decls.span()) |param_decl, j| {
             module_def.resolved.params[j] = .{
                 .name = param_decl.name,
@@ -240,7 +234,7 @@ fn resolveTypes(source: Source, module_defs: []ModuleDef, allocator: *std.mem.Al
             };
         }
         for (module_def.fields.span()) |*field| {
-            field.resolved_type = try resolveFieldType(source, module_defs, i, field);
+            field.resolved_module = try resolveFieldType(source, module_defs, i, field);
         }
     }
 }

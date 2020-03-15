@@ -100,10 +100,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
     };
     // arguments
     const field = &module_def.fields.span()[field_index];
-    const params = switch (field.resolved_type) {
-        .builtin_module => |mod_ptr| mod_ptr.params,
-        .script_module => |module_index| module_defs[module_index].resolved.params,
-    };
+    const params = field.resolved_module.params;
     var token = try self.expect();
     if (token.tt != .sym_left_paren) {
         return fail(self.source, token, "expected `(`, found `%`", .{token});
