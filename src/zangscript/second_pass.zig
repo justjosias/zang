@@ -11,13 +11,13 @@ const ModuleDef = @import("first_pass.zig").ModuleDef;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
+const codegen = @import("codegen.zig").codegen;
 
 pub const CallArg = struct {
     arg_name: []const u8,
     value: f32,
 };
-// this will be a lisp like syntax tree... stuff like order of operations will be applied before we get in here
-// then an additional pass will be made to bake this down and get temps
+
 pub const Call = struct {
     field_index: usize, // index of the field in the "self" module
     args: std.ArrayList(CallArg),
@@ -205,17 +205,24 @@ pub fn secondPass(
         for (module_def.fields.span()) |field| {
             std.debug.warn("field {}: {}\n", .{ field.name, field.type_name });
         }
-        printExpression(&module_def.expression);
+        std.debug.warn("print expression:\n", .{});
+        printExpression(&module_def.expression, 1);
         std.debug.warn("\n", .{});
+
+        try codegen(module_def, &module_def.expression, allocator);
     }
 }
 
-fn printExpression(expression: *const Expression) void {
+fn printExpression(expression: *const Expression, indentation: usize) void {
+    var i: usize = 0;
+    while (i < indentation) : (i += 1) {
+        std.debug.warn("    ", .{});
+    }
     switch (expression.*) {
         .call => |call| {
             std.debug.warn("call {} (", .{call.field_index});
-            for (call.args.span()) |arg, i| {
-                if (i > 0) std.debug.warn(", ", .{});
+            for (call.args.span()) |arg, j| {
+                if (j > 0) std.debug.warn(", ", .{});
                 std.debug.warn("{}={}", .{ arg.arg_name, arg.value });
             }
             std.debug.warn(")\n", .{});

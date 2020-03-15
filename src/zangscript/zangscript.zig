@@ -74,7 +74,7 @@ pub fn generateCode(script: Script) !void {
                 .boolean => "bool",
                 .number => "f32",
             };
-            try out.print("        {}: {},\n", .{param.name, type_name});
+            try out.print("        {}: {},\n", .{ param.name, type_name });
         }
         try out.print("    }};\n", .{});
         try out.print("\n", .{});
@@ -86,7 +86,7 @@ pub fn generateCode(script: Script) !void {
                 },
                 .script_module => |module_index| script.module_defs[module_index].name,
             };
-            try out.print("    {}: {},\n", .{field.name, type_name});
+            try out.print("    {}: {},\n", .{ field.name, type_name });
         }
         try out.print("\n", .{});
         try out.print("    pub fn init() {} {{\n", .{module_def.name});
@@ -99,13 +99,56 @@ pub fn generateCode(script: Script) !void {
                 },
                 .script_module => |module_index| script.module_defs[module_index].name,
             };
-            try out.print("            .{} = {}.init(),\n", .{field.name, type_name});
+            try out.print("            .{} = {}.init(),\n", .{ field.name, type_name });
         }
         try out.print("        }};\n", .{});
         try out.print("    }}\n", .{});
         try out.print("\n", .{});
         try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module_def.name});
-        try out.print("        zang.zero(span, outputs[0]);\n", .{});
+        for (module_def.instructions) |instr| {
+            switch (instr) {
+                .call => |call| {
+                    switch (call.result_loc) {
+                        .temp => |n| try out.print("        zang.zero(span, temps[{}]);\n", .{n}),
+                        .output => |n| try out.print("        zang.zero(span, outputs[{}]);\n", .{n}),
+                    }
+                    try out.print("        self.{}.paint(span, ", .{
+                        module_def.fields.span()[call.field_index].name,
+                    });
+                    // callee outputs
+                    switch (call.result_loc) {
+                        .temp => |n| try out.print(".{{temps[{}]}}", .{n}),
+                        .output => |n| try out.print(".{{outputs[{}]}}", .{n}),
+                    }
+                    // callee temps
+                    try out.print(", .{{", .{});
+                    for (call.temps.span()) |n, i| {
+                        if (i > 0) {
+                            try out.print(", ", .{});
+                        }
+                        try out.print("temps[{}]", .{n});
+                    }
+                    // callee params
+                    try out.print("}}, .{{\n", .{});
+                    for (call.args.span()) |arg| {
+                        // how do i get the fieldname?
+                        // i think at this point i should make some common struct with metadata of both builtins and script modules.
+                        // otherwise this would be yet another switch statement of all builtin modules
+                        try out.print("            .{} = ", .{"fieldnameTODO"});
+                        switch (arg) {
+                            .temp => |v| {
+                                try out.print(" temps[{}]", .{v});
+                            },
+                            .literal => |v| {
+                                try out.print(" zang.constant({d})", .{v});
+                            },
+                        }
+                        try out.print(",\n", .{});
+                    }
+                    try out.print("        }});\n", .{});
+                },
+            }
+        }
         try out.print("    }}\n", .{});
         try out.print("}};\n", .{});
     }
