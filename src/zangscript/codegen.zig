@@ -57,29 +57,17 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
             // (it will be a little complicated to get - will have to do codegen lazily)
             const field = &module_def.fields.span()[call.field_index];
             switch (field.resolved_type) {
-                .builtin_module => |bmod| {
-                    switch (bmod) {
-                        .pulse_osc => {
-                            // we know that zang.PulseOsc has 1 output and 0 temps.
-                            // so WE need a temp in order to store the output.
-                            // also need a step to fill out the inner params. these might be calls in themselves ...
-                            // if they are, then they need temps generated for them.
-                            // bytecode for a call should be:
-                            // each param is either a temp or a literal value.
-                            //
-                            try icall.args.append(.{
-                                .temp = num_temps,
-                            });
-                            num_temps += 1;
-                        },
-                        .tri_saw_osc => {
-                            // we know that this has 1 output and 0 temps.
-                            try icall.args.append(.{
-                                .temp = num_temps,
-                            });
-                            num_temps += 1;
-                        },
-                    }
+                .builtin_module => |mod_ptr| {
+                    // we know that zang.PulseOsc has 1 output and 0 temps.
+                    // so WE need a temp in order to store the output.
+                    // also need a step to fill out the inner params. these might be calls in themselves ...
+                    // if they are, then they need temps generated for them.
+                    // bytecode for a call should be:
+                    // each param is either a temp or a literal value.
+                    try icall.args.append(.{
+                        .temp = num_temps,
+                    });
+                    num_temps += 1;
                 },
                 .script_module => |module_index| {
                     try icall.args.append(.{
@@ -95,7 +83,8 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
         .nothing => {},
     }
 
-    module_def.num_temps = num_temps;
+    module_def.resolved.num_outputs = 1;
+    module_def.resolved.num_temps = num_temps;
     module_def.instructions = instructions.span();
 
     std.debug.warn("num_temps: {}\n", .{num_temps});

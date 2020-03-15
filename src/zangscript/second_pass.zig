@@ -6,7 +6,6 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
-const BuiltinModule = @import("first_pass.zig").BuiltinModule;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
@@ -27,28 +26,6 @@ pub const Expression = union(enum) {
     call: Call,
     nothing,
 };
-
-fn getBuiltinModuleParams2(comptime T: type) []const ModuleParam {
-    comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
-    inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
-        params[i] = .{
-            .name = field.name,
-            .param_type = switch (field.field_type) {
-                bool => ResolvedParamType.boolean,
-                f32, zang.ConstantOrBuffer => ResolvedParamType.number,
-                else => unreachable,
-            },
-        };
-    }
-    return &params;
-}
-
-fn getBuiltinModuleParams(bmod: BuiltinModule) []const ModuleParam {
-    return switch (bmod) {
-        .pulse_osc => getBuiltinModuleParams2(zang.PulseOsc),
-        .tri_saw_osc => getBuiltinModuleParams2(zang.TriSawOsc),
-    };
-}
 
 const Literal = struct {
     value_type: ResolvedParamType,
@@ -124,8 +101,8 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
     // arguments
     const field = &module_def.fields.span()[field_index];
     const params = switch (field.resolved_type) {
-        .builtin_module => |bmod| getBuiltinModuleParams(bmod),
-        .script_module => |module_index| module_defs[module_index].params,
+        .builtin_module => |mod_ptr| mod_ptr.params,
+        .script_module => |module_index| module_defs[module_index].resolved.params,
     };
     var token = try self.expect();
     if (token.tt != .sym_left_paren) {
