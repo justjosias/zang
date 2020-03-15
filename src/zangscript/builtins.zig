@@ -5,6 +5,7 @@ const ModuleParam = @import("first_pass.zig").ModuleParam;
 // this is used for both builtin modules and script modules
 pub const Module = struct {
     name: []const u8,
+    zig_name: []const u8, // prefix with "zang." if it's a builtin
     params: []const ModuleParam,
     num_temps: usize,
     num_outputs: usize,
@@ -24,6 +25,7 @@ fn getBuiltinModule(comptime T: type) Module {
     }
     return .{
         .name = @typeName(T),
+        .zig_name = "zang." ++ @typeName(T),
         .params = &params,
         .num_temps = T.num_temps,
         .num_outputs = T.num_outputs,

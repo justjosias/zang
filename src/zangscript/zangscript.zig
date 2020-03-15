@@ -83,23 +83,21 @@ pub fn generateCode(script: Script) !void {
         try out.print("    }};\n", .{});
         try out.print("\n", .{});
         for (module_def.fields.span()) |field| {
-            try out.print("    {}: ", .{field.name});
-            switch (field.resolved_type) {
-                .builtin_module => |mod_ptr| try out.print("zang.{}", .{mod_ptr.name}),
-                .script_module => |module_index| try out.print("{}", .{script.module_defs[module_index].name}),
-            }
-            try out.print(",\n", .{});
+            const name = switch (field.resolved_type) {
+                .builtin_module => |mod_ptr| mod_ptr.zig_name,
+                .script_module => |module_index| script.module_defs[module_index].name,
+            };
+            try out.print("    {}: {},\n", .{ field.name, name });
         }
         try out.print("\n", .{});
         try out.print("    pub fn init() {} {{\n", .{module_def.name});
         try out.print("        return .{{\n", .{});
         for (module_def.fields.span()) |field| {
-            try out.print("            .{} = ", .{field.name});
-            switch (field.resolved_type) {
-                .builtin_module => |mod_ptr| try out.print("zang.{}", .{mod_ptr.name}),
-                .script_module => |module_index| try out.print("{}", .{script.module_defs[module_index].name}),
-            }
-            try out.print(".init(),\n", .{});
+            const name = switch (field.resolved_type) {
+                .builtin_module => |mod_ptr| mod_ptr.zig_name,
+                .script_module => |module_index| script.module_defs[module_index].name,
+            };
+            try out.print("            .{} = {}.init(),\n", .{ field.name, name });
         }
         try out.print("        }};\n", .{});
         try out.print("    }}\n", .{});
