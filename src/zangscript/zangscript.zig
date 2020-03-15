@@ -144,6 +144,14 @@ pub fn generateCode(script: Script) !void {
                                     },
                                 }
                             },
+                            .self_param => |param_index| {
+                                const param = &module_def.resolved.params[param_index];
+                                if (callee_module.params[i].param_type == .constant_or_buffer and param.param_type == .constant) {
+                                    try out.print("zang.constant(params.{})", .{param.name});
+                                } else {
+                                    try out.print("params.{}", .{param.name});
+                                }
+                            },
                         }
                         try out.print(",\n", .{});
                     }

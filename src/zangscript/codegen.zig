@@ -8,7 +8,7 @@ const Literal = @import("second_pass.zig").Literal;
 pub const InstrCallArg = union(enum) {
     temp: usize,
     literal: Literal,
-    //self_param: usize,
+    self_param: usize,
 };
 
 pub const InstrCall = struct {
@@ -79,6 +79,9 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
                     .literal => |literal| {
                         icall.args[j] = .{ .literal = literal };
                     },
+                    .self_param => |param_index| {
+                        icall.args[j] = .{ .self_param = param_index };
+                    },
                     .call => unreachable, // not implemented
                     .nothing => unreachable, // this should be impossible?
                 }
@@ -94,6 +97,7 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
             try instructions.append(.{ .call = icall });
         },
         .literal => {},
+        .self_param => {},
         .nothing => {},
     }
 
@@ -124,6 +128,9 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                         },
                         .literal => |v| {
                             std.debug.warn(" {d}", .{v});
+                        },
+                        .self_param => |param_index| {
+                            std.debug.warn(" ${}", .{param_index});
                         },
                     }
                 }

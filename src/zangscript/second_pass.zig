@@ -25,7 +25,7 @@ pub const Call = struct {
 pub const Expression = union(enum) {
     call: Call,
     literal: Literal,
-    // TODO param_value
+    self_param: usize,
     nothing,
 };
 
@@ -40,13 +40,16 @@ const ParseError = error{
     OutOfMemory,
 };
 
-fn getExpressionType(expression: *const Expression) ResolvedParamType {
+fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression) ResolvedParamType {
     switch (expression.*) {
         .call => |call| {
             return .constant_or_buffer; // FIXME?
         },
         .literal => |literal| {
             return literal;
+        },
+        .self_param => |param_index| {
+            return module_def.resolved.params[param_index].param_type;
         },
         .nothing => {
             unreachable;
@@ -86,7 +89,7 @@ fn parseCallArg(
             const token3 = try p.expect();
             const subexpr = try parseExpression(p, module_defs, self, token3, allocator);
             // type check!
-            const subexpr_type = getExpressionType(subexpr);
+            const subexpr_type = getExpressionType(self, subexpr);
             switch (param_type) {
                 .boolean => {
                     if (subexpr_type != .boolean) {
@@ -114,6 +117,21 @@ fn parseCallArg(
             return fail(p.source, token, "expected `)` or arg name, found `%`", .{token});
         },
     }
+}
+
+fn parseSelfParam(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!usize {
+    const name_token = try self.expect();
+    const name = switch (name_token.tt) {
+        .identifier => |identifier| identifier,
+        else => return fail(self.source, name_token, "expected param name, found `%`", .{name_token}),
+    };
+    const param_index = for (module_def.resolved.params) |param, i| {
+        if (std.mem.eql(u8, param.name, name)) {
+            break i;
+        }
+    } else return fail(self.source, name_token, "not a param of self: `%`", .{name_token});
+    // TODO type check?
+    return param_index;
 }
 
 fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!Call {
@@ -197,6 +215,11 @@ fn parseExpression(
         .number => |n| {
             const expr = try allocator.create(Expression);
             expr.* = .{ .literal = .{ .constant = n } };
+            return expr;
+        },
+        .sym_dollar => {
+            const expr = try allocator.create(Expression);
+            expr.* = Expression{ .self_param = try parseSelfParam(parser, module_defs, module_def, allocator) };
             return expr;
         },
         .sym_at => {
@@ -284,6 +307,9 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
                 .constant => |v| std.debug.warn("{d}", .{v}),
                 .constant_or_buffer => unreachable,
             }
+        },
+        .self_param => |param_index| {
+            std.debug.warn("${}\n", .{param_index});
         },
         .nothing => {
             std.debug.warn("(nothing)\n", .{});
