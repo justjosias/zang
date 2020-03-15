@@ -17,7 +17,7 @@ pub const InstrCall = struct {
     // list of temp indices
     temps: std.ArrayList(usize),
     // in the order of the callee module's params
-    args: std.ArrayList(InstrCallArg),
+    args: []InstrCallArg,
 };
 
 pub const ResultLoc = union(enum) {
@@ -37,15 +37,15 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
     var num_temps: usize = 0;
     switch (expression.*) {
         .call => |call| {
+            const callee = module_def.fields.span()[call.field_index].resolved_module;
+
             var icall: InstrCall = .{
                 .result_loc = .{ .output = 0 },
                 .field_index = call.field_index,
                 .temps = std.ArrayList(usize).init(allocator),
-                .args = std.ArrayList(InstrCallArg).init(allocator),
+                .args = try allocator.alloc(InstrCallArg, callee.params.len),
             };
             // TODO deinit
-
-            const callee = module_def.fields.span()[call.field_index].resolved_module;
 
             // the callee needs temps for its own internal use
             var i: usize = 0;
@@ -64,11 +64,20 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
             //};
 
             // pass params
-            for (callee.params) |_, j| {
-                const arg = &call.args.span()[j];
+            for (callee.params) |param, j| {
+                // find this arg in the call node. (not necessarily in the same order.)
+                const arg = blk: {
+                    for (call.args.span()) |a| {
+                        if (std.mem.eql(u8, a.arg_name, param.name)) {
+                            break :blk a;
+                        }
+                    }
+                    // missing args was already checked in second_pass
+                    unreachable;
+                };
                 switch (arg.value.*) {
                     .literal => |literal| {
-                        try icall.args.append(.{ .literal = literal });
+                        icall.args[j] = .{ .literal = literal };
                     },
                     .call => unreachable, // not implemented
                     .nothing => unreachable, // this should be impossible?
@@ -108,7 +117,7 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                     .output => |n| std.debug.warn("output{}", .{n}),
                 }
                 std.debug.warn(" = CALL #{}({})", .{ call.field_index, module_def.fields.span()[call.field_index].name });
-                for (call.args.span()) |arg| {
+                for (call.args) |arg| {
                     switch (arg) {
                         .temp => |v| {
                             std.debug.warn(" temp{}", .{v});

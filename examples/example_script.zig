@@ -11,7 +11,7 @@ pub const AUDIO_BUFFER_SIZE = 1024;
 pub const DESCRIPTION =
     \\example_script
     \\
-    \\Press spacebar to trigger the sound.
+    \\Play a scripted sound module with the keyboard.
 ;
 
 const a4 = 440.0;
@@ -20,6 +20,7 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 0;
 
+    key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     instr: Instrument,
@@ -27,6 +28,7 @@ pub const MainModule = struct {
 
     pub fn init() MainModule {
         return .{
+            .key = null,
             .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
@@ -43,11 +45,15 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        self.iq.push(impulse_frame, self.idgen.nextId(), .{
-            .sample_rate = AUDIO_SAMPLE_RATE,
-            .freq = a4 * note_frequencies.c4 / 4.0,
-            .color = 0.5,
-            .note_on = down,
-        });
+        const rel_freq = common.getKeyRelFreq(key) orelse return;
+        if (down or (if (self.key) |nh| nh == key else false)) {
+            self.key = if (down) key else null;
+            self.iq.push(impulse_frame, self.idgen.nextId(), .{
+                .sample_rate = AUDIO_SAMPLE_RATE,
+                .freq = a4 * rel_freq,
+                .color = 0.5,
+                .note_on = down,
+            });
+        }
     }
 };

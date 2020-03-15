@@ -122,7 +122,7 @@ pub fn generateCode(script: Script) !void {
                     }
                     // callee params
                     try out.print("}}, .{{\n", .{});
-                    for (call.args.span()) |arg, i| {
+                    for (call.args) |arg, i| {
                         try out.print("            .{} = ", .{callee_module.params[i].name});
                         switch (arg) {
                             .temp => |v| {
