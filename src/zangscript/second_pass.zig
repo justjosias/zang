@@ -32,7 +32,7 @@ pub const Expression = union(enum) {
 pub const Literal = union(ResolvedParamType) {
     boolean: bool,
     constant: f32,
-    constant_or_buffer: f32,
+    constant_or_buffer: void, // not allowed
 };
 
 const ParseError = error{
@@ -99,22 +99,8 @@ fn parseCallArg(
                     }
                 },
                 .constant_or_buffer => {
-                    if (subexpr_type == .constant_or_buffer) {
-                        // ok
-                    } else if (subexpr_type == .constant) {
-                        switch (subexpr.*) {
-                            .literal => |*literal| {
-                                switch (literal.*) {
-                                    .constant => |n| {
-                                        // coerce
-                                        literal.* = .{ .constant_or_buffer = n };
-                                    },
-                                    else => {},
-                                }
-                            },
-                            else => unreachable,
-                        }
-                    } else {
+                    // constant will coerce to constant_or_buffer
+                    if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
                         return fail(p.source, token3, "type mismatch (expecting number)", .{});
                     }
                 },
@@ -295,8 +281,8 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
         .literal => |literal| {
             switch (literal) {
                 .boolean => |v| std.debug.warn("{}", .{v}),
-                .constant => |v| std.debug.warn("(constant){d}", .{v}),
-                .constant_or_buffer => |v| std.debug.warn("(constant_or_buffer){d}", .{v}),
+                .constant => |v| std.debug.warn("{d}", .{v}),
+                .constant_or_buffer => unreachable,
             }
         },
         .nothing => {

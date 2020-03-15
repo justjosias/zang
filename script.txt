@@ -1,4 +1,6 @@
-def FilteredSawtoothInstrument:
+def Instrument:
+    param sample_rate number;
+    param freq number;
     param color number;
     param note_on boolean;
 
@@ -13,7 +15,7 @@ begin
 end
 
 def OuterInstrument:
-    instr FilteredSawtoothInstrument;
+    instr Instrument;
 begin
-    @instr(color: 0.7, note_on: true)
+    @instr(sample_rate: 44100, freq: 440, color: 0.7, note_on: true)
 end

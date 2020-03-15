@@ -2,4 +2,5 @@
 *.swp
 zig-cache/
 
+/examples/scriptgen.zig
 /out.wav

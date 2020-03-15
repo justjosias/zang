@@ -131,8 +131,17 @@ pub fn generateCode(script: Script) !void {
                             .literal => |literal| {
                                 switch (literal) {
                                     .boolean => |v| try out.print("{}", .{v}),
-                                    .constant => |v| try out.print("{d}", .{v}),
-                                    .constant_or_buffer => |v| try out.print("zang.constant({d})", .{v}),
+                                    .constant => |v| {
+                                        if (callee_module.params[i].param_type == .constant_or_buffer) {
+                                            try out.print("zang.constant({d})", .{v});
+                                        } else {
+                                            try out.print("{d}", .{v});
+                                        }
+                                    },
+                                    .constant_or_buffer => {
+                                        // literal cannot have this type
+                                        unreachable;
+                                    },
                                 }
                             },
                         }
