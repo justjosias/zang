@@ -7,8 +7,7 @@ def Instrument:
     osc TriSawOsc;
 begin
     @osc(
-        //color: mul(color, 0.5),
-        color: 0.5,
+        color: * $color 2,
         sample_rate: 44100,
         freq: $freq
     )

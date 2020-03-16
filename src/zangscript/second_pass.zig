@@ -26,6 +26,7 @@ pub const Expression = union(enum) {
     call: Call,
     literal: Literal,
     self_param: usize,
+    multiply: struct { a: *const Expression, b: *const Expression },
     nothing,
 };
 
@@ -50,6 +51,10 @@ fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression
         },
         .self_param => |param_index| {
             return module_def.resolved.params[param_index].param_type;
+        },
+        .multiply => {
+            // FIXME this could also be constant or buffer
+            return .constant;
         },
         .nothing => {
             unreachable;
@@ -227,6 +232,13 @@ fn parseExpression(
             expr.* = Expression{ .call = try parseCall(parser, module_defs, module_def, allocator) };
             return expr;
         },
+        .sym_asterisk => {
+            const a = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
+            const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
+            const expr = try allocator.create(Expression);
+            expr.* = Expression{ .multiply = .{ .a = a, .b = b } };
+            return expr;
+        },
         else => {
             //return fail(source, token, "expected `@` or `end`, found `%`", .{token});
             return fail(parser.source, token, "expected expression, found `%`", .{token});
@@ -286,14 +298,13 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
     switch (expression.*) {
         .call => |call| {
             std.debug.warn("call self.{} (\n", .{module_def.fields.span()[call.field_index].name});
-            for (call.args.span()) |arg, j| {
+            for (call.args.span()) |arg| {
                 i = 0;
                 while (i < indentation + 1) : (i += 1) {
                     std.debug.warn("    ", .{});
                 }
                 std.debug.warn("{}:\n", .{arg.arg_name});
                 printExpression(module_defs, module_def, arg.value, indentation + 2);
-                std.debug.warn(",\n", .{});
             }
             i = 0;
             while (i < indentation) : (i += 1) {
@@ -303,13 +314,18 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
         },
         .literal => |literal| {
             switch (literal) {
-                .boolean => |v| std.debug.warn("{}", .{v}),
-                .constant => |v| std.debug.warn("{d}", .{v}),
+                .boolean => |v| std.debug.warn("{}\n", .{v}),
+                .constant => |v| std.debug.warn("{d}\n", .{v}),
                 .constant_or_buffer => unreachable,
             }
         },
         .self_param => |param_index| {
             std.debug.warn("${}\n", .{param_index});
+        },
+        .multiply => |m| {
+            std.debug.warn("multiply\n", .{});
+            printExpression(module_defs, module_def, m.a, indentation + 1);
+            printExpression(module_defs, module_def, m.b, indentation + 1);
         },
         .nothing => {
             std.debug.warn("(nothing)\n", .{});

@@ -17,8 +17,8 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
-    pub const num_temps = 0;
+    pub const num_outputs = Instrument.num_outputs;
+    pub const num_temps = Instrument.num_temps;
 
     key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
@@ -39,8 +39,8 @@ pub const MainModule = struct {
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            //self.instr.paint(result.span, outputs, .{}, result.note_id_changed, result.params);
-            self.instr.paint(result.span, outputs, .{}, result.params);
+            //self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.instr.paint(result.span, outputs, temps, result.params);
         }
     }
 

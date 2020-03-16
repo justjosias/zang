@@ -5,63 +5,100 @@ const CallArg = @import("second_pass.zig").CallArg;
 const Call = @import("second_pass.zig").Call;
 const Literal = @import("second_pass.zig").Literal;
 
+// FIXME - tag type should be datatype? (constant, boolean, constant_or_buffer)
 pub const InstrCallArg = union(enum) {
     temp: usize,
-    literal: Literal,
-    self_param: usize,
+    temp_float: usize,
+    temp_bool: usize,
 };
 
 pub const InstrCall = struct {
     result_loc: ResultLoc,
     field_index: usize,
-    // list of temp indices
+    // list of temp indices for the callee's internal use
     temps: std.ArrayList(usize),
     // in the order of the callee module's params
     args: []InstrCallArg,
 };
 
 pub const ResultLoc = union(enum) {
-    temp: usize,
     output: usize,
+    temp: usize,
+    temp_float: usize,
+    temp_bool: usize,
+};
+
+pub const InstrLoadBoolean = struct {
+    out_index: usize,
+    value: bool,
+};
+
+pub const InstrLoadConstant = struct {
+    out_index: usize,
+    value: f32,
+};
+
+pub const InstrLoadParamFloatToFloat = struct {
+    out_temp_float: usize,
+    param_index: usize,
+};
+
+pub const InstrLoadParamFloatToBuffer = struct {
+    out_temp: usize,
+    param_index: usize,
+};
+
+pub const InstrLoadParamBufferToBuffer = struct {
+    out_temp: usize,
+    param_index: usize,
+};
+
+pub const InstrMultiply = struct {
+    out_temp_float: usize,
+    a_temp_float: usize,
+    b_temp_float: usize,
 };
 
 pub const Instruction = union(enum) {
     call: InstrCall,
+    load_param_float_to_float: InstrLoadParamFloatToFloat,
+    load_param_float_to_buffer: InstrLoadParamFloatToBuffer,
+    load_param_buffer_to_buffer: InstrLoadParamBufferToBuffer,
+    load_boolean: InstrLoadBoolean,
+    load_constant: InstrLoadConstant,
+    multiply: InstrMultiply,
 };
 
-pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !void {
-    var instructions = std.ArrayList(Instruction).init(allocator);
-    // TODO deinit
+const CodegenState = struct {
+    allocator: *std.mem.Allocator,
+    module_def: *ModuleDef,
+    instructions: std.ArrayList(Instruction),
+    num_temps: usize,
+    num_temp_floats: usize,
+    num_temp_bools: usize,
+};
 
-    // visit this expression node.
-    var num_temps: usize = 0;
+const GenError = error{OutOfMemory};
+
+fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const Expression) GenError!void {
     switch (expression.*) {
         .call => |call| {
-            const callee = module_def.fields.span()[call.field_index].resolved_module;
+            const callee = state.module_def.fields.span()[call.field_index].resolved_module;
 
             var icall: InstrCall = .{
-                .result_loc = .{ .output = 0 },
+                .result_loc = result_loc,
                 .field_index = call.field_index,
-                .temps = std.ArrayList(usize).init(allocator),
-                .args = try allocator.alloc(InstrCallArg, callee.params.len),
+                .temps = std.ArrayList(usize).init(state.allocator),
+                .args = try state.allocator.alloc(InstrCallArg, callee.params.len),
             };
             // TODO deinit
 
             // the callee needs temps for its own internal use
             var i: usize = 0;
             while (i < callee.num_temps) : (i += 1) {
-                try icall.temps.append(num_temps);
-                num_temps += 1;
+                try icall.temps.append(state.num_temps);
+                state.num_temps += 1;
             }
-
-            //pub const CallArg = struct {
-            //    arg_name: []const u8,
-            //    value: *const Expression,
-            //};
-            //pub const ModuleParam = struct {
-            //    name: []const u8,
-            //    param_type: ResolvedParamType,
-            //};
 
             // pass params
             for (callee.params) |param, j| {
@@ -75,38 +112,153 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
                     // missing args was already checked in second_pass
                     unreachable;
                 };
-                switch (arg.value.*) {
-                    .literal => |literal| {
-                        icall.args[j] = .{ .literal = literal };
+
+                // allocate a temporary to store subexpression result
+                switch (param.param_type) {
+                    .constant_or_buffer => {
+                        const out_index = state.num_temps;
+                        state.num_temps += 1;
+                        try genExpression(state, .{ .temp = out_index }, arg.value);
+
+                        icall.args[j] = .{ .temp = out_index };
                     },
-                    .self_param => |param_index| {
-                        icall.args[j] = .{ .self_param = param_index };
+                    .constant => {
+                        const out_index = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+                        try genExpression(state, .{ .temp_float = out_index }, arg.value);
+
+                        icall.args[j] = .{ .temp_float = out_index };
                     },
-                    .call => unreachable, // not implemented
-                    .nothing => unreachable, // this should be impossible?
+                    .boolean => {
+                        const out_index = state.num_temp_bools;
+                        state.num_temp_bools += 1;
+                        try genExpression(state, .{ .temp_bool = out_index }, arg.value);
+
+                        icall.args[j] = .{ .temp_bool = out_index };
+                    },
+                    else => unreachable,
                 }
-                // just allocating a temp to use for the param value
-                // TODO do something meaningful instead
-                // add the ability to use one of our own param values
-                //try icall.args.append(.{
-                //    .temp = num_temps,
-                //});
-                //num_temps += 1;
             }
 
-            try instructions.append(.{ .call = icall });
+            try state.instructions.append(.{ .call = icall });
         },
-        .literal => {},
-        .self_param => {},
+        .literal => |literal| {
+            switch (result_loc) {
+                .temp_float => |index| {
+                    try state.instructions.append(.{
+                        .load_constant = .{
+                            .out_index = index,
+                            .value = switch (literal) {
+                                .constant => |v| v,
+                                else => unreachable,
+                            },
+                        },
+                    });
+                },
+                .temp_bool => |index| {
+                    try state.instructions.append(.{
+                        .load_boolean = .{
+                            .out_index = index,
+                            .value = switch (literal) {
+                                .boolean => |v| v,
+                                else => unreachable,
+                            },
+                        },
+                    });
+                },
+                else => unreachable,
+            }
+        },
+        .self_param => |param_index| {
+            const param = &state.module_def.resolved.params[param_index];
+            switch (result_loc) {
+                .temp => |index| {
+                    // result is a buffer. what is the param type?
+                    switch (param.param_type) {
+                        .constant => {
+                            // float to buffer
+                            try state.instructions.append(.{
+                                .load_param_float_to_buffer = .{
+                                    .out_temp = index,
+                                    .param_index = param_index,
+                                },
+                            });
+                        },
+                        .constant_or_buffer => {
+                            // buffer to buffer
+                            try state.instructions.append(.{
+                                .load_param_buffer_to_buffer = .{
+                                    .out_temp = index,
+                                    .param_index = param_index,
+                                },
+                            });
+                        },
+                        else => unreachable,
+                    }
+                },
+                .temp_float => |index| {
+                    // result is a float. what is the param type?
+                    switch (param.param_type) {
+                        .constant => {
+                            // float to float
+                            try state.instructions.append(.{
+                                .load_param_float_to_float = .{
+                                    .out_temp_float = index,
+                                    .param_index = param_index,
+                                },
+                            });
+                        },
+                        else => unreachable,
+                    }
+                },
+                else => unreachable,
+            }
+        },
+        .multiply => |m| {
+            const out_index_a = state.num_temp_floats;
+            state.num_temp_floats += 1;
+            try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+
+            const out_index_b = state.num_temp_floats;
+            state.num_temp_floats += 1;
+            try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+
+            try state.instructions.append(.{
+                .multiply = .{
+                    .out_temp_float = switch (result_loc) {
+                        .temp_float => |n| n,
+                        else => unreachable,
+                    },
+                    .a_temp_float = out_index_a,
+                    .b_temp_float = out_index_b,
+                },
+            });
+        },
         .nothing => {},
     }
+}
+
+pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !void {
+    var state: CodegenState = .{
+        .allocator = allocator,
+        .module_def = module_def,
+        .instructions = std.ArrayList(Instruction).init(allocator),
+        .num_temps = 0,
+        .num_temp_floats = 0,
+        .num_temp_bools = 0,
+    };
+    // TODO deinit
+
+    try genExpression(&state, .{ .output = 0 }, expression);
 
     module_def.resolved.num_outputs = 1;
-    module_def.resolved.num_temps = num_temps;
-    module_def.instructions = instructions.span();
+    module_def.resolved.num_temps = state.num_temps;
+    module_def.instructions = state.instructions.span();
 
-    std.debug.warn("num_temps: {}\n", .{num_temps});
-    printBytecode(module_def, instructions.span());
+    std.debug.warn("num_temps: {}\n", .{state.num_temps});
+    std.debug.warn("num_temp_floats: {}\n", .{state.num_temp_floats});
+    std.debug.warn("num_temp_bools: {}\n", .{state.num_temp_bools});
+    printBytecode(module_def, state.instructions.span());
     std.debug.warn("\n", .{});
 }
 
@@ -117,25 +269,68 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
         switch (instr) {
             .call => |call| {
                 switch (call.result_loc) {
-                    .temp => |n| std.debug.warn("temp{}", .{n}),
                     .output => |n| std.debug.warn("output{}", .{n}),
+                    .temp => |n| std.debug.warn("temp{}", .{n}),
+                    .temp_float => |n| std.debug.warn("temp_float{}", .{n}),
+                    .temp_bool => |n| std.debug.warn("temp_bool{}", .{n}),
                 }
-                std.debug.warn(" = CALL #{}({})", .{ call.field_index, module_def.fields.span()[call.field_index].name });
-                for (call.args) |arg| {
+                std.debug.warn(" = CALL #{}({}: {})\n", .{
+                    call.field_index,
+                    module_def.fields.span()[call.field_index].name,
+                    module_def.fields.span()[call.field_index].resolved_module.name,
+                });
+                std.debug.warn("        temps: [", .{});
+                for (call.temps.span()) |temp, i| {
+                    if (i > 0) std.debug.warn(", ", .{});
+                    std.debug.warn("temp{}", .{temp});
+                }
+                std.debug.warn("]\n", .{});
+                for (call.args) |arg, i| {
+                    const param = &module_def.fields.span()[call.field_index].resolved_module.params[i];
+                    std.debug.warn("        {} = ", .{param.name});
                     switch (arg) {
                         .temp => |v| {
-                            std.debug.warn(" temp{}", .{v});
+                            std.debug.warn("temp{}\n", .{v});
                         },
-                        .literal => |v| {
-                            std.debug.warn(" {d}", .{v});
+                        .temp_float => |n| {
+                            std.debug.warn("temp_float{}\n", .{n});
                         },
-                        .self_param => |param_index| {
-                            std.debug.warn(" ${}", .{param_index});
+                        .temp_bool => |n| {
+                            std.debug.warn("temp_bool{}\n", .{n});
                         },
                     }
                 }
             },
+            .load_constant => |x| {
+                std.debug.warn("temp_float{} = LOADCONSTANT {d}\n", .{ x.out_index, x.value });
+            },
+            .load_boolean => |x| {
+                std.debug.warn("temp_bool{} = LOADBOOLEAN {}\n", .{ x.out_index, x.value });
+            },
+            .load_param_float_to_float => |x| {
+                std.debug.warn("temp_float{} = LOADPARAM_FLOAT_TO_FLOAT ${}({})\n", .{
+                    x.out_temp_float,
+                    x.param_index,
+                    module_def.resolved.params[x.param_index].name,
+                });
+            },
+            .load_param_float_to_buffer => |x| {
+                std.debug.warn("temp{} = LOADPARAM_FLOAT_TO_BUFFER ${}({})\n", .{
+                    x.out_temp,
+                    x.param_index,
+                    module_def.resolved.params[x.param_index].name,
+                });
+            },
+            .load_param_buffer_to_buffer => |x| {
+                std.debug.warn("temp{} = LOADPARAM_BUFFER_TO_BUFFER ${}({})\n", .{
+                    x.out_temp,
+                    x.param_index,
+                    module_def.resolved.params[x.param_index].name,
+                });
+            },
+            .multiply => |x| {
+                std.debug.warn("temp_float{} = MULTIPLY temp_float{} temp_float{}\n", .{ x.out_temp_float, x.a_temp_float, x.b_temp_float });
+            },
         }
-        std.debug.warn("\n", .{});
     }
 }

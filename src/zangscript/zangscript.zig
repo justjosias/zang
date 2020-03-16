@@ -98,19 +98,50 @@ pub fn generateCode(script: Script) !void {
         try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module_def.name});
         for (module_def.instructions) |instr| {
             switch (instr) {
+                .load_constant => |x| {
+                    try out.print("        const temp_float{}: f32 = {d};\n", .{ x.out_index, x.value });
+                },
+                .load_boolean => |x| {
+                    try out.print("        const temp_bool{} = {};\n", .{ x.out_index, x.value });
+                },
+                .load_param_float_to_float => |x| {
+                    try out.print("        const temp_float{}: f32 = params.{};\n", .{
+                        x.out_temp_float,
+                        module_def.resolved.params[x.param_index].name,
+                    });
+                },
+                .load_param_float_to_buffer => |x| {
+                    try out.print("        zang.set(span, temps[{}], params.{});\n", .{
+                        x.out_temp,
+                        module_def.resolved.params[x.param_index].name,
+                    });
+                },
+                .load_param_buffer_to_buffer => |x| {
+                    try out.print("        zang.copy(span, temps[{}], params.{});\n", .{
+                        x.out_temp,
+                        module_def.resolved.params[x.param_index].name,
+                    });
+                },
+                .multiply => |x| {
+                    try out.print("        const temp_float{}: f32 = temp_float{} * temp_float{};\n", .{ x.out_temp_float, x.a_temp_float, x.b_temp_float });
+                },
                 .call => |call| {
                     const callee_module = module_def.fields.span()[call.field_index].resolved_module;
                     switch (call.result_loc) {
-                        .temp => |n| try out.print("        zang.zero(span, temps[{}]);\n", .{n}),
                         .output => |n| try out.print("        zang.zero(span, outputs[{}]);\n", .{n}),
+                        .temp => |n| try out.print("        zang.zero(span, temps[{}]);\n", .{n}),
+                        .temp_float => {},
+                        .temp_bool => {},
                     }
                     try out.print("        self.{}.paint(span, ", .{
                         module_def.fields.span()[call.field_index].name,
                     });
                     // callee outputs
                     switch (call.result_loc) {
-                        .temp => |n| try out.print(".{{temps[{}]}}", .{n}),
                         .output => |n| try out.print(".{{outputs[{}]}}", .{n}),
+                        .temp => |n| try out.print(".{{temps[{}]}}", .{n}),
+                        .temp_float => unreachable,
+                        .temp_bool => unreachable,
                     }
                     // callee temps
                     try out.print(", .{{", .{});
@@ -123,35 +154,53 @@ pub fn generateCode(script: Script) !void {
                     // callee params
                     try out.print("}}, .{{\n", .{});
                     for (call.args) |arg, i| {
+                        const param = &callee_module.params[i];
                         try out.print("            .{} = ", .{callee_module.params[i].name});
                         switch (arg) {
                             .temp => |v| {
-                                try out.print("temps[{}]", .{v});
-                            },
-                            .literal => |literal| {
-                                switch (literal) {
-                                    .boolean => |v| try out.print("{}", .{v}),
-                                    .constant => |v| {
-                                        if (callee_module.params[i].param_type == .constant_or_buffer) {
-                                            try out.print("zang.constant({d})", .{v});
-                                        } else {
-                                            try out.print("{d}", .{v});
-                                        }
-                                    },
-                                    .constant_or_buffer => {
-                                        // literal cannot have this type
-                                        unreachable;
-                                    },
-                                }
-                            },
-                            .self_param => |param_index| {
-                                const param = &module_def.resolved.params[param_index];
-                                if (callee_module.params[i].param_type == .constant_or_buffer and param.param_type == .constant) {
-                                    try out.print("zang.constant(params.{})", .{param.name});
+                                if (param.param_type == .constant_or_buffer) {
+                                    try out.print("zang.buffer(temps[{}])", .{v});
                                 } else {
-                                    try out.print("params.{}", .{param.name});
+                                    unreachable;
                                 }
                             },
+                            .temp_float => |n| {
+                                if (param.param_type == .constant_or_buffer) {
+                                    try out.print("zang.constant(temp_float{})", .{n});
+                                } else if (param.param_type == .constant) {
+                                    try out.print("temp_float{}", .{n});
+                                } else {
+                                    unreachable;
+                                }
+                            },
+                            .temp_bool => |n| {
+                                try out.print("temp_bool{}", .{n});
+                            },
+                            //.literal => |literal| {
+                            //    // TODO don't do coercion here, do it in codegen.zig.
+                            //    switch (literal) {
+                            //        .boolean => |v| try out.print("{}", .{v}),
+                            //        .constant => |v| {
+                            //            if (callee_module.params[i].param_type == .constant_or_buffer) {
+                            //                try out.print("zang.constant({d})", .{v});
+                            //            } else {
+                            //                try out.print("{d}", .{v});
+                            //            }
+                            //        },
+                            //        .constant_or_buffer => {
+                            //            // literal cannot have this type
+                            //            unreachable;
+                            //        },
+                            //    }
+                            //},
+                            //.self_param => |param_index| {
+                            //    const param = &module_def.resolved.params[param_index];
+                            //    if (callee_module.params[i].param_type == .constant_or_buffer and param.param_type == .constant) {
+                            //        try out.print("zang.constant(params.{})", .{param.name});
+                            //    } else {
+                            //        try out.print("params.{}", .{param.name});
+                            //    }
+                            //},
                         }
                         try out.print(",\n", .{});
                     }

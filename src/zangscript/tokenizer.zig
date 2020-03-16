@@ -5,6 +5,7 @@ const fail = @import("common.zig").fail;
 
 pub const TokenType = union(enum) {
     illegal,
+    sym_asterisk,
     sym_at,
     sym_colon,
     sym_comma,
@@ -78,6 +79,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             break;
         }
         const start = loc;
+        if (src[loc.index] == '*') {
+            loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_asterisk);
+            continue;
+        }
         if (src[loc.index] == '@') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_at);
