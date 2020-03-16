@@ -113,8 +113,12 @@ pub fn generateCode(script: Script) !void {
                         module_def.resolved.params[x.param_index].name,
                     });
                 },
-                .multiply => |x| {
-                    try out.print("        const temp_float{}: f32 = temp_float{} * temp_float{};\n", .{ x.out_temp_float, x.a_temp_float, x.b_temp_float });
+                .multiply_float_float => |x| {
+                    try out.print("        const temp_float{}: f32 = temp_float{} * temp_float{};\n", .{
+                        x.out_temp_float,
+                        x.a_temp_float,
+                        x.b_temp_float,
+                    });
                 },
                 .call => |call| {
                     const callee_module = module_def.fields.span()[call.field_index].resolved_module;

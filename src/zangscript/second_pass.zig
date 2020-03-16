@@ -41,7 +41,7 @@ const ParseError = error{
     OutOfMemory,
 };
 
-fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression) ResolvedParamType {
+pub fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression) ResolvedParamType {
     switch (expression.*) {
         .call => |call| {
             return .constant_or_buffer; // FIXME?
@@ -94,6 +94,18 @@ fn parseCallArg(
             const token3 = try p.expect();
             const subexpr = try parseExpression(p, module_defs, self, token3, allocator);
             // type check!
+            // FIXME is this right place to do type checking?
+            // it could also be done in codegen. there are pros and cons to both...
+            // - typecheck in second_pass
+            //     - pro: could generate new AST instructions for things like implicit conversions
+            //     - con: both second_pass and codegen have huge instruction sets
+            //     - con: codegen still needs a lot of switch statements that will end up with
+            //            `else => unreachable` where the types don't match?
+            // - typecheck in codegen
+            //     - pro: second_pass and its instruction set remains very simple
+            //     - con: i have no tokens to use for error messages
+            // or, i could keep the second_pass instruction set simple but still typecheck in
+            // the second pass. codegen kind of just assumes that it's been done
             const subexpr_type = getExpressionType(self, subexpr);
             switch (param_type) {
                 .boolean => {
