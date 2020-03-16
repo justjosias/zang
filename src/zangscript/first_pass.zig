@@ -102,7 +102,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 const field_name = try self.parser.expectIdentifier();
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
-                    .identifier => |identifier| identifier,
+                    .identifier => self.parser.source.contents[type_token.loc0.index..type_token.loc1.index],
                     else => return fail(self.parser.source, type_token, "expected param type, found `%`", .{type_token}),
                 };
                 token = try self.parser.expect();
@@ -115,12 +115,12 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                     .type_name = type_name,
                 });
             },
-            .identifier => |identifier| {
+            .identifier => {
                 // field declaration
-                const field_name = identifier;
+                const field_name = self.parser.source.contents[token.loc0.index..token.loc1.index];
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
-                    .identifier => |identifier2| identifier2,
+                    .identifier => self.parser.source.contents[type_token.loc0.index..type_token.loc1.index],
                     else => return fail(self.parser.source, type_token, "expected field type, found `%`", .{type_token}),
                 };
                 const ctoken2 = try self.parser.expect();

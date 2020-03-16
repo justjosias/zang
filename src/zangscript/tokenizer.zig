@@ -3,7 +3,7 @@ const Source = @import("common.zig").Source;
 const SourceLocation = @import("common.zig").SourceLocation;
 const fail = @import("common.zig").fail;
 
-pub const TokenType = union(enum) {
+pub const TokenType = enum {
     illegal,
     sym_asterisk,
     sym_at,
@@ -19,8 +19,8 @@ pub const TokenType = union(enum) {
     kw_false,
     kw_param,
     kw_true,
-    identifier: []const u8,
-    number: f32,
+    identifier,
+    number,
 };
 
 pub const Token = struct {
@@ -126,8 +126,7 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             {
                 loc.index += 1;
             }
-            const number = try std.fmt.parseFloat(f32, src[start.index..loc.index]);
-            try addToken(tokenizer, start, loc, .{ .number = number });
+            try addToken(tokenizer, start, loc, .number);
             continue;
         }
         if (!isStartOfIdentifier(src[loc.index])) {
@@ -157,7 +156,7 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         } else if (std.mem.eql(u8, token, "true")) {
             try addToken(tokenizer, start, loc, .kw_true);
         } else {
-            try addToken(tokenizer, start, loc, .{ .identifier = token });
+            try addToken(tokenizer, start, loc, .identifier);
         }
     }
 }

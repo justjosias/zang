@@ -137,15 +137,8 @@ pub const Parser = struct {
     pub fn expectIdentifier(self: *Parser) ![]const u8 {
         const token = try self.expect();
         switch (token.tt) {
-            .identifier => |identifier| return identifier,
-            else => {
-                return fail(
-                    self.source,
-                    token,
-                    "expected identifier, found `%`",
-                    .{token},
-                );
-            },
+            .identifier => return self.source.contents[token.loc0.index..token.loc1.index],
+            else => return fail(self.source, token, "expected identifier, found `%`", .{token}),
         }
     }
 

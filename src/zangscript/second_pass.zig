@@ -74,7 +74,8 @@ fn parseCallArg(
     allocator: *std.mem.Allocator,
 ) ParseError!CallArg {
     switch (token.tt) {
-        .identifier => |identifier| {
+        .identifier => {
+            const identifier = p.source.contents[token.loc0.index..token.loc1.index];
             // find this param
             var param_index: usize = undefined;
             for (params) |param, i| {
@@ -139,7 +140,7 @@ fn parseCallArg(
 fn parseSelfParam(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!usize {
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
-        .identifier => |identifier| identifier,
+        .identifier => self.source.contents[name_token.loc0.index..name_token.loc1.index],
         else => return fail(self.source, name_token, "expected param name, found `%`", .{name_token}),
     };
     const param_index = for (module_def.resolved.params) |param, i| {
@@ -155,7 +156,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
     // referencing one of the fields. like a function call
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
-        .identifier => |identifier| identifier,
+        .identifier => self.source.contents[name_token.loc0.index..name_token.loc1.index],
         else => return fail(self.source, name_token, "expected field name, found `%`", .{name_token}),
     };
     const field_index = for (module_def.fields.span()) |*field, i| {
@@ -229,7 +230,10 @@ fn parseExpression(
             expr.* = .{ .literal = .{ .boolean = true } };
             return expr;
         },
-        .number => |n| {
+        .number => {
+            const n = std.fmt.parseFloat(f32, parser.source.contents[token.loc0.index..token.loc1.index]) catch {
+                return fail(parser.source, token, "malformatted number", .{});
+            };
             const expr = try allocator.create(Expression);
             expr.* = .{ .literal = .{ .constant = n } };
             return expr;
