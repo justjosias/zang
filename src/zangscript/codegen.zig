@@ -22,9 +22,13 @@ pub const InstrCall = struct {
     args: []InstrCallArg,
 };
 
-pub const ResultLoc = union(enum) {
-    output: usize,
+pub const BufferLoc = union(enum) {
     temp: usize,
+    output: usize,
+};
+
+pub const ResultLoc = union(enum) {
+    buffer: BufferLoc,
     temp_float: usize,
     temp_bool: usize,
 };
@@ -40,7 +44,7 @@ pub const InstrLoadConstant = struct {
 };
 
 pub const InstrFloatToBuffer = struct {
-    out_temp: usize,
+    out: BufferLoc,
     in_temp_float: usize,
 };
 
@@ -55,6 +59,12 @@ pub const InstrMultiplyFloatFloat = struct {
     b_temp_float: usize,
 };
 
+pub const InstrMultiplyBufferFloat = struct {
+    out: BufferLoc,
+    temp_index: usize,
+    temp_float_index: usize,
+};
+
 pub const Instruction = union(enum) {
     call: InstrCall,
     float_to_buffer: InstrFloatToBuffer,
@@ -62,6 +72,7 @@ pub const Instruction = union(enum) {
     load_boolean: InstrLoadBoolean,
     load_constant: InstrLoadConstant,
     multiply_float_float: InstrMultiplyFloatFloat,
+    multiply_buffer_float: InstrMultiplyBufferFloat,
 };
 
 const CodegenState = struct {
@@ -113,7 +124,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     .constant_or_buffer => {
                         const out_index = state.num_temps;
                         state.num_temps += 1;
-                        try genExpression(state, .{ .temp = out_index }, arg.value);
+                        try genExpression(state, .{ .buffer = .{ .temp = out_index } }, arg.value);
 
                         icall.args[j] = .{ .temp = out_index };
                     },
@@ -167,7 +178,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
         .self_param => |param_index| {
             const param = &state.module_def.resolved.params[param_index];
             switch (result_loc) {
-                .temp => |index| {
+                .buffer => |buffer_loc| {
                     // result is a buffer. what is the param type?
                     switch (param.param_type) {
                         .constant => {
@@ -181,7 +192,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                             });
                             try state.instructions.append(.{
                                 .float_to_buffer = .{
-                                    .out_temp = index,
+                                    .out = buffer_loc,
                                     .in_temp_float = temp_float_index,
                                 },
                             });
@@ -212,6 +223,9 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
             const b_type = getExpressionType(state.module_def, m.b);
 
             switch (result_loc) {
+                .temp_bool => {
+                    unreachable;
+                },
                 .temp_float => |out_temp_float| {
                     // float = float * float
                     if (a_type != .constant or b_type != .constant) {
@@ -234,39 +248,69 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                         },
                     });
                 },
-                .temp => |out_temp| {
-                    // buffer = float * float
-                    if (a_type != .constant or b_type != .constant) {
-                        // TODO support buffer * buffer, buffer * float, and float * buffer
+                .buffer => |buffer_loc| {
+                    // FIXME constant_or_buffer makes no sense here!
+                    if (a_type == .constant_or_buffer and b_type == .constant) {
+                        const out_index_a = state.num_temps;
+                        state.num_temps += 1;
+                        try genExpression(state, .{ .buffer = .{ .temp = out_index_a } }, m.a);
+
+                        const out_index_b = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+                        try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+
+                        try state.instructions.append(.{
+                            .multiply_buffer_float = .{
+                                .out = buffer_loc,
+                                .temp_index = out_index_a,
+                                .temp_float_index = out_index_b,
+                            },
+                        });
+                    } else if (a_type == .constant and b_type == .constant_or_buffer) {
+                        const out_index_a = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+                        try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+
+                        const out_index_b = state.num_temps;
+                        state.num_temps += 1;
+                        try genExpression(state, .{ .buffer = .{ .temp = out_index_b } }, m.b);
+
+                        try state.instructions.append(.{
+                            .multiply_buffer_float = .{
+                                .out = buffer_loc,
+                                .temp_index = out_index_a,
+                                .temp_float_index = out_index_b,
+                            },
+                        });
+                    } else if (a_type == .constant and b_type == .constant) {
+                        const out_temp_float = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+
+                        const out_index_a = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+                        try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+
+                        const out_index_b = state.num_temp_floats;
+                        state.num_temp_floats += 1;
+                        try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+
+                        try state.instructions.append(.{
+                            .multiply_float_float = .{
+                                .out_temp_float = out_temp_float,
+                                .a_temp_float = out_index_a,
+                                .b_temp_float = out_index_b,
+                            },
+                        });
+                        try state.instructions.append(.{
+                            .float_to_buffer = .{
+                                .out = buffer_loc,
+                                .in_temp_float = out_temp_float,
+                            },
+                        });
+                    } else {
                         unreachable;
                     }
-
-                    const out_temp_float = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-
-                    const out_index_a = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-                    try genExpression(state, .{ .temp_float = out_index_a }, m.a);
-
-                    const out_index_b = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-                    try genExpression(state, .{ .temp_float = out_index_b }, m.b);
-
-                    try state.instructions.append(.{
-                        .multiply_float_float = .{
-                            .out_temp_float = out_temp_float,
-                            .a_temp_float = out_index_a,
-                            .b_temp_float = out_index_b,
-                        },
-                    });
-                    try state.instructions.append(.{
-                        .float_to_buffer = .{
-                            .out_temp = out_temp,
-                            .in_temp_float = out_temp_float,
-                        },
-                    });
                 },
-                else => unreachable,
             }
         },
         .nothing => {},
@@ -284,7 +328,7 @@ pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator:
     };
     // TODO deinit
 
-    try genExpression(&state, .{ .output = 0 }, expression);
+    try genExpression(&state, .{ .buffer = .{ .output = 0 } }, expression);
 
     module_def.resolved.num_outputs = 1;
     module_def.resolved.num_temps = state.num_temps;
@@ -304,8 +348,12 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
         switch (instr) {
             .call => |call| {
                 switch (call.result_loc) {
-                    .output => |n| std.debug.warn("output{}", .{n}),
-                    .temp => |n| std.debug.warn("temp{}", .{n}),
+                    .buffer => |buffer_loc| {
+                        switch (buffer_loc) {
+                            .output => |n| std.debug.warn("output{}", .{n}),
+                            .temp => |n| std.debug.warn("temp{}", .{n}),
+                        }
+                    },
                     .temp_float => |n| std.debug.warn("temp_float{}", .{n}),
                     .temp_bool => |n| std.debug.warn("temp_bool{}", .{n}),
                 }
@@ -343,7 +391,11 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                 std.debug.warn("temp_bool{} = LOADBOOLEAN {}\n", .{ x.out_index, x.value });
             },
             .float_to_buffer => |x| {
-                std.debug.warn("temp{} = FLOAT_TO_BUFFER temp_float{}\n", .{ x.out_temp, x.in_temp_float });
+                switch (x.out) {
+                    .temp => |n| std.debug.warn("temp{}", .{n}),
+                    .output => |n| std.debug.warn("output{}", .{n}),
+                }
+                std.debug.warn(" = FLOAT_TO_BUFFER temp_float{}\n", .{x.in_temp_float});
             },
             .load_param_float => |x| {
                 std.debug.warn("temp_float{} = LOADPARAM_FLOAT ${}({})\n", .{
@@ -357,6 +409,16 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                     x.out_temp_float,
                     x.a_temp_float,
                     x.b_temp_float,
+                });
+            },
+            .multiply_buffer_float => |x| {
+                switch (x.out) {
+                    .temp => |n| std.debug.warn("temp{}", .{n}),
+                    .output => |n| std.debug.warn("output{}", .{n}),
+                }
+                std.debug.warn(" = MULTIPLY_BUFFER_FLOAT temp{} temp_float{}\n", .{
+                    x.temp_index,
+                    x.temp_float_index,
                 });
             },
         }

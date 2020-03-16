@@ -105,7 +105,10 @@ pub fn generateCode(script: Script) !void {
                     try out.print("        const temp_bool{} = {};\n", .{ x.out_index, x.value });
                 },
                 .float_to_buffer => |x| {
-                    try out.print("        zang.set(span, temps[{}], temp_float{});\n", .{ x.out_temp, x.in_temp_float });
+                    switch (x.out) {
+                        .temp => |n| try out.print("        zang.set(span, temps[{}], temp_float{});\n", .{ n, x.in_temp_float }),
+                        .output => |n| try out.print("        zang.set(span, outputs[{}], temp_float{});\n", .{ n, x.in_temp_float }),
+                    }
                 },
                 .load_param_float => |x| {
                     try out.print("        const temp_float{}: f32 = params.{};\n", .{
@@ -120,11 +123,35 @@ pub fn generateCode(script: Script) !void {
                         x.b_temp_float,
                     });
                 },
+                .multiply_buffer_float => |x| {
+                    switch (x.out) {
+                        .temp => |n| {
+                            try out.print("        zang.zero(span, temps[{}]);\n", .{n});
+                            try out.print("        zang.multiplyScalar(span, temps[{}], temps[{}], temp_float{});\n", .{
+                                n,
+                                x.temp_index,
+                                x.temp_float_index,
+                            });
+                        },
+                        .output => |n| {
+                            try out.print("        zang.zero(span, outputs[{}]);\n", .{n});
+                            try out.print("        zang.multiplyScalar(span, outputs[{}], temps[{}], temp_float{});\n", .{
+                                n,
+                                x.temp_index,
+                                x.temp_float_index,
+                            });
+                        },
+                    }
+                },
                 .call => |call| {
                     const callee_module = module_def.fields.span()[call.field_index].resolved_module;
                     switch (call.result_loc) {
-                        .output => |n| try out.print("        zang.zero(span, outputs[{}]);\n", .{n}),
-                        .temp => |n| try out.print("        zang.zero(span, temps[{}]);\n", .{n}),
+                        .buffer => |buffer_loc| {
+                            switch (buffer_loc) {
+                                .output => |n| try out.print("        zang.zero(span, outputs[{}]);\n", .{n}),
+                                .temp => |n| try out.print("        zang.zero(span, temps[{}]);\n", .{n}),
+                            }
+                        },
                         .temp_float => {},
                         .temp_bool => {},
                     }
@@ -133,8 +160,12 @@ pub fn generateCode(script: Script) !void {
                     });
                     // callee outputs
                     switch (call.result_loc) {
-                        .output => |n| try out.print(".{{outputs[{}]}}", .{n}),
-                        .temp => |n| try out.print(".{{temps[{}]}}", .{n}),
+                        .buffer => |buffer_loc| {
+                            switch (buffer_loc) {
+                                .output => |n| try out.print(".{{outputs[{}]}}", .{n}),
+                                .temp => |n| try out.print(".{{temps[{}]}}", .{n}),
+                            }
+                        },
                         .temp_float => unreachable,
                         .temp_bool => unreachable,
                     }

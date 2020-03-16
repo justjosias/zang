@@ -6,7 +6,7 @@ def Instrument:
 
     osc PulseOsc;
 begin
-    @osc(
+    * 0.7 @osc(
         color: $color,
         sample_rate: 44100,
         freq: * $freq 2
