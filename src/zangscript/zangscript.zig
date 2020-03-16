@@ -104,21 +104,12 @@ pub fn generateCode(script: Script) !void {
                 .load_boolean => |x| {
                     try out.print("        const temp_bool{} = {};\n", .{ x.out_index, x.value });
                 },
-                .load_param_float_to_float => |x| {
+                .float_to_buffer => |x| {
+                    try out.print("        zang.set(span, temps[{}], temp_float{});\n", .{ x.out_temp, x.in_temp_float });
+                },
+                .load_param_float => |x| {
                     try out.print("        const temp_float{}: f32 = params.{};\n", .{
                         x.out_temp_float,
-                        module_def.resolved.params[x.param_index].name,
-                    });
-                },
-                .load_param_float_to_buffer => |x| {
-                    try out.print("        zang.set(span, temps[{}], params.{});\n", .{
-                        x.out_temp,
-                        module_def.resolved.params[x.param_index].name,
-                    });
-                },
-                .load_param_buffer_to_buffer => |x| {
-                    try out.print("        zang.copy(span, temps[{}], params.{});\n", .{
-                        x.out_temp,
                         module_def.resolved.params[x.param_index].name,
                     });
                 },

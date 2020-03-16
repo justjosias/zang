@@ -38,18 +38,13 @@ pub const InstrLoadConstant = struct {
     value: f32,
 };
 
-pub const InstrLoadParamFloatToFloat = struct {
+pub const InstrFloatToBuffer = struct {
+    out_temp: usize,
+    in_temp_float: usize,
+};
+
+pub const InstrLoadParamFloat = struct {
     out_temp_float: usize,
-    param_index: usize,
-};
-
-pub const InstrLoadParamFloatToBuffer = struct {
-    out_temp: usize,
-    param_index: usize,
-};
-
-pub const InstrLoadParamBufferToBuffer = struct {
-    out_temp: usize,
     param_index: usize,
 };
 
@@ -61,9 +56,8 @@ pub const InstrMultiply = struct {
 
 pub const Instruction = union(enum) {
     call: InstrCall,
-    load_param_float_to_float: InstrLoadParamFloatToFloat,
-    load_param_float_to_buffer: InstrLoadParamFloatToBuffer,
-    load_param_buffer_to_buffer: InstrLoadParamBufferToBuffer,
+    float_to_buffer: InstrFloatToBuffer,
+    load_param_float: InstrLoadParamFloat,
     load_boolean: InstrLoadBoolean,
     load_constant: InstrLoadConstant,
     multiply: InstrMultiply,
@@ -176,20 +170,18 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     // result is a buffer. what is the param type?
                     switch (param.param_type) {
                         .constant => {
-                            // float to buffer
+                            const temp_float_index = state.num_temp_floats;
+                            state.num_temp_floats += 1;
                             try state.instructions.append(.{
-                                .load_param_float_to_buffer = .{
-                                    .out_temp = index,
+                                .load_param_float = .{
+                                    .out_temp_float = temp_float_index,
                                     .param_index = param_index,
                                 },
                             });
-                        },
-                        .constant_or_buffer => {
-                            // buffer to buffer
                             try state.instructions.append(.{
-                                .load_param_buffer_to_buffer = .{
+                                .float_to_buffer = .{
                                     .out_temp = index,
-                                    .param_index = param_index,
+                                    .in_temp_float = temp_float_index,
                                 },
                             });
                         },
@@ -200,9 +192,8 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     // result is a float. what is the param type?
                     switch (param.param_type) {
                         .constant => {
-                            // float to float
                             try state.instructions.append(.{
-                                .load_param_float_to_float = .{
+                                .load_param_float = .{
                                     .out_temp_float = index,
                                     .param_index = param_index,
                                 },
@@ -307,23 +298,12 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
             .load_boolean => |x| {
                 std.debug.warn("temp_bool{} = LOADBOOLEAN {}\n", .{ x.out_index, x.value });
             },
-            .load_param_float_to_float => |x| {
-                std.debug.warn("temp_float{} = LOADPARAM_FLOAT_TO_FLOAT ${}({})\n", .{
+            .float_to_buffer => |x| {
+                std.debug.warn("temp{} = FLOAT_TO_BUFFER temp_float{}\n", .{ x.out_temp, x.in_temp_float });
+            },
+            .load_param_float => |x| {
+                std.debug.warn("temp_float{} = LOADPARAM_FLOAT ${}({})\n", .{
                     x.out_temp_float,
-                    x.param_index,
-                    module_def.resolved.params[x.param_index].name,
-                });
-            },
-            .load_param_float_to_buffer => |x| {
-                std.debug.warn("temp{} = LOADPARAM_FLOAT_TO_BUFFER ${}({})\n", .{
-                    x.out_temp,
-                    x.param_index,
-                    module_def.resolved.params[x.param_index].name,
-                });
-            },
-            .load_param_buffer_to_buffer => |x| {
-                std.debug.warn("temp{} = LOADPARAM_BUFFER_TO_BUFFER ${}({})\n", .{
-                    x.out_temp,
                     x.param_index,
                     module_def.resolved.params[x.param_index].name,
                 });
