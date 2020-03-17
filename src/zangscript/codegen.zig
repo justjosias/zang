@@ -253,8 +253,9 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
         },
         .binary_arithmetic => |m| {
             // no type checking has been performed yet...
-            const a_type = getExpressionType(state.module_def, m.a);
-            const b_type = getExpressionType(state.module_def, m.b);
+            // (not true?)
+            const a_type = try getExpressionType(state.source, state.module_def, m.a);
+            const b_type = try getExpressionType(state.source, state.module_def, m.b);
 
             switch (result_loc) {
                 .temp_bool => {

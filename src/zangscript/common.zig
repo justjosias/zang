@@ -1,6 +1,7 @@
 const std = @import("std");
 const Token = @import("tokenizer.zig").Token;
 const TokenType = @import("tokenizer.zig").TokenType;
+const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
 
 pub const Source = struct {
     filename: []const u8,
@@ -29,11 +30,21 @@ fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange
 fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: var) void {
     comptime var j: usize = 0;
     inline for (fmt) |ch| {
-        if (comptime ch == '%') {
+        if (ch == '%') {
             // source range
             printSourceRange(stderr, contents, args[j]);
             j += 1;
-        } else if (comptime ch == '#') {
+        } else if (ch == '&') {
+            // data type
+            stderr.write("(datatype)") catch {};
+            // FIXME this crashes the compiler
+            //switch (args[j]) {
+            //    .boolean => stderr.write("boolean") catch {},
+            //    .constant => stderr.write("constant") catch {},
+            //    .constant_or_buffer => stderr.write("constant_or_buffer") catch {},
+            //}
+            j += 1;
+        } else if (ch == '#') {
             // string
             stderr.write(args[j]) catch {};
             j += 1;

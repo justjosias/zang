@@ -53,7 +53,8 @@ const ParseError = error{
     OutOfMemory,
 };
 
-pub fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression) ResolvedParamType {
+// maybe type checking should be a distinct pass, between second_pass and codegen...
+pub fn getExpressionType(source: Source, module_def: *const ModuleDef, expression: *const Expression) error{Failed}!ResolvedParamType {
     switch (expression.inner) {
         .call => |call| {
             return .constant_or_buffer; // FIXME?
@@ -67,15 +68,18 @@ pub fn getExpressionType(module_def: *const ModuleDef, expression: *const Expres
         .binary_arithmetic => |x| {
             // in binary math, we support any combination of floats and buffers.
             // if there's at least one buffer operand, the result will also be a buffer
-            const a = getExpressionType(module_def, x.a);
-            const b = getExpressionType(module_def, x.b);
+            const a = try getExpressionType(source, module_def, x.a);
+            const b = try getExpressionType(source, module_def, x.b);
             if (a == .constant and b == .constant) {
                 return .constant;
             }
             if ((a == .constant or a == .constant_or_buffer) and (b == .constant or b == .constant_or_buffer)) {
                 return .constant_or_buffer;
             }
-            unreachable;
+            switch (x.operator) {
+                .add => return fail(source, expression.source_range, "illegal operand types for `+`: `&`, `&`", .{ a, b }),
+                .multiply => return fail(source, expression.source_range, "illegal operand types for `*`: `&`, `&`", .{ a, b }),
+            }
         },
         .nothing => {
             unreachable;
@@ -131,7 +135,7 @@ fn parseCallArg(
             //     - con: i have no tokens to use for error messages
             // or, i could keep the second_pass instruction set simple but still typecheck in
             // the second pass. codegen kind of just assumes that it's been done
-            const subexpr_type = getExpressionType(self, subexpr);
+            const subexpr_type = try getExpressionType(p.source, self, subexpr);
             switch (param_type) {
                 .boolean => {
                     if (subexpr_type != .boolean) {
@@ -273,8 +277,10 @@ fn parseExpression(
         .sym_dollar => {
             const expr = try allocator.create(Expression);
             expr.* = .{
-                // FIXME! loc should be expanded
-                .source_range = token.source_range,
+                .source_range = .{
+                    .loc0 = token.source_range.loc0,
+                    .loc1 = expr.source_range.loc1,
+                },
                 .inner = .{ .self_param = try parseSelfParam(parser, module_defs, module_def, allocator) },
             };
             return expr;
@@ -282,8 +288,10 @@ fn parseExpression(
         .sym_at => {
             const expr = try allocator.create(Expression);
             expr.* = .{
-                // FIXME! loc should be expanded
-                .source_range = token.source_range,
+                .source_range = .{
+                    .loc0 = token.source_range.loc0,
+                    .loc1 = expr.source_range.loc1,
+                },
                 .inner = .{ .call = try parseCall(parser, module_defs, module_def, allocator) },
             };
             return expr;
@@ -293,8 +301,10 @@ fn parseExpression(
             const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
             const expr = try allocator.create(Expression);
             expr.* = .{
-                // FIXME! loc should be expanded
-                .source_range = token.source_range,
+                .source_range = .{
+                    .loc0 = token.source_range.loc0,
+                    .loc1 = b.source_range.loc1,
+                },
                 .inner = .{
                     .binary_arithmetic = .{
                         .operator = .add,
@@ -310,8 +320,10 @@ fn parseExpression(
             const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
             const expr = try allocator.create(Expression);
             expr.* = .{
-                // FIXME! loc should be expanded
-                .source_range = token.source_range,
+                .source_range = .{
+                    .loc0 = token.source_range.loc0,
+                    .loc1 = b.source_range.loc1,
+                },
                 .inner = .{
                     .binary_arithmetic = .{
                         .operator = .multiply,
