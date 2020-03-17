@@ -116,18 +116,27 @@ pub fn generateCode(script: Script) !void {
                         module_def.resolved.params[x.param_index].name,
                     });
                 },
-                .multiply_float_float => |x| {
-                    try out.print("        const temp_float{}: f32 = temp_float{} * temp_float{};\n", .{
+                .arith_float_float => |x| {
+                    try out.print("        const temp_float{}: f32 = temp_float{} {} temp_float{};\n", .{
                         x.out_temp_float,
                         x.a_temp_float,
+                        switch (x.operator) {
+                            .add => "+",
+                            .multiply => "*",
+                        },
                         x.b_temp_float,
                     });
                 },
-                .multiply_buffer_float => |x| {
+                .arith_buffer_float => |x| {
                     switch (x.out) {
                         .temp => |n| {
                             try out.print("        zang.zero(span, temps[{}]);\n", .{n});
-                            try out.print("        zang.multiplyScalar(span, temps[{}], temps[{}], temp_float{});\n", .{
+                            try out.print("        zang.", .{});
+                            switch (x.operator) {
+                                .add => try out.print("add", .{}),
+                                .multiply => try out.print("multiply", .{}),
+                            }
+                            try out.print("Scalar(span, temps[{}], temps[{}], temp_float{});\n", .{
                                 n,
                                 x.temp_index,
                                 x.temp_float_index,
@@ -135,7 +144,12 @@ pub fn generateCode(script: Script) !void {
                         },
                         .output => |n| {
                             try out.print("        zang.zero(span, outputs[{}]);\n", .{n});
-                            try out.print("        zang.multiplyScalar(span, outputs[{}], temps[{}], temp_float{});\n", .{
+                            try out.print("        zang.", .{});
+                            switch (x.operator) {
+                                .add => try out.print("add", .{}),
+                                .multiply => try out.print("multiply", .{}),
+                            }
+                            try out.print("Scalar(span, outputs[{}], temps[{}], temp_float{});\n", .{
                                 n,
                                 x.temp_index,
                                 x.temp_float_index,

@@ -1,10 +1,20 @@
 const std = @import("std");
+const Source = @import("common.zig").Source;
+const fail = @import("common.zig").fail;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
 const Expression = @import("second_pass.zig").Expression;
 const CallArg = @import("second_pass.zig").CallArg;
 const Call = @import("second_pass.zig").Call;
 const Literal = @import("second_pass.zig").Literal;
 const getExpressionType = @import("second_pass.zig").getExpressionType;
+
+// TODO i'm tending towards the idea of this file not even being involved at all
+// in runtime script mode.
+// so type checking and everything like that should be moved all into second_pass.
+// this file will be very specific for generating zig code, i think.
+// although, i'm not sure. temp floats are not needed for runtime script mode,
+// but temps (temp buffers) are? (although i could just allocate those dynamically
+// as well since i don't have a lot of performance requirements for script mode.)
 
 // FIXME - tag type should be datatype? (constant, boolean, constant_or_buffer)
 pub const InstrCallArg = union(enum) {
@@ -53,13 +63,15 @@ pub const InstrLoadParamFloat = struct {
     param_index: usize,
 };
 
-pub const InstrMultiplyFloatFloat = struct {
+pub const InstrArithFloatFloat = struct {
+    operator: enum { add, multiply },
     out_temp_float: usize,
     a_temp_float: usize,
     b_temp_float: usize,
 };
 
-pub const InstrMultiplyBufferFloat = struct {
+pub const InstrArithBufferFloat = struct {
+    operator: enum { add, multiply },
     out: BufferLoc,
     temp_index: usize,
     temp_float_index: usize,
@@ -71,12 +83,13 @@ pub const Instruction = union(enum) {
     load_param_float: InstrLoadParamFloat,
     load_boolean: InstrLoadBoolean,
     load_constant: InstrLoadConstant,
-    multiply_float_float: InstrMultiplyFloatFloat,
-    multiply_buffer_float: InstrMultiplyBufferFloat,
+    arith_float_float: InstrArithFloatFloat,
+    arith_buffer_float: InstrArithBufferFloat,
 };
 
 const CodegenState = struct {
     allocator: *std.mem.Allocator,
+    source: Source,
     module_def: *ModuleDef,
     instructions: std.ArrayList(Instruction),
     num_temps: usize,
@@ -84,10 +97,13 @@ const CodegenState = struct {
     num_temp_bools: usize,
 };
 
-const GenError = error{OutOfMemory};
+const GenError = error{
+    Failed,
+    OutOfMemory,
+};
 
 fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const Expression) GenError!void {
-    switch (expression.*) {
+    switch (expression.inner) {
         .call => |call| {
             const callee = state.module_def.fields.span()[call.field_index].resolved_module;
 
@@ -150,6 +166,25 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
         },
         .literal => |literal| {
             switch (result_loc) {
+                .buffer => |buffer_loc| {
+                    const temp_float_index = state.num_temp_floats;
+                    state.num_temp_floats += 1;
+                    try state.instructions.append(.{
+                        .load_constant = .{
+                            .out_index = temp_float_index,
+                            .value = switch (literal) {
+                                .constant => |v| v,
+                                else => unreachable,
+                            },
+                        },
+                    });
+                    try state.instructions.append(.{
+                        .float_to_buffer = .{
+                            .out = buffer_loc,
+                            .in_temp_float = temp_float_index,
+                        },
+                    });
+                },
                 .temp_float => |index| {
                     try state.instructions.append(.{
                         .load_constant = .{
@@ -172,7 +207,6 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                         },
                     });
                 },
-                else => unreachable,
             }
         },
         .self_param => |param_index| {
@@ -217,7 +251,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                 else => unreachable,
             }
         },
-        .multiply => |m| {
+        .binary_arithmetic => |m| {
             // no type checking has been performed yet...
             const a_type = getExpressionType(state.module_def, m.a);
             const b_type = getExpressionType(state.module_def, m.b);
@@ -227,9 +261,9 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     unreachable;
                 },
                 .temp_float => |out_temp_float| {
-                    // float = float * float
+                    // float = float + float
                     if (a_type != .constant or b_type != .constant) {
-                        unreachable;
+                        return fail(state.source, expression.source_range, "dest is float, so operands must both be floats", .{});
                     }
 
                     const out_index_a = state.num_temp_floats;
@@ -241,7 +275,11 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     try genExpression(state, .{ .temp_float = out_index_b }, m.b);
 
                     try state.instructions.append(.{
-                        .multiply_float_float = .{
+                        .arith_float_float = .{
+                            .operator = switch (m.operator) {
+                                .add => .add,
+                                .multiply => .multiply,
+                            },
                             .out_temp_float = out_temp_float,
                             .a_temp_float = out_index_a,
                             .b_temp_float = out_index_b,
@@ -260,7 +298,11 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                         try genExpression(state, .{ .temp_float = out_index_b }, m.b);
 
                         try state.instructions.append(.{
-                            .multiply_buffer_float = .{
+                            .arith_buffer_float = .{
+                                .operator = switch (m.operator) {
+                                    .add => .add,
+                                    .multiply => .multiply,
+                                },
                                 .out = buffer_loc,
                                 .temp_index = out_index_a,
                                 .temp_float_index = out_index_b,
@@ -276,7 +318,11 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                         try genExpression(state, .{ .buffer = .{ .temp = out_index_b } }, m.b);
 
                         try state.instructions.append(.{
-                            .multiply_buffer_float = .{
+                            .arith_buffer_float = .{
+                                .operator = switch (m.operator) {
+                                    .add => .add,
+                                    .multiply => .multiply,
+                                },
                                 .out = buffer_loc,
                                 .temp_index = out_index_a,
                                 .temp_float_index = out_index_b,
@@ -295,7 +341,11 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                         try genExpression(state, .{ .temp_float = out_index_b }, m.b);
 
                         try state.instructions.append(.{
-                            .multiply_float_float = .{
+                            .arith_float_float = .{
+                                .operator = switch (m.operator) {
+                                    .add => .add,
+                                    .multiply => .multiply,
+                                },
                                 .out_temp_float = out_temp_float,
                                 .a_temp_float = out_index_a,
                                 .b_temp_float = out_index_b,
@@ -308,7 +358,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                             },
                         });
                     } else {
-                        unreachable;
+                        return fail(state.source, expression.source_range, "dest is buffer, unsupported operand types", .{});
                     }
                 },
             }
@@ -317,9 +367,10 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
     }
 }
 
-pub fn codegen(module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !void {
+pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !void {
     var state: CodegenState = .{
         .allocator = allocator,
+        .source = source,
         .module_def = module_def,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .num_temps = 0,
@@ -404,19 +455,21 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                     module_def.resolved.params[x.param_index].name,
                 });
             },
-            .multiply_float_float => |x| {
-                std.debug.warn("temp_float{} = MULTIPLY_FLOAT_FLOAT temp_float{} temp_float{}\n", .{
+            .arith_float_float => |x| {
+                std.debug.warn("temp_float{} = ARITH_FLOAT_FLOAT {} temp_float{} temp_float{}\n", .{
+                    x.operator,
                     x.out_temp_float,
                     x.a_temp_float,
                     x.b_temp_float,
                 });
             },
-            .multiply_buffer_float => |x| {
+            .arith_buffer_float => |x| {
                 switch (x.out) {
                     .temp => |n| std.debug.warn("temp{}", .{n}),
                     .output => |n| std.debug.warn("output{}", .{n}),
                 }
-                std.debug.warn(" = MULTIPLY_BUFFER_FLOAT temp{} temp_float{}\n", .{
+                std.debug.warn(" = ARITH_BUFFER_FLOAT {} temp{} temp_float{}\n", .{
+                    x.operator,
                     x.temp_index,
                     x.temp_float_index,
                 });

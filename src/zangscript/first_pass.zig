@@ -77,7 +77,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
 
     const ctoken = try self.parser.expect();
     if (ctoken.tt != .sym_colon) {
-        return fail(self.parser.source, ctoken, "expected `:`, found `%`", .{ctoken});
+        return fail(self.parser.source, ctoken.source_range, "expected `:`, found `%`", .{ctoken.source_range});
     }
 
     var module_def: ModuleDef = .{
@@ -102,12 +102,12 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 const field_name = try self.parser.expectIdentifier();
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
-                    .identifier => self.parser.source.contents[type_token.loc0.index..type_token.loc1.index],
-                    else => return fail(self.parser.source, type_token, "expected param type, found `%`", .{type_token}),
+                    .identifier => self.parser.source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index],
+                    else => return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range}),
                 };
                 token = try self.parser.expect();
                 if (token.tt != .sym_semicolon) {
-                    return fail(self.parser.source, token, "expected `;`, found `%`", .{token});
+                    return fail(self.parser.source, token.source_range, "expected `;`, found `%`", .{token.source_range});
                 }
                 try module_def.param_decls.append(.{
                     .name = field_name,
@@ -117,15 +117,15 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
             },
             .identifier => {
                 // field declaration
-                const field_name = self.parser.source.contents[token.loc0.index..token.loc1.index];
+                const field_name = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
                 const type_token = try self.parser.expect();
                 const type_name = switch (type_token.tt) {
-                    .identifier => self.parser.source.contents[type_token.loc0.index..type_token.loc1.index],
-                    else => return fail(self.parser.source, type_token, "expected field type, found `%`", .{type_token}),
+                    .identifier => self.parser.source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index],
+                    else => return fail(self.parser.source, type_token.source_range, "expected field type, found `%`", .{type_token.source_range}),
                 };
                 const ctoken2 = try self.parser.expect();
                 if (ctoken2.tt != .sym_semicolon) {
-                    return fail(self.parser.source, ctoken2, "expected `;`, found `%`", .{ctoken2});
+                    return fail(self.parser.source, ctoken2.source_range, "expected `;`, found `%`", .{ctoken2.source_range});
                 }
                 try module_def.fields.append(.{
                     .name = field_name,
@@ -135,7 +135,7 @@ pub fn defineModule(self: *FirstPass, allocator: *std.mem.Allocator) !void {
                 });
             },
             else => {
-                return fail(self.parser.source, token, "expected field declaration or `begin`, found `%`", .{token});
+                return fail(self.parser.source, token.source_range, "expected field declaration or `begin`, found `%`", .{token.source_range});
             },
         }
     }
@@ -169,7 +169,7 @@ pub fn firstPass(
     while (self.parser.next()) |token| {
         switch (token.tt) {
             .kw_def => try defineModule(&self, allocator),
-            else => return fail(self.parser.source, token, "expected `def` or end of file, found `%`", .{token}),
+            else => return fail(self.parser.source, token.source_range, "expected `def` or end of file, found `%`", .{token.source_range}),
         }
     }
 
@@ -191,7 +191,7 @@ fn resolveParamType(source: Source, param: ModuleParamDecl) !ResolvedParamType {
         return .constant;
     }
     // TODO if a module was referenced, be nice and recognize that but say it's not allowed
-    return fail(source, param.type_token, "could not resolve param type `%`", .{param.type_token});
+    return fail(source, param.type_token.source_range, "could not resolve param type `%`", .{param.type_token.source_range});
 }
 
 fn resolveFieldType(
@@ -208,13 +208,13 @@ fn resolveFieldType(
         if (std.mem.eql(u8, field.type_name, module_def2.name)) {
             if (j == current_module_index) {
                 // FIXME - do a full circular dependency detection
-                return fail(source, field.type_token, "cannot use self as field", .{});
+                return fail(source, field.type_token.source_range, "cannot use self as field", .{});
             }
             // is the module even resolved yet? oh well, the pointer should at least be valid
             return &module_defs[j].resolved;
         }
     }
-    return fail(source, field.type_token, "could not resolve field type `%`", .{field.type_token});
+    return fail(source, field.type_token.source_range, "could not resolve field type `%`", .{field.type_token.source_range});
 }
 
 fn resolveTypes(source: Source, module_defs: []ModuleDef, allocator: *std.mem.Allocator) !void {

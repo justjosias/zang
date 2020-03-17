@@ -15,22 +15,28 @@ pub const SourceLocation = struct {
     index: usize,
 };
 
-fn printToken(stderr: var, contents: []const u8, token: Token) void {
+pub const SourceRange = struct {
+    loc0: SourceLocation,
+    loc1: SourceLocation,
+};
+
+fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange) void {
     // TODO would be nice if it could say "keyword `param`" instead of just "`param`"
     // first i need to move the backquotes into here...
-    stderr.write(contents[token.loc0.index..token.loc1.index]) catch {};
+    stderr.write(contents[source_range.loc0.index..source_range.loc1.index]) catch {};
 }
 
 fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: var) void {
     comptime var j: usize = 0;
     inline for (fmt) |ch| {
-        if (ch == '%') {
-            // token
-            printToken(stderr, contents, args[j]);
+        if (comptime ch == '%') {
+            // source range
+            printSourceRange(stderr, contents, args[j]);
             j += 1;
-        } else if (ch == '#') {
+        } else if (comptime ch == '#') {
             // string
             stderr.write(args[j]) catch {};
+            j += 1;
         } else {
             stderr.writeByte(ch) catch {};
         }
@@ -45,11 +51,11 @@ const KWHITE = "\x1B[37m";
 
 pub fn fail(
     source: Source,
-    maybe_token: ?Token,
+    maybe_source_range: ?SourceRange,
     comptime fmt: []const u8,
     args: var,
 ) error{Failed} {
-    const token = maybe_token orelse {
+    const source_range = maybe_source_range orelse {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.debug.getStderrStream();
@@ -60,7 +66,7 @@ pub fn fail(
     };
     // display the problematic line
     // look backward for newline.
-    var i: usize = token.loc0.index;
+    var i: usize = source_range.loc0.index;
     while (i > 0) {
         i -= 1;
         if (source.contents[i] == '\n') {
@@ -70,7 +76,7 @@ pub fn fail(
     }
     const start = i;
     // look forward for newline.
-    i = token.loc0.index;
+    i = source_range.loc0.index;
     while (i < source.contents.len) {
         if (source.contents[i] == '\n' or source.contents[i] == '\r') {
             break;
@@ -78,14 +84,14 @@ pub fn fail(
         i += 1;
     }
     const end = i;
-    const col = token.loc0.index - start;
+    const col = source_range.loc0.index - start;
     // ok
     const held = std.debug.getStderrMutex().acquire();
     defer held.release();
     const stderr = std.debug.getStderrStream();
     stderr.print(KYEL ++ KBOLD ++ "{}:{}:{}: " ++ KWHITE, .{
         source.filename,
-        token.loc0.line + 1,
+        source_range.loc0.line + 1,
         col + 1,
     }) catch {};
     failPrint(stderr, source.contents, fmt, args);
@@ -98,7 +104,7 @@ pub fn fail(
         stderr.print(" ", .{}) catch {};
     }
     stderr.write(KRED ++ KBOLD) catch {};
-    while (i < end - start and i < token.loc1.index - start) : (i += 1) {
+    while (i < end - start and i < source_range.loc1.index - start) : (i += 1) {
         stderr.print("^", .{}) catch {};
     }
     stderr.write(KNRM) catch {};
@@ -137,8 +143,8 @@ pub const Parser = struct {
     pub fn expectIdentifier(self: *Parser) ![]const u8 {
         const token = try self.expect();
         switch (token.tt) {
-            .identifier => return self.source.contents[token.loc0.index..token.loc1.index],
-            else => return fail(self.source, token, "expected identifier, found `%`", .{token}),
+            .identifier => return self.source.contents[token.source_range.loc0.index..token.source_range.loc1.index],
+            else => return fail(self.source, token.source_range, "expected identifier, found `%`", .{token.source_range}),
         }
     }
 

@@ -1,16 +1,17 @@
 const std = @import("std");
 const Source = @import("common.zig").Source;
 const SourceLocation = @import("common.zig").SourceLocation;
+const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 
 pub const TokenType = enum {
-    illegal,
     sym_asterisk,
     sym_at,
     sym_colon,
     sym_comma,
     sym_dollar,
     sym_left_paren,
+    sym_plus,
     sym_right_paren,
     sym_semicolon,
     kw_begin,
@@ -24,9 +25,8 @@ pub const TokenType = enum {
 };
 
 pub const Token = struct {
+    source_range: SourceRange,
     tt: TokenType,
-    loc0: SourceLocation, // start
-    loc1: SourceLocation, // end
 };
 
 inline fn isWhitespace(ch: u8) bool {
@@ -49,9 +49,11 @@ pub const Tokenizer = struct {
 
 fn addToken(tokenizer: *Tokenizer, loc0: SourceLocation, loc1: SourceLocation, tt: TokenType) !void {
     try tokenizer.tokens.append(.{
+        .source_range = .{
+            .loc0 = loc0,
+            .loc1 = loc1,
+        },
         .tt = tt,
-        .loc0 = loc0,
-        .loc1 = loc1,
     });
 }
 
@@ -109,6 +111,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .sym_left_paren);
             continue;
         }
+        if (src[loc.index] == '+') {
+            loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_plus);
+            continue;
+        }
         if (src[loc.index] == ')') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_right_paren);
@@ -131,12 +138,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         }
         if (!isStartOfIdentifier(src[loc.index])) {
             loc.index += 1;
-            const token: Token = .{
-                .tt = .illegal,
+            const source_range: SourceRange = .{
                 .loc0 = start,
                 .loc1 = loc,
             };
-            return fail(tokenizer.source, token, "illegal character: `%`", .{token});
+            return fail(tokenizer.source, source_range, "illegal character: `%`", .{source_range});
         }
         loc.index += 1;
         while (loc.index < src.len and isIdentifierInterior(src[loc.index])) {

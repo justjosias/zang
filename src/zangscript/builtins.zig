@@ -35,6 +35,7 @@ fn getBuiltinModule(comptime T: type) Module {
 
 pub const builtins = [_]Module{
     getBuiltinModule(zang.PulseOsc),
+    getBuiltinModule(zang.SineOsc),
     getBuiltinModule(zang.TriSawOsc),
 };
 

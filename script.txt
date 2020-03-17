@@ -1,3 +1,7 @@
+// TODO: sample_rate should be handled specially:
+// passed implicitly to child modules.
+// it could even be hardcoded so you don't have to set it as a param at all
+
 def Instrument:
     param sample_rate number;
     param freq number;
@@ -5,11 +9,15 @@ def Instrument:
     param note_on boolean;
 
     osc PulseOsc;
+    mod SineOsc;
 begin
     * 0.7 @osc(
         color: $color,
         sample_rate: 44100,
-        freq: * $freq 2
+        freq:
+            * $freq
+                + 1
+                    * 0.02 @mod(sample_rate: 44100, freq: 4, phase: 0)
     )
 end
 

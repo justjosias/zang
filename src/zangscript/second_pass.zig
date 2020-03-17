@@ -2,6 +2,7 @@ const std = @import("std");
 const zang = @import("zang");
 const Parser = @import("common.zig").Parser;
 const Source = @import("common.zig").Source;
+const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
@@ -22,12 +23,23 @@ pub const Call = struct {
     args: std.ArrayList(CallArg),
 };
 
-pub const Expression = union(enum) {
+pub const BinaryArithmetic = struct {
+    operator: enum { add, multiply },
+    a: *const Expression,
+    b: *const Expression,
+};
+
+pub const ExpressionInner = union(enum) {
     call: Call,
     literal: Literal,
     self_param: usize,
-    multiply: struct { a: *const Expression, b: *const Expression },
+    binary_arithmetic: BinaryArithmetic,
     nothing,
+};
+
+pub const Expression = struct {
+    source_range: SourceRange,
+    inner: ExpressionInner,
 };
 
 pub const Literal = union(ResolvedParamType) {
@@ -42,7 +54,7 @@ const ParseError = error{
 };
 
 pub fn getExpressionType(module_def: *const ModuleDef, expression: *const Expression) ResolvedParamType {
-    switch (expression.*) {
+    switch (expression.inner) {
         .call => |call| {
             return .constant_or_buffer; // FIXME?
         },
@@ -52,9 +64,18 @@ pub fn getExpressionType(module_def: *const ModuleDef, expression: *const Expres
         .self_param => |param_index| {
             return module_def.resolved.params[param_index].param_type;
         },
-        .multiply => {
-            // FIXME this could also be constant or buffer
-            return .constant;
+        .binary_arithmetic => |x| {
+            // in binary math, we support any combination of floats and buffers.
+            // if there's at least one buffer operand, the result will also be a buffer
+            const a = getExpressionType(module_def, x.a);
+            const b = getExpressionType(module_def, x.b);
+            if (a == .constant and b == .constant) {
+                return .constant;
+            }
+            if ((a == .constant or a == .constant_or_buffer) and (b == .constant or b == .constant_or_buffer)) {
+                return .constant_or_buffer;
+            }
+            unreachable;
         },
         .nothing => {
             unreachable;
@@ -75,7 +96,7 @@ fn parseCallArg(
 ) ParseError!CallArg {
     switch (token.tt) {
         .identifier => {
-            const identifier = p.source.contents[token.loc0.index..token.loc1.index];
+            const identifier = p.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             // find this param
             var param_index: usize = undefined;
             for (params) |param, i| {
@@ -84,13 +105,16 @@ fn parseCallArg(
                     break;
                 }
             } else {
-                return fail(p.source, token, "module has no param called `%`", .{token}); // TODO better message
+                return fail(p.source, token.source_range, "module `#` has no param called `%`", .{
+                    field.resolved_module.name,
+                    token.source_range,
+                });
             }
             const param_type = params[param_index].param_type;
 
             const token2 = try p.expect();
             if (token2.tt != .sym_colon) {
-                return fail(p.source, token2, "expected `:`, found `%`", .{token2});
+                return fail(p.source, token2.source_range, "expected `:`, found `%`", .{token2.source_range});
             }
             const token3 = try p.expect();
             const subexpr = try parseExpression(p, module_defs, self, token3, allocator);
@@ -111,18 +135,18 @@ fn parseCallArg(
             switch (param_type) {
                 .boolean => {
                     if (subexpr_type != .boolean) {
-                        return fail(p.source, token3, "type mismatch (expecting boolean)", .{});
+                        return fail(p.source, token3.source_range, "type mismatch (expecting boolean)", .{});
                     }
                 },
                 .constant => {
                     if (subexpr_type != .constant) {
-                        return fail(p.source, token3, "type mismatch (expecting constant)", .{});
+                        return fail(p.source, token3.source_range, "type mismatch (expecting constant)", .{});
                     }
                 },
                 .constant_or_buffer => {
                     // constant will coerce to constant_or_buffer
                     if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
-                        return fail(p.source, token3, "type mismatch (expecting number)", .{});
+                        return fail(p.source, token3.source_range, "type mismatch (expecting number)", .{});
                     }
                 },
             }
@@ -132,7 +156,7 @@ fn parseCallArg(
             };
         },
         else => {
-            return fail(p.source, token, "expected `)` or arg name, found `%`", .{token});
+            return fail(p.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
         },
     }
 }
@@ -140,14 +164,14 @@ fn parseCallArg(
 fn parseSelfParam(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!usize {
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
-        .identifier => self.source.contents[name_token.loc0.index..name_token.loc1.index],
-        else => return fail(self.source, name_token, "expected param name, found `%`", .{name_token}),
+        .identifier => self.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
+        else => return fail(self.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
     };
     const param_index = for (module_def.resolved.params) |param, i| {
         if (std.mem.eql(u8, param.name, name)) {
             break i;
         }
-    } else return fail(self.source, name_token, "not a param of self: `%`", .{name_token});
+    } else return fail(self.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
     // TODO type check?
     return param_index;
 }
@@ -156,23 +180,22 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
     // referencing one of the fields. like a function call
     const name_token = try self.expect();
     const name = switch (name_token.tt) {
-        .identifier => self.source.contents[name_token.loc0.index..name_token.loc1.index],
-        else => return fail(self.source, name_token, "expected field name, found `%`", .{name_token}),
+        .identifier => self.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
+        else => return fail(self.source, name_token.source_range, "expected field name, found `%`", .{name_token.source_range}),
     };
     const field_index = for (module_def.fields.span()) |*field, i| {
         if (std.mem.eql(u8, field.name, name)) {
             break i;
         }
     } else {
-        //return fail(self.source, name_token, "not a field of `#`: `%`", .{ module_def.name, name_token }); // FIXME not working?
-        return fail(self.source, name_token, "not a field of self: `%`", .{name_token});
+        return fail(self.source, name_token.source_range, "not a field of `#`: `%`", .{ module_def.name, name_token.source_range });
     };
     // arguments
     const field = &module_def.fields.span()[field_index];
     const params = field.resolved_module.params;
     var token = try self.expect();
     if (token.tt != .sym_left_paren) {
-        return fail(self.source, token, "expected `(`, found `%`", .{token});
+        return fail(self.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
     }
     var args = std.ArrayList(CallArg).init(allocator);
     errdefer args.deinit();
@@ -188,7 +211,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
             if (token.tt == .sym_comma) {
                 token = try self.expect();
             } else {
-                return fail(self.source, token, "expected `,` or `)`, found `%`", .{token});
+                return fail(self.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
             }
         }
         const arg = try parseCallArg(self, token, module_defs, module_def, params, field, allocator);
@@ -203,7 +226,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
             }
         }
         if (!found) {
-            return fail(self.source, token, "call is missing param `#`", .{param.name}); // TODO improve message
+            return fail(self.source, token.source_range, "call is missing param `#`", .{param.name}); // TODO improve message
         }
     }
     return Call{
@@ -222,42 +245,86 @@ fn parseExpression(
     switch (token.tt) {
         .kw_false => {
             const expr = try allocator.create(Expression);
-            expr.* = .{ .literal = .{ .boolean = false } };
+            expr.* = .{
+                .source_range = token.source_range,
+                .inner = .{ .literal = .{ .boolean = false } },
+            };
             return expr;
         },
         .kw_true => {
             const expr = try allocator.create(Expression);
-            expr.* = .{ .literal = .{ .boolean = true } };
+            expr.* = .{
+                .source_range = token.source_range,
+                .inner = .{ .literal = .{ .boolean = true } },
+            };
             return expr;
         },
         .number => {
-            const n = std.fmt.parseFloat(f32, parser.source.contents[token.loc0.index..token.loc1.index]) catch {
-                return fail(parser.source, token, "malformatted number", .{});
+            const n = std.fmt.parseFloat(f32, parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index]) catch {
+                return fail(parser.source, token.source_range, "malformatted number", .{});
             };
             const expr = try allocator.create(Expression);
-            expr.* = .{ .literal = .{ .constant = n } };
+            expr.* = .{
+                .source_range = token.source_range,
+                .inner = .{ .literal = .{ .constant = n } },
+            };
             return expr;
         },
         .sym_dollar => {
             const expr = try allocator.create(Expression);
-            expr.* = Expression{ .self_param = try parseSelfParam(parser, module_defs, module_def, allocator) };
+            expr.* = .{
+                // FIXME! loc should be expanded
+                .source_range = token.source_range,
+                .inner = .{ .self_param = try parseSelfParam(parser, module_defs, module_def, allocator) },
+            };
             return expr;
         },
         .sym_at => {
             const expr = try allocator.create(Expression);
-            expr.* = Expression{ .call = try parseCall(parser, module_defs, module_def, allocator) };
+            expr.* = .{
+                // FIXME! loc should be expanded
+                .source_range = token.source_range,
+                .inner = .{ .call = try parseCall(parser, module_defs, module_def, allocator) },
+            };
+            return expr;
+        },
+        .sym_plus => {
+            const a = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
+            const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
+            const expr = try allocator.create(Expression);
+            expr.* = .{
+                // FIXME! loc should be expanded
+                .source_range = token.source_range,
+                .inner = .{
+                    .binary_arithmetic = .{
+                        .operator = .add,
+                        .a = a,
+                        .b = b,
+                    },
+                },
+            };
             return expr;
         },
         .sym_asterisk => {
             const a = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
             const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
             const expr = try allocator.create(Expression);
-            expr.* = Expression{ .multiply = .{ .a = a, .b = b } };
+            expr.* = .{
+                // FIXME! loc should be expanded
+                .source_range = token.source_range,
+                .inner = .{
+                    .binary_arithmetic = .{
+                        .operator = .multiply,
+                        .a = a,
+                        .b = b,
+                    },
+                },
+            };
             return expr;
         },
         else => {
-            //return fail(source, token, "expected `@` or `end`, found `%`", .{token});
-            return fail(parser.source, token, "expected expression, found `%`", .{token});
+            //return fail(source, token.source_range, "expected `@` or `end`, found `%`", .{token.source_range});
+            return fail(parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
         },
     }
 }
@@ -282,7 +349,14 @@ fn paintBlock(
         return try parseExpression(&parser, module_defs, module_def, token, allocator);
     }
     const expr = try allocator.create(Expression);
-    expr.* = .nothing;
+    expr.* = .{
+        // FIXME
+        .source_range = .{
+            .loc0 = .{ .line = 0, .index = 0 },
+            .loc1 = .{ .line = 0, .index = 0 },
+        },
+        .inner = .nothing,
+    };
     return expr;
 }
 
@@ -302,7 +376,7 @@ pub fn secondPass(
         std.debug.warn("print expression:\n", .{});
         printExpression(module_defs, module_def, module_def.expression, 1);
 
-        try codegen(module_def, module_def.expression, allocator);
+        try codegen(source, module_def, module_def.expression, allocator);
     }
 }
 
@@ -311,7 +385,7 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});
     }
-    switch (expression.*) {
+    switch (expression.inner) {
         .call => |call| {
             std.debug.warn("call self.{} (\n", .{module_def.fields.span()[call.field_index].name});
             for (call.args.span()) |arg| {
@@ -338,8 +412,11 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
         .self_param => |param_index| {
             std.debug.warn("${}\n", .{param_index});
         },
-        .multiply => |m| {
-            std.debug.warn("multiply\n", .{});
+        .binary_arithmetic => |m| {
+            switch (m.operator) {
+                .add => std.debug.warn("add\n", .{}),
+                .multiply => std.debug.warn("multiply\n", .{}),
+            }
             printExpression(module_defs, module_def, m.a, indentation + 1);
             printExpression(module_defs, module_def, m.b, indentation + 1);
         },
