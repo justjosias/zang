@@ -109,18 +109,11 @@ fn genExpression(self: *CodegenState, result_loc: ResultLoc, expression: *const 
     switch (expression.inner) {
         .call => |call| {
             const field = self.first_pass_result.module_fields[module.first_field + call.field_index];
-            var callee_num_temps: usize = undefined;
-            const callee_params = switch (field.resolved_module_index) {
-                .builtin => |builtin_index| blk: {
-                    callee_num_temps = builtins[builtin_index].num_temps;
-                    break :blk builtins[builtin_index].params;
-                },
-                .custom => |module_index| blk: {
-                    const callee_module = self.first_pass_result.modules[module_index];
-                    // FIXME make sure the callee module has already been codegen'd! that's where its num_temps actually gets filled in
-                    callee_num_temps = self.code_gen_results[module_index].num_temps;
-                    break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-                },
+            // FIXME make sure the callee module has already been codegen'd! that's where its num_temps actually gets filled in
+            const callee_num_temps = self.code_gen_results[field.resolved_module_index].num_temps;
+            const callee_params = blk: {
+                const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+                break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
             };
 
             var icall: InstrCall = .{
@@ -439,18 +432,10 @@ pub fn printBytecode(self: *CodegenState) void {
                     .temp_bool => |n| std.debug.warn("temp_bool{}", .{n}),
                 }
                 const field = self.first_pass_result.module_fields[self_module.first_field + call.field_index];
-                const callee_module_name = switch (field.resolved_module_index) {
-                    .builtin => |builtin_index| builtins[builtin_index].name,
-                    .custom => |module_index| self.first_pass_result.modules[module_index].name,
-                };
-                const callee_params = switch (field.resolved_module_index) {
-                    .builtin => |builtin_index| blk: {
-                        break :blk builtins[builtin_index].params;
-                    },
-                    .custom => |module_index| blk: {
-                        const callee_module = self.first_pass_result.modules[module_index];
-                        break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-                    },
+                const callee_module_name = self.first_pass_result.modules[field.resolved_module_index].name;
+                const callee_params = blk: {
+                    const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+                    break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                 };
                 std.debug.warn(" = CALL #{}({}: {})\n", .{ call.field_index, field.name, callee_module_name });
                 std.debug.warn("        temps: [", .{});

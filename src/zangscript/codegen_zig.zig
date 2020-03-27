@@ -10,6 +10,10 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
 
     try out.print("const zang = @import(\"zang\");\n", .{});
     for (first_pass_result.modules) |module, i| {
+        if (i < builtins.len) {
+            continue;
+        }
+
         const code_gen_result = code_gen_results[i];
         try out.print("\n", .{});
         try out.print("pub const {} = struct {{\n", .{module.name});
@@ -27,20 +31,14 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         try out.print("    }};\n", .{});
         try out.print("\n", .{});
         for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
-            const module_name = switch (field.resolved_module_index) {
-                .builtin => |builtin_index| builtins[builtin_index].zig_name,
-                .custom => |module_index| first_pass_result.modules[module_index].name,
-            };
+            const module_name = first_pass_result.modules[field.resolved_module_index].zig_name;
             try out.print("    {}: {},\n", .{ field.name, module_name });
         }
         try out.print("\n", .{});
         try out.print("    pub fn init() {} {{\n", .{module.name});
         try out.print("        return .{{\n", .{});
         for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
-            const module_name = switch (field.resolved_module_index) {
-                .builtin => |builtin_index| builtins[builtin_index].zig_name,
-                .custom => |module_index| first_pass_result.modules[module_index].name,
-            };
+            const module_name = first_pass_result.modules[field.resolved_module_index].zig_name;
             try out.print("            .{} = {}.init(),\n", .{ field.name, module_name });
         }
         try out.print("        }};\n", .{});
@@ -142,14 +140,9 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     }
                     // callee params
                     try out.print("}}, .{{\n", .{});
-                    const callee_params = switch (field.resolved_module_index) {
-                        .builtin => |builtin_index| blk: {
-                            break :blk builtins[builtin_index].params;
-                        },
-                        .custom => |module_index| blk: {
-                            const callee_module = first_pass_result.modules[module_index];
-                            break :blk first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-                        },
+                    const callee_params = blk: {
+                        const callee_module = first_pass_result.modules[field.resolved_module_index];
+                        break :blk first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                     };
                     for (call.args) |arg, j| {
                         const callee_param = callee_params[j];

@@ -197,14 +197,9 @@ fn parseCall(self: *SecondPass) ParseError!Call {
     };
     const field = self.first_pass_result.module_fields[self.module.first_field + field_index];
     // arguments
-    const callee_params = switch (field.resolved_module_index) {
-        .builtin => |builtin_index| blk: {
-            break :blk builtins[builtin_index].params;
-        },
-        .custom => |module_index| blk: {
-            const callee_module = self.first_pass_result.modules[module_index];
-            break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-        },
+    const callee_params = blk: {
+        const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+        break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
     };
     var token = try self.parser.expect();
     if (token.tt != .sym_left_paren) {
@@ -392,6 +387,15 @@ pub fn secondPass(
     var code_gen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
 
     for (first_pass_result.modules) |module, i| {
+        if (i < builtins.len) {
+            code_gen_results[i] = .{
+                .instructions = undefined, // FIXME - should be null
+                .num_outputs = builtins[i].num_outputs,
+                .num_temps = builtins[i].num_temps,
+            };
+            continue;
+        }
+
         const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
         const expression = try paintBlock(allocator, source, tokens, first_pass_result, module, i);

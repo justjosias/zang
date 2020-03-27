@@ -3,7 +3,7 @@ const Parser = @import("common.zig").Parser;
 const Source = @import("common.zig").Source;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
-const findBuiltin = @import("builtins.zig").findBuiltin;
+const builtins = @import("builtins.zig").builtins;
 
 pub const ResolvedParamType = enum {
     boolean,
@@ -18,22 +18,16 @@ pub const ModuleParam = struct {
     param_type: ResolvedParamType,
 };
 
-// FIXME my goal is to have builtins and customs in the same list, so i don't need this.
-// builtins would just be distinguished by having some stuff set to null
-pub const ModuleIndex = union(enum) {
-    builtin: usize,
-    custom: usize,
-};
-
 pub const ModuleField = struct {
     name: []const u8,
     type_name: []const u8,
     type_token: Token,
-    resolved_module_index: ModuleIndex,
+    resolved_module_index: usize,
 };
 
 pub const CustomModule = struct {
     name: []const u8,
+    zig_name: []const u8,
     begin_token: usize,
     end_token: usize,
     first_param: usize,
@@ -49,20 +43,6 @@ const FirstPass = struct {
     module_params: std.ArrayList(ModuleParam),
     module_fields: std.ArrayList(ModuleField),
 };
-
-fn initFirstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allocator) FirstPass {
-    return .{
-        .allocator = allocator,
-        .parser = .{
-            .source = source,
-            .tokens = tokens,
-            .i = 0,
-        },
-        .modules = std.ArrayList(CustomModule).init(allocator),
-        .module_params = std.ArrayList(ModuleParam).init(allocator),
-        .module_fields = std.ArrayList(ModuleField).init(allocator),
-    };
-}
 
 fn defineModule(self: *FirstPass) !void {
     const module_name = try self.parser.expectIdentifier();
@@ -137,6 +117,7 @@ fn defineModule(self: *FirstPass) !void {
 
     try self.modules.append(.{
         .name = module_name,
+        .zig_name = module_name,
         .begin_token = begin_token,
         .end_token = end_token,
         .first_param = self.module_params.len,
@@ -156,9 +137,32 @@ pub const FirstPassResult = struct {
 };
 
 pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allocator) !FirstPassResult {
-    // TODO add builtins to the modules list right here!
-    // (if they're compatible... tokens wouldn't be available?)
-    var self = initFirstPass(source, tokens, allocator);
+    var self: FirstPass = .{
+        .allocator = allocator,
+        .parser = .{
+            .source = source,
+            .tokens = tokens,
+            .i = 0,
+        },
+        .modules = std.ArrayList(CustomModule).init(allocator),
+        .module_params = std.ArrayList(ModuleParam).init(allocator),
+        .module_fields = std.ArrayList(ModuleField).init(allocator),
+    };
+
+    // add builtins
+    for (builtins) |builtin| {
+        try self.modules.append(.{
+            .name = builtin.name,
+            .zig_name = builtin.zig_name,
+            .begin_token = 0, // FIXME
+            .end_token = 0, // FIXME
+            .first_param = self.module_params.len,
+            .num_params = builtin.params.len,
+            .first_field = 0,
+            .num_fields = 0,
+        });
+        try self.module_params.appendSlice(builtin.params);
+    }
 
     // TODO this should be defer, not errdefer, since we are reallocating everything for the FirstPassResult
     //errdefer {
@@ -193,7 +197,11 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
 // involves a bit a looking around because the type of a module's field can be another module.
 
 fn resolveParamTypes(source: Source, module_params: []ModuleParam) !void {
-    for (module_params) |*param| {
+    var start: usize = 0;
+    for (builtins) |builtin| {
+        start += builtin.params.len;
+    }
+    for (module_params[start..]) |*param| {
         param.param_type = blk: {
             const type_token = param.type_token.?; // only builtin modules have type_token=null
             const type_name = source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index];
@@ -212,10 +220,6 @@ fn resolveParamTypes(source: Source, module_params: []ModuleParam) !void {
 fn resolveFieldTypes(source: Source, modules: []const CustomModule, module_fields: []ModuleField) !void {
     for (module_fields) |*field| {
         // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
-        if (findBuiltin(field.type_name)) |builtin_index| {
-            field.resolved_module_index = .{ .builtin = builtin_index };
-            continue;
-        }
         for (modules) |module, i| {
             if (std.mem.eql(u8, field.type_name, module.name)) {
                 // FIXME i don't even know which module this field belongs to
@@ -223,7 +227,7 @@ fn resolveFieldTypes(source: Source, modules: []const CustomModule, module_field
                 //    // FIXME - do a full circular dependency detection
                 //    return fail(source, field.type_token.source_range, "cannot use self as field", .{});
                 //}
-                field.resolved_module_index = .{ .custom = i };
+                field.resolved_module_index = i;
                 break;
             }
         } else {
