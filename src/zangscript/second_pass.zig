@@ -8,10 +8,8 @@ const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const ModuleDef = @import("first_pass.zig").ModuleDef;
-const ModuleDef1 = @import("first_pass.zig").ModuleDef1;
-const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
-const ModuleFieldDecl1 = @import("first_pass.zig").ModuleFieldDecl1;
+const CustomModule = @import("first_pass.zig").CustomModule;
+const ModuleField = @import("first_pass.zig").ModuleField;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
@@ -63,7 +61,7 @@ const SecondPass = struct {
     tokens: []const Token,
     parser: Parser,
     first_pass_result: FirstPassResult,
-    module: ModuleDef1,
+    module: CustomModule,
     module_index: usize,
 };
 
@@ -354,7 +352,7 @@ fn paintBlock(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
-    module: ModuleDef1,
+    module: CustomModule,
     module_index: usize,
 ) !*const Expression {
     var self: SecondPass = .{
@@ -419,7 +417,7 @@ pub fn secondPass(
     return code_gen_results;
 }
 
-fn printExpression(fields: []const ModuleFieldDecl1, expression: *const Expression, indentation: usize) void {
+fn printExpression(fields: []const ModuleField, expression: *const Expression, indentation: usize) void {
     var i: usize = 0;
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});

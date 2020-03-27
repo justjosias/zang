@@ -5,11 +5,8 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const TokenType = @import("tokenizer.zig").TokenType;
 const SourceLocation = @import("tokenizer.zig").SourceLocation;
-const Module = @import("builtins.zig").Module;
 const builtins = @import("builtins.zig").builtins;
 const findBuiltin = @import("builtins.zig").findBuiltin;
-const Expression = @import("second_pass.zig").Expression;
-const Instruction = @import("codegen.zig").Instruction;
 
 pub const ResolvedParamType = enum {
     boolean,
@@ -24,12 +21,6 @@ pub const ModuleParam = struct {
     param_type: ResolvedParamType,
 };
 
-pub const ModuleParamDecl = struct {
-    name: []const u8,
-    type_token: Token,
-    type_name: []const u8, // UNRESOLVED type name
-};
-
 // FIXME my goal is to have builtins and customs in the same list, so i don't need this.
 // builtins would just be distinguished by having some stuff set to null
 pub const ModuleIndex = union(enum) {
@@ -37,29 +28,14 @@ pub const ModuleIndex = union(enum) {
     custom: usize,
 };
 
-pub const ModuleFieldDecl = struct {
-    name: []const u8,
-    type_token: Token,
-    type_name: []const u8, // UNRESOLVED type name
-    resolved_module: *const Module,
-};
-
-pub const ModuleDef = struct {
-    param_decls: []ModuleParamDecl,
-    // in between the first and second passes, we'll resolve params from param_decls. (it's undefined during the first pass.)
-    resolved: Module, // "signature" visible to outside (name, params, num_temps/outputs)
-    fields: []ModuleFieldDecl,
-};
-
-// working
-pub const ModuleFieldDecl1 = struct {
+pub const ModuleField = struct {
     name: []const u8,
     type_name: []const u8,
     type_token: Token,
     resolved_module_index: ModuleIndex,
 };
 
-pub const ModuleDef1 = struct {
+pub const CustomModule = struct {
     name: []const u8,
     begin_token: usize,
     end_token: usize,
@@ -74,9 +50,9 @@ pub const ModuleDef1 = struct {
 const FirstPass = struct {
     allocator: *std.mem.Allocator,
     parser: Parser,
-    modules: std.ArrayList(ModuleDef1),
+    modules: std.ArrayList(CustomModule),
     module_params: std.ArrayList(ModuleParam),
-    module_fields: std.ArrayList(ModuleFieldDecl1),
+    module_fields: std.ArrayList(ModuleField),
 };
 
 fn initFirstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allocator) FirstPass {
@@ -87,9 +63,9 @@ fn initFirstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             .tokens = tokens,
             .i = 0,
         },
-        .modules = std.ArrayList(ModuleDef1).init(allocator),
+        .modules = std.ArrayList(CustomModule).init(allocator),
         .module_params = std.ArrayList(ModuleParam).init(allocator),
-        .module_fields = std.ArrayList(ModuleFieldDecl1).init(allocator),
+        .module_fields = std.ArrayList(ModuleField).init(allocator),
     };
 }
 
@@ -103,7 +79,7 @@ fn defineModule(self: *FirstPass) !void {
 
     var params = std.ArrayList(ModuleParam).init(self.allocator);
     errdefer params.deinit();
-    var fields = std.ArrayList(ModuleFieldDecl1).init(self.allocator);
+    var fields = std.ArrayList(ModuleField).init(self.allocator);
     errdefer fields.deinit();
 
     while (true) {
@@ -179,10 +155,9 @@ fn defineModule(self: *FirstPass) !void {
 }
 
 pub const FirstPassResult = struct {
-    modules: []const ModuleDef1,
+    modules: []const CustomModule,
     module_params: []const ModuleParam,
-    module_fields: []const ModuleFieldDecl1,
-    module_defs: []ModuleDef,
+    module_fields: []const ModuleField,
 };
 
 pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allocator) !FirstPassResult {
@@ -212,51 +187,10 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     try resolveParamTypes(source, module_params);
     try resolveFieldTypes(source, modules, module_fields);
 
-    // this is temporary until i get other passes using the same struct-of-arrays idea as this file
-    var module_defs = try allocator.alloc(ModuleDef, modules.len);
-    for (modules) |module, i| {
-        const params = module_params[module.first_param .. module.first_param + module.num_params];
-        const fields = module_fields[module.first_field .. module.first_field + module.num_fields];
-        var param_decls = try allocator.alloc(ModuleParamDecl, params.len);
-        var field_decls = try allocator.alloc(ModuleFieldDecl, fields.len);
-        var resolved_params = try allocator.alloc(ModuleParam, params.len);
-        for (params) |param, j| {
-            param_decls[j] = .{
-                .name = param.name,
-                .type_token = param.type_token.?,
-                .type_name = source.contents[param.type_token.?.source_range.loc0.index..param.type_token.?.source_range.loc1.index],
-            };
-            resolved_params[j] = param;
-        }
-        for (fields) |field, j| {
-            field_decls[j] = .{
-                .name = field.name,
-                .type_token = field.type_token,
-                .type_name = field.type_name,
-                .resolved_module = switch (field.resolved_module_index) {
-                    .builtin => |builtin_index| &builtins[builtin_index],
-                    .custom => |module_index| &module_defs[module_index].resolved,
-                },
-            };
-        }
-        module_defs[i] = .{
-            .param_decls = param_decls,
-            .fields = field_decls,
-            .resolved = .{
-                .name = module.name,
-                .zig_name = module.name,
-                .num_outputs = 1, //FIXME?
-                .num_temps = 0, //FIXME?
-                .params = resolved_params,
-            },
-        };
-    }
-
     return FirstPassResult{
         .modules = modules,
         .module_params = module_params,
         .module_fields = module_fields,
-        .module_defs = module_defs,
     };
 }
 
@@ -280,7 +214,7 @@ fn resolveParamTypes(source: Source, module_params: []ModuleParam) !void {
     }
 }
 
-fn resolveFieldTypes(source: Source, modules: []const ModuleDef1, module_fields: []ModuleFieldDecl1) !void {
+fn resolveFieldTypes(source: Source, modules: []const CustomModule, module_fields: []ModuleField) !void {
     for (module_fields) |*field| {
         // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
         if (findBuiltin(field.type_name)) |builtin_index| {

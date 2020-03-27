@@ -2,16 +2,15 @@ const std = @import("std");
 const zang = @import("zang");
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 
-// this is used for both builtin modules and script modules
-pub const Module = struct {
+pub const BuiltinModule = struct {
     name: []const u8,
-    zig_name: []const u8, // prefix with "zang." if it's a builtin
+    zig_name: []const u8, // prefix with "zang."
     params: []const ModuleParam,
     num_temps: usize,
     num_outputs: usize,
 };
 
-fn getBuiltinModule(comptime T: type) Module {
+fn getBuiltinModule(comptime T: type) BuiltinModule {
     var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
     for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{
@@ -34,7 +33,7 @@ fn getBuiltinModule(comptime T: type) Module {
     };
 }
 
-pub const builtins = [_]Module{
+pub const builtins = [_]BuiltinModule{
     getBuiltinModule(zang.PulseOsc),
     getBuiltinModule(zang.SineOsc),
     getBuiltinModule(zang.TriSawOsc),
