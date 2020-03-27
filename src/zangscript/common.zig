@@ -30,6 +30,8 @@ fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange
 fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: var) void {
     comptime var j: usize = 0;
     inline for (fmt) |ch| {
+        // idea: another character which just points to the "subject" token (the one the arrow points to).
+        // no reason i should have to pass that token twice if i want to describe it in the error message too
         if (ch == '%') {
             // source range
             printSourceRange(stderr, contents, args[j]);

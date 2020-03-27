@@ -39,10 +39,10 @@ pub const builtins = [_]Module{
     getBuiltinModule(zang.TriSawOsc),
 };
 
-pub fn findBuiltin(name: []const u8) ?*const Module {
-    for (builtins) |*builtin| {
+pub fn findBuiltin(name: []const u8) ?usize {
+    for (builtins) |*builtin, i| {
         if (std.mem.eql(u8, builtin.name, name)) {
-            return builtin;
+            return i;
         }
     }
     return null;

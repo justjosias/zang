@@ -55,7 +55,7 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
         //result.module_defs.deinit();
     }
 
-    try secondPass(source, tokens, result.module_defs, allocator);
+    try secondPass(source, tokens, result, allocator);
 
     return Script{
         .module_defs = result.module_defs,

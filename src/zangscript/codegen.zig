@@ -105,7 +105,7 @@ const GenError = error{
 fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const Expression) GenError!void {
     switch (expression.inner) {
         .call => |call| {
-            const callee = state.module_def.fields.span()[call.field_index].resolved_module;
+            const callee = state.module_def.fields[call.field_index].resolved_module;
 
             var icall: InstrCall = .{
                 .result_loc = result_loc,
@@ -411,8 +411,8 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                 }
                 std.debug.warn(" = CALL #{}({}: {})\n", .{
                     call.field_index,
-                    module_def.fields.span()[call.field_index].name,
-                    module_def.fields.span()[call.field_index].resolved_module.name,
+                    module_def.fields[call.field_index].name,
+                    module_def.fields[call.field_index].resolved_module.name,
                 });
                 std.debug.warn("        temps: [", .{});
                 for (call.temps.span()) |temp, i| {
@@ -421,7 +421,7 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                 }
                 std.debug.warn("]\n", .{});
                 for (call.args) |arg, i| {
-                    const param = &module_def.fields.span()[call.field_index].resolved_module.params[i];
+                    const param = &module_def.fields[call.field_index].resolved_module.params[i];
                     std.debug.warn("        {} = ", .{param.name});
                     switch (arg) {
                         .temp => |v| {

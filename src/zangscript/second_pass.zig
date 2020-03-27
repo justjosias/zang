@@ -7,6 +7,7 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
+const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
@@ -187,7 +188,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
         .identifier => self.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
         else => return fail(self.source, name_token.source_range, "expected field name, found `%`", .{name_token.source_range}),
     };
-    const field_index = for (module_def.fields.span()) |*field, i| {
+    const field_index = for (module_def.fields) |*field, i| {
         if (std.mem.eql(u8, field.name, name)) {
             break i;
         }
@@ -195,7 +196,7 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
         return fail(self.source, name_token.source_range, "not a field of `#`: `%`", .{ module_def.name, name_token.source_range });
     };
     // arguments
-    const field = &module_def.fields.span()[field_index];
+    const field = &module_def.fields[field_index];
     const params = field.resolved_module.params;
     var token = try self.expect();
     if (token.tt != .sym_left_paren) {
@@ -341,16 +342,17 @@ fn parseExpression(
     }
 }
 
-fn paintBlock(
+const SecondPass = struct {
+    allocator: *std.mem.Allocator,
     source: Source,
     tokens: []const Token,
-    module_defs: []ModuleDef,
-    module_def: *ModuleDef,
-    allocator: *std.mem.Allocator,
-) !*const Expression {
+    first_pass_result: FirstPassResult,
+};
+
+fn paintBlock(self: *SecondPass, module_def: *ModuleDef) !*const Expression {
     var parser: Parser = .{
-        .source = source,
-        .tokens = tokens[module_def.begin_token..module_def.end_token],
+        .source = self.source,
+        .tokens = self.tokens[module_def.begin_token..module_def.end_token],
         .i = 0,
     };
     while (true) {
@@ -358,9 +360,9 @@ fn paintBlock(
         if (token.tt == .kw_end) {
             break;
         }
-        return try parseExpression(&parser, module_defs, module_def, token, allocator);
+        return try parseExpression(&parser, self.first_pass_result.module_defs, module_def, token, self.allocator);
     }
-    const expr = try allocator.create(Expression);
+    const expr = try self.allocator.create(Expression);
     expr.* = .{
         // FIXME
         .source_range = .{
@@ -375,20 +377,27 @@ fn paintBlock(
 pub fn secondPass(
     source: Source,
     tokens: []const Token,
-    module_defs: []ModuleDef,
+    first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
 ) !void {
-    for (module_defs) |*module_def| {
-        module_def.expression = try paintBlock(source, tokens, module_defs, module_def, allocator);
+    var second_pass: SecondPass = .{
+        .allocator = allocator,
+        .source = source,
+        .tokens = tokens,
+        .first_pass_result = first_pass_result,
+    };
+
+    for (first_pass_result.module_defs) |*module_def| {
+        const expression = try paintBlock(&second_pass, module_def);
 
         std.debug.warn("module '{}'\n", .{module_def.name});
-        for (module_def.fields.span()) |field| {
+        for (module_def.fields) |field| {
             std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
         }
         std.debug.warn("print expression:\n", .{});
-        printExpression(module_defs, module_def, module_def.expression, 1);
+        printExpression(first_pass_result.module_defs, module_def, expression, 1);
 
-        try codegen(source, module_def, module_def.expression, allocator);
+        try codegen(source, module_def, expression, allocator);
     }
 }
 
@@ -399,7 +408,7 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
     }
     switch (expression.inner) {
         .call => |call| {
-            std.debug.warn("call self.{} (\n", .{module_def.fields.span()[call.field_index].name});
+            std.debug.warn("call self.{} (\n", .{module_def.fields[call.field_index].name});
             for (call.args.span()) |arg| {
                 i = 0;
                 while (i < indentation + 1) : (i += 1) {

@@ -23,13 +23,13 @@ pub fn generateZig(module_defs: []const ModuleDef) !void {
         }
         try out.print("    }};\n", .{});
         try out.print("\n", .{});
-        for (module_def.fields.span()) |field| {
+        for (module_def.fields) |field| {
             try out.print("    {}: {},\n", .{ field.name, field.resolved_module.zig_name });
         }
         try out.print("\n", .{});
         try out.print("    pub fn init() {} {{\n", .{module_def.name});
         try out.print("        return .{{\n", .{});
-        for (module_def.fields.span()) |field| {
+        for (module_def.fields) |field| {
             try out.print("            .{} = {}.init(),\n", .{ field.name, field.resolved_module.zig_name });
         }
         try out.print("        }};\n", .{});
@@ -98,7 +98,7 @@ pub fn generateZig(module_defs: []const ModuleDef) !void {
                     }
                 },
                 .call => |call| {
-                    const callee_module = module_def.fields.span()[call.field_index].resolved_module;
+                    const callee_module = module_def.fields[call.field_index].resolved_module;
                     switch (call.result_loc) {
                         .buffer => |buffer_loc| {
                             switch (buffer_loc) {
@@ -110,7 +110,7 @@ pub fn generateZig(module_defs: []const ModuleDef) !void {
                         .temp_bool => {},
                     }
                     try out.print("        self.{}.paint(span, ", .{
-                        module_def.fields.span()[call.field_index].name,
+                        module_def.fields[call.field_index].name,
                     });
                     // callee outputs
                     switch (call.result_loc) {

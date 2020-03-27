@@ -13,16 +13,18 @@ def Instrument:
 begin
     * 0.7 @osc(
         color: $color,
-        sample_rate: 44100,
+        sample_rate: $sample_rate,
         freq:
             * $freq
                 + 1
-                    * 0.02 @mod(sample_rate: 44100, freq: 4, phase: 0)
+                    * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
     )
 end
 
 def OuterInstrument:
+    param sample_rate number;
+
     instr Instrument;
 begin
-    @instr(sample_rate: 44100, freq: 440, color: 0.7, note_on: true)
+    @instr(sample_rate: $sample_rate, freq: 440, color: 0.7, note_on: true)
 end
