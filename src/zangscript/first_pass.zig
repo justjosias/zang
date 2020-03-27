@@ -20,6 +20,7 @@ pub const ResolvedParamType = enum {
 // this is separate because it's also used for builtin modules
 pub const ModuleParam = struct {
     name: []const u8,
+    type_token: ?Token, // null if this comes from a builtin module
     param_type: ResolvedParamType,
 };
 
@@ -29,6 +30,8 @@ pub const ModuleParamDecl = struct {
     type_name: []const u8, // UNRESOLVED type name
 };
 
+// FIXME my goal is to have builtins and customs in the same list, so i don't need this.
+// builtins would just be distinguished by having some stuff set to null
 pub const ModuleIndex = union(enum) {
     builtin: usize,
     custom: usize,
@@ -47,21 +50,16 @@ pub const ModuleDef = struct {
     // in between the first and second passes, we'll resolve params from param_decls. (it's undefined during the first pass.)
     resolved: Module, // "signature" visible to outside (name, params, num_temps/outputs)
     fields: []ModuleFieldDecl,
-    begin_token: usize,
-    end_token: usize,
 };
 
 // working
-pub const ModuleParamDecl1 = struct {
-    name: []const u8,
-    type_name: []const u8,
-    type_token: Token,
-};
 pub const ModuleFieldDecl1 = struct {
     name: []const u8,
     type_name: []const u8,
     type_token: Token,
+    resolved_module_index: ModuleIndex,
 };
+
 pub const ModuleDef1 = struct {
     name: []const u8,
     begin_token: usize,
@@ -78,7 +76,7 @@ const FirstPass = struct {
     allocator: *std.mem.Allocator,
     parser: Parser,
     modules: std.ArrayList(ModuleDef1),
-    module_params: std.ArrayList(ModuleParamDecl1),
+    module_params: std.ArrayList(ModuleParam),
     module_fields: std.ArrayList(ModuleFieldDecl1),
 };
 
@@ -91,7 +89,7 @@ fn initFirstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             .i = 0,
         },
         .modules = std.ArrayList(ModuleDef1).init(allocator),
-        .module_params = std.ArrayList(ModuleParamDecl1).init(allocator),
+        .module_params = std.ArrayList(ModuleParam).init(allocator),
         .module_fields = std.ArrayList(ModuleFieldDecl1).init(allocator),
     };
 }
@@ -104,7 +102,7 @@ fn defineModule(self: *FirstPass) !void {
         return fail(self.parser.source, ctoken.source_range, "expected `:`, found `%`", .{ctoken.source_range});
     }
 
-    var params = std.ArrayList(ModuleParamDecl1).init(self.allocator);
+    var params = std.ArrayList(ModuleParam).init(self.allocator);
     errdefer params.deinit();
     var fields = std.ArrayList(ModuleFieldDecl1).init(self.allocator);
     errdefer fields.deinit();
@@ -117,10 +115,10 @@ fn defineModule(self: *FirstPass) !void {
                 // param declaration
                 const field_name = try self.parser.expectIdentifier();
                 const type_token = try self.parser.expect();
-                const type_name = switch (type_token.tt) {
-                    .identifier => self.parser.source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index],
-                    else => return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range}),
-                };
+                if (type_token.tt != .identifier) {
+                    //.identifier => self.parser.source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index],
+                    return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range});
+                }
                 token = try self.parser.expect();
                 if (token.tt != .sym_semicolon) {
                     return fail(self.parser.source, token.source_range, "expected `;`, found `%`", .{token.source_range});
@@ -128,7 +126,7 @@ fn defineModule(self: *FirstPass) !void {
                 try params.append(.{
                     .name = field_name,
                     .type_token = type_token,
-                    .type_name = type_name,
+                    .param_type = undefined, // will be set before we finish the first pass
                 });
             },
             .identifier => {
@@ -147,7 +145,7 @@ fn defineModule(self: *FirstPass) !void {
                     .name = field_name,
                     .type_token = type_token,
                     .type_name = type_name,
-                    //.resolved_module = undefined,
+                    .resolved_module_index = undefined, // will be set before we finish the first pass
                 });
             },
             else => {
@@ -183,10 +181,8 @@ fn defineModule(self: *FirstPass) !void {
 
 pub const FirstPassResult = struct {
     modules: []const ModuleDef1,
-    module_params: []const ModuleParamDecl1,
+    module_params: []const ModuleParam,
     module_fields: []const ModuleFieldDecl1,
-    params_resolved: []const ResolvedParamType,
-    fields_resolved: []const ModuleIndex,
     module_defs: []ModuleDef,
 };
 
@@ -214,8 +210,8 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     const module_fields = self.module_fields.toOwnedSlice();
 
     // resolve the types of params and fields
-    const params_resolved = try resolveParamTypes(source, module_params, allocator);
-    const fields_resolved = try resolveFieldTypes(source, modules, module_fields, allocator);
+    try resolveParamTypes(source, module_params);
+    try resolveFieldTypes(source, modules, module_fields);
 
     // this is temporary until i get other passes using the same struct-of-arrays idea as this file
     var module_defs = try allocator.alloc(ModuleDef, modules.len);
@@ -228,20 +224,17 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
         for (params) |param, j| {
             param_decls[j] = .{
                 .name = param.name,
-                .type_token = param.type_token,
-                .type_name = param.type_name,
+                .type_token = param.type_token.?,
+                .type_name = source.contents[param.type_token.?.source_range.loc0.index..param.type_token.?.source_range.loc1.index],
             };
-            resolved_params[j] = .{
-                .name = param.name,
-                .param_type = params_resolved[module.first_param + j],
-            };
+            resolved_params[j] = param;
         }
         for (fields) |field, j| {
             field_decls[j] = .{
                 .name = field.name,
                 .type_token = field.type_token,
                 .type_name = field.type_name,
-                .resolved_module = switch (fields_resolved[module.first_field + j]) {
+                .resolved_module = switch (field.resolved_module_index) {
                     .builtin => |builtin_index| &builtins[builtin_index],
                     .custom => |module_index| &module_defs[module_index].resolved,
                 },
@@ -251,8 +244,6 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             .name = module.name,
             .param_decls = param_decls,
             .fields = field_decls,
-            .begin_token = module.begin_token,
-            .end_token = module.end_token,
             .resolved = .{
                 .name = module.name,
                 .zig_name = module.name,
@@ -267,8 +258,6 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
         .modules = modules,
         .module_params = module_params,
         .module_fields = module_fields,
-        .params_resolved = params_resolved,
-        .fields_resolved = fields_resolved,
         .module_defs = module_defs,
     };
 }
@@ -276,48 +265,42 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
 // this is the 1 1/2 pass - resolving the types of params and fields.
 // involves a bit a looking around because the type of a module's field can be another module.
 
-fn resolveParamTypes(source: Source, module_params: []const ModuleParamDecl1, allocator: *std.mem.Allocator) ![]const ResolvedParamType {
-    var params_resolved = try allocator.alloc(ResolvedParamType, module_params.len);
-
-    for (module_params) |param, i| {
-        params_resolved[i] = blk: {
-            if (std.mem.eql(u8, param.type_name, "boolean")) {
+fn resolveParamTypes(source: Source, module_params: []ModuleParam) !void {
+    for (module_params) |*param| {
+        param.param_type = blk: {
+            const type_token = param.type_token.?; // only builtin modules have type_token=null
+            const type_name = source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index];
+            if (std.mem.eql(u8, type_name, "boolean")) {
                 break :blk .boolean;
             }
-            if (std.mem.eql(u8, param.type_name, "number")) {
+            if (std.mem.eql(u8, type_name, "number")) {
                 break :blk .constant;
             }
             // TODO if a module was referenced, be nice and recognize that but say it's not allowed
-            return fail(source, param.type_token.source_range, "could not resolve param type `%`", .{param.type_token.source_range});
+            return fail(source, type_token.source_range, "could not resolve param type `%`", .{type_token.source_range});
         };
     }
-
-    return params_resolved;
 }
 
-fn resolveFieldTypes(source: Source, modules: []const ModuleDef1, module_fields: []const ModuleFieldDecl1, allocator: *std.mem.Allocator) ![]const ModuleIndex {
-    var fields_resolved = try allocator.alloc(ModuleIndex, module_fields.len);
-
-    for (module_fields) |field, i| {
+fn resolveFieldTypes(source: Source, modules: []const ModuleDef1, module_fields: []ModuleFieldDecl1) !void {
+    for (module_fields) |*field| {
         // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
         if (findBuiltin(field.type_name)) |builtin_index| {
-            fields_resolved[i] = .{ .builtin = builtin_index };
+            field.resolved_module_index = .{ .builtin = builtin_index };
             continue;
         }
-        for (modules) |module, j| {
+        for (modules) |module, i| {
             if (std.mem.eql(u8, field.type_name, module.name)) {
                 // FIXME i don't even know which module this field belongs to
                 //if (j == current_module_index) {
                 //    // FIXME - do a full circular dependency detection
                 //    return fail(source, field.type_token.source_range, "cannot use self as field", .{});
                 //}
-                fields_resolved[i] = .{ .custom = j };
+                field.resolved_module_index = .{ .custom = i };
                 break;
             }
         } else {
             return fail(source, field.type_token.source_range, "could not resolve field type `%`", .{field.type_token.source_range});
         }
     }
-
-    return fields_resolved;
 }

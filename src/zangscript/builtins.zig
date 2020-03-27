@@ -16,6 +16,7 @@ fn getBuiltinModule(comptime T: type) Module {
     for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{
             .name = field.name,
+            .type_token = null,
             .param_type = switch (field.field_type) {
                 bool => .boolean,
                 f32 => .constant,

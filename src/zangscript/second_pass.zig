@@ -9,11 +9,14 @@ const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
+const ModuleDef1 = @import("first_pass.zig").ModuleDef1;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
+const ModuleFieldDecl1 = @import("first_pass.zig").ModuleFieldDecl1;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const codegen = @import("codegen.zig").codegen;
+const builtins = @import("builtins.zig").builtins;
 
 pub const CallArg = struct {
     arg_name: []const u8,
@@ -55,8 +58,17 @@ const ParseError = error{
     OutOfMemory,
 };
 
+const SecondPass = struct {
+    allocator: *std.mem.Allocator,
+    tokens: []const Token,
+    parser: Parser,
+    first_pass_result: FirstPassResult,
+    module: ModuleDef1,
+    module_index: usize,
+};
+
 // maybe type checking should be a distinct pass, between second_pass and codegen...
-pub fn getExpressionType(source: Source, module_def: *const ModuleDef, expression: *const Expression) error{Failed}!ResolvedParamType {
+pub fn getExpressionType(source: Source, self_params: []const ModuleParam, expression: *const Expression) error{Failed}!ResolvedParamType {
     switch (expression.inner) {
         .call => |call| {
             return .constant_or_buffer; // FIXME?
@@ -65,13 +77,13 @@ pub fn getExpressionType(source: Source, module_def: *const ModuleDef, expressio
             return literal;
         },
         .self_param => |param_index| {
-            return module_def.resolved.params[param_index].param_type;
+            return self_params[param_index].param_type;
         },
         .binary_arithmetic => |x| {
             // in binary math, we support any combination of floats and buffers.
             // if there's at least one buffer operand, the result will also be a buffer
-            const a = try getExpressionType(source, module_def, x.a);
-            const b = try getExpressionType(source, module_def, x.b);
+            const a = try getExpressionType(source, self_params, x.a);
+            const b = try getExpressionType(source, self_params, x.b);
             if (a == .constant and b == .constant) {
                 return .constant;
             }
@@ -91,39 +103,28 @@ pub fn getExpressionType(source: Source, module_def: *const ModuleDef, expressio
 
 // `module_def` is the module we're in (the "self").
 // we also need to know the module type of what we're calling, so we can look up its params
-fn parseCallArg(
-    p: *Parser,
-    token: Token,
-    module_defs: []const ModuleDef,
-    self: *ModuleDef,
-    params: []const ModuleParam,
-    field: *const ModuleFieldDecl,
-    allocator: *std.mem.Allocator,
-) ParseError!CallArg {
+fn parseCallArg(self: *SecondPass, field_name: []const u8, callee_params: []const ModuleParam, token: Token) ParseError!CallArg {
     switch (token.tt) {
         .identifier => {
-            const identifier = p.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             // find this param
             var param_index: usize = undefined;
-            for (params) |param, i| {
+            for (callee_params) |param, i| {
                 if (std.mem.eql(u8, param.name, identifier)) {
                     param_index = i;
                     break;
                 }
             } else {
-                return fail(p.source, token.source_range, "module `#` has no param called `%`", .{
-                    field.resolved_module.name,
-                    token.source_range,
-                });
+                return fail(self.parser.source, token.source_range, "module `#` has no param called `%`", .{ field_name, token.source_range });
             }
-            const param_type = params[param_index].param_type;
+            const param_type = callee_params[param_index].param_type;
 
-            const token2 = try p.expect();
+            const token2 = try self.parser.expect();
             if (token2.tt != .sym_colon) {
-                return fail(p.source, token2.source_range, "expected `:`, found `%`", .{token2.source_range});
+                return fail(self.parser.source, token2.source_range, "expected `:`, found `%`", .{token2.source_range});
             }
-            const token3 = try p.expect();
-            const subexpr = try parseExpression(p, module_defs, self, token3, allocator);
+            const token3 = try self.parser.expect();
+            const subexpr = try parseExpression(self, token3);
             // type check!
             // FIXME is this right place to do type checking?
             // it could also be done in codegen. there are pros and cons to both...
@@ -137,22 +138,23 @@ fn parseCallArg(
             //     - con: i have no tokens to use for error messages
             // or, i could keep the second_pass instruction set simple but still typecheck in
             // the second pass. codegen kind of just assumes that it's been done
-            const subexpr_type = try getExpressionType(p.source, self, subexpr);
+            const self_params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+            const subexpr_type = try getExpressionType(self.parser.source, self_params, subexpr);
             switch (param_type) {
                 .boolean => {
                     if (subexpr_type != .boolean) {
-                        return fail(p.source, token3.source_range, "type mismatch (expecting boolean)", .{});
+                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting boolean)", .{});
                     }
                 },
                 .constant => {
                     if (subexpr_type != .constant) {
-                        return fail(p.source, token3.source_range, "type mismatch (expecting constant)", .{});
+                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting constant)", .{});
                     }
                 },
                 .constant_or_buffer => {
                     // constant will coerce to constant_or_buffer
                     if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
-                        return fail(p.source, token3.source_range, "type mismatch (expecting number)", .{});
+                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting number)", .{});
                     }
                 },
             }
@@ -162,52 +164,62 @@ fn parseCallArg(
             };
         },
         else => {
-            return fail(p.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
+            return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
         },
     }
 }
 
-fn parseSelfParam(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!usize {
-    const name_token = try self.expect();
+fn parseSelfParam(self: *SecondPass) ParseError!usize {
+    const name_token = try self.parser.expect();
     const name = switch (name_token.tt) {
-        .identifier => self.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
-        else => return fail(self.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
+        .identifier => self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
+        else => return fail(self.parser.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
     };
-    const param_index = for (module_def.resolved.params) |param, i| {
+    const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+    const param_index = for (params) |param, i| {
         if (std.mem.eql(u8, param.name, name)) {
             break i;
         }
-    } else return fail(self.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
+    } else return fail(self.parser.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
     // TODO type check?
     return param_index;
 }
 
-fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleDef, allocator: *std.mem.Allocator) ParseError!Call {
+fn parseCall(self: *SecondPass) ParseError!Call {
     // referencing one of the fields. like a function call
-    const name_token = try self.expect();
-    const name = switch (name_token.tt) {
-        .identifier => self.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
-        else => return fail(self.source, name_token.source_range, "expected field name, found `%`", .{name_token.source_range}),
+    const field_name_token = try self.parser.expect();
+    const field_name = switch (field_name_token.tt) {
+        .identifier => self.parser.source.contents[field_name_token.source_range.loc0.index..field_name_token.source_range.loc1.index],
+        else => return fail(self.parser.source, field_name_token.source_range, "expected field name, found `%`", .{field_name_token.source_range}),
     };
-    const field_index = for (module_def.fields) |*field, i| {
-        if (std.mem.eql(u8, field.name, name)) {
+    const fields = self.first_pass_result.module_fields[self.module.first_field .. self.module.first_field + self.module.num_fields];
+    const field_index = for (fields) |*field, i| {
+        if (std.mem.eql(u8, field.name, field_name)) {
             break i;
         }
     } else {
-        return fail(self.source, name_token.source_range, "not a field of `#`: `%`", .{ module_def.name, name_token.source_range });
+        return fail(self.parser.source, field_name_token.source_range, "not a field of `#`: `%`", .{ self.module.name, field_name_token.source_range });
     };
+    const field = self.first_pass_result.module_fields[self.module.first_field + field_index];
     // arguments
-    const field = &module_def.fields[field_index];
-    const params = field.resolved_module.params;
-    var token = try self.expect();
+    const callee_params = switch (field.resolved_module_index) {
+        .builtin => |builtin_index| blk: {
+            break :blk builtins[builtin_index].params;
+        },
+        .custom => |module_index| blk: {
+            const callee_module = self.first_pass_result.modules[module_index];
+            break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+        },
+    };
+    var token = try self.parser.expect();
     if (token.tt != .sym_left_paren) {
-        return fail(self.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
+        return fail(self.parser.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
     }
-    var args = std.ArrayList(CallArg).init(allocator);
+    var args = std.ArrayList(CallArg).init(self.allocator);
     errdefer args.deinit();
     var first = true;
     while (true) {
-        token = try self.expect();
+        token = try self.parser.expect();
         if (token.tt == .sym_right_paren) {
             break;
         }
@@ -215,16 +227,16 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
             first = false;
         } else {
             if (token.tt == .sym_comma) {
-                token = try self.expect();
+                token = try self.parser.expect();
             } else {
-                return fail(self.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
             }
         }
-        const arg = try parseCallArg(self, token, module_defs, module_def, params, field, allocator);
+        const arg = try parseCallArg(self, field_name, callee_params, token);
         try args.append(arg);
     }
     // make sure all args are accounted for
-    for (params) |param| {
+    for (callee_params) |param| {
         var found = false;
         for (args.span()) |arg| {
             if (std.mem.eql(u8, arg.arg_name, param.name)) {
@@ -232,25 +244,19 @@ fn parseCall(self: *Parser, module_defs: []const ModuleDef, module_def: *ModuleD
             }
         }
         if (!found) {
-            return fail(self.source, token.source_range, "call is missing param `#`", .{param.name}); // TODO improve message
+            return fail(self.parser.source, token.source_range, "call is missing param `#`", .{param.name}); // TODO improve message
         }
     }
     return Call{
         .field_index = field_index,
-        .args = args,
+        .args = args, // TODO can i toOwnedSlice here?
     };
 }
 
-fn parseExpression(
-    parser: *Parser,
-    module_defs: []const ModuleDef,
-    module_def: *ModuleDef,
-    token: Token,
-    allocator: *std.mem.Allocator,
-) ParseError!*const Expression {
+fn parseExpression(self: *SecondPass, token: Token) ParseError!*const Expression {
     switch (token.tt) {
         .kw_false => {
-            const expr = try allocator.create(Expression);
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = token.source_range,
                 .inner = .{ .literal = .{ .boolean = false } },
@@ -258,7 +264,7 @@ fn parseExpression(
             return expr;
         },
         .kw_true => {
-            const expr = try allocator.create(Expression);
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = token.source_range,
                 .inner = .{ .literal = .{ .boolean = true } },
@@ -266,10 +272,10 @@ fn parseExpression(
             return expr;
         },
         .number => {
-            const n = std.fmt.parseFloat(f32, parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index]) catch {
-                return fail(parser.source, token.source_range, "malformatted number", .{});
+            const n = std.fmt.parseFloat(f32, self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index]) catch {
+                return fail(self.parser.source, token.source_range, "malformatted number", .{});
             };
-            const expr = try allocator.create(Expression);
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = token.source_range,
                 .inner = .{ .literal = .{ .constant = n } },
@@ -277,31 +283,31 @@ fn parseExpression(
             return expr;
         },
         .sym_dollar => {
-            const expr = try allocator.create(Expression);
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = .{
                     .loc0 = token.source_range.loc0,
                     .loc1 = expr.source_range.loc1,
                 },
-                .inner = .{ .self_param = try parseSelfParam(parser, module_defs, module_def, allocator) },
+                .inner = .{ .self_param = try parseSelfParam(self) },
             };
             return expr;
         },
         .sym_at => {
-            const expr = try allocator.create(Expression);
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = .{
                     .loc0 = token.source_range.loc0,
                     .loc1 = expr.source_range.loc1,
                 },
-                .inner = .{ .call = try parseCall(parser, module_defs, module_def, allocator) },
+                .inner = .{ .call = try parseCall(self) },
             };
             return expr;
         },
         .sym_plus => {
-            const a = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
-            const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
-            const expr = try allocator.create(Expression);
+            const a = try parseExpression(self, try self.parser.expect());
+            const b = try parseExpression(self, try self.parser.expect());
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = .{
                     .loc0 = token.source_range.loc0,
@@ -318,9 +324,9 @@ fn parseExpression(
             return expr;
         },
         .sym_asterisk => {
-            const a = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
-            const b = try parseExpression(parser, module_defs, module_def, try parser.expect(), allocator);
-            const expr = try allocator.create(Expression);
+            const a = try parseExpression(self, try self.parser.expect());
+            const b = try parseExpression(self, try self.parser.expect());
+            const expr = try self.allocator.create(Expression);
             expr.* = .{
                 .source_range = .{
                     .loc0 = token.source_range.loc0,
@@ -338,32 +344,39 @@ fn parseExpression(
         },
         else => {
             //return fail(source, token.source_range, "expected `@` or `end`, found `%`", .{token.source_range});
-            return fail(parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
+            return fail(self.parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
         },
     }
 }
 
-const SecondPass = struct {
+fn paintBlock(
     allocator: *std.mem.Allocator,
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
-};
-
-fn paintBlock(self: *SecondPass, module_def: *ModuleDef) !*const Expression {
-    var parser: Parser = .{
-        .source = self.source,
-        .tokens = self.tokens[module_def.begin_token..module_def.end_token],
-        .i = 0,
+    module: ModuleDef1,
+    module_index: usize,
+) !*const Expression {
+    var self: SecondPass = .{
+        .allocator = allocator,
+        .tokens = tokens,
+        .parser = .{
+            .source = source,
+            .tokens = tokens[module.begin_token..module.end_token],
+            .i = 0,
+        },
+        .first_pass_result = first_pass_result,
+        .module = module,
+        .module_index = module_index,
     };
     while (true) {
-        const token = try parser.expect();
+        const token = try self.parser.expect();
         if (token.tt == .kw_end) {
             break;
         }
-        return try parseExpression(&parser, self.first_pass_result.module_defs, module_def, token, self.allocator);
+        return try parseExpression(&self, token);
     }
-    const expr = try self.allocator.create(Expression);
+    const expr = try allocator.create(Expression);
     expr.* = .{
         // FIXME
         .source_range = .{
@@ -375,53 +388,52 @@ fn paintBlock(self: *SecondPass, module_def: *ModuleDef) !*const Expression {
     return expr;
 }
 
-// return one CodeGenResult for each module
 pub fn secondPass(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
 ) ![]const CodeGenResult {
-    var second_pass: SecondPass = .{
-        .allocator = allocator,
-        .source = source,
-        .tokens = tokens,
-        .first_pass_result = first_pass_result,
-    };
-
     var code_gen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
 
-    for (first_pass_result.module_defs) |*module_def, i| {
-        const expression = try paintBlock(&second_pass, module_def);
+    for (first_pass_result.modules) |module, i| {
+        const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
-        std.debug.warn("module '{}'\n", .{module_def.name});
-        for (module_def.fields) |field| {
+        const expression = try paintBlock(allocator, source, tokens, first_pass_result, module, i);
+
+        std.debug.warn("module '{}'\n", .{module.name});
+        for (fields) |field| {
             std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
         }
         std.debug.warn("print expression:\n", .{});
-        printExpression(first_pass_result.module_defs, module_def, expression, 1);
+        printExpression(fields, expression, 1);
 
-        code_gen_results[i] = try codegen(source, module_def, expression, allocator);
+        // we need to pass the (being mutated) code_gen_results array to this function, because
+        // codegen'ing one module needs to know the num_temps of any module that it calls, and
+        // codegen is where we actually figure out what num_temps is
+        // TODO move this outside the loop (store the expressions in a temporary list).
+        // we need to be able to bounce around between modules based on dependencies.
+        code_gen_results[i] = try codegen(source, code_gen_results, first_pass_result, i, expression, allocator);
     }
 
     return code_gen_results;
 }
 
-fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef, expression: *const Expression, indentation: usize) void {
+fn printExpression(fields: []const ModuleFieldDecl1, expression: *const Expression, indentation: usize) void {
     var i: usize = 0;
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});
     }
     switch (expression.inner) {
         .call => |call| {
-            std.debug.warn("call self.{} (\n", .{module_def.fields[call.field_index].name});
+            std.debug.warn("call self.{} (\n", .{fields[call.field_index].name});
             for (call.args.span()) |arg| {
                 i = 0;
                 while (i < indentation + 1) : (i += 1) {
                     std.debug.warn("    ", .{});
                 }
                 std.debug.warn("{}:\n", .{arg.arg_name});
-                printExpression(module_defs, module_def, arg.value, indentation + 2);
+                printExpression(fields, arg.value, indentation + 2);
             }
             i = 0;
             while (i < indentation) : (i += 1) {
@@ -444,8 +456,8 @@ fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef,
                 .add => std.debug.warn("add\n", .{}),
                 .multiply => std.debug.warn("multiply\n", .{}),
             }
-            printExpression(module_defs, module_def, m.a, indentation + 1);
-            printExpression(module_defs, module_def, m.b, indentation + 1);
+            printExpression(fields, m.a, indentation + 1);
+            printExpression(fields, m.b, indentation + 1);
         },
         .nothing => {
             std.debug.warn("(nothing)\n", .{});

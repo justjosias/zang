@@ -1,12 +1,14 @@
 const std = @import("std");
 const Source = @import("common.zig").Source;
 const fail = @import("common.zig").fail;
+const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const ModuleDef = @import("first_pass.zig").ModuleDef;
 const Expression = @import("second_pass.zig").Expression;
 const CallArg = @import("second_pass.zig").CallArg;
 const Call = @import("second_pass.zig").Call;
 const Literal = @import("second_pass.zig").Literal;
 const getExpressionType = @import("second_pass.zig").getExpressionType;
+const builtins = @import("builtins.zig").builtins;
 
 // TODO i'm tending towards the idea of this file not even being involved at all
 // in runtime script mode.
@@ -90,7 +92,9 @@ pub const Instruction = union(enum) {
 const CodegenState = struct {
     allocator: *std.mem.Allocator,
     source: Source,
-    module_def: *ModuleDef,
+    first_pass_result: FirstPassResult,
+    code_gen_results: []const CodeGenResult,
+    module_index: usize,
     instructions: std.ArrayList(Instruction),
     num_temps: usize,
     num_temp_floats: usize,
@@ -102,28 +106,44 @@ const GenError = error{
     OutOfMemory,
 };
 
-fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const Expression) GenError!void {
+fn genExpression(self: *CodegenState, result_loc: ResultLoc, expression: *const Expression) GenError!void {
+    const module = self.first_pass_result.modules[self.module_index];
+    const self_params = self.first_pass_result.module_params[module.first_param .. module.first_param + module.num_params];
+
     switch (expression.inner) {
         .call => |call| {
-            const callee = state.module_def.fields[call.field_index].resolved_module;
+            const field = self.first_pass_result.module_fields[module.first_field + call.field_index];
+            var callee_num_temps: usize = undefined;
+            const callee_params = switch (field.resolved_module_index) {
+                .builtin => |builtin_index| blk: {
+                    callee_num_temps = builtins[builtin_index].num_temps;
+                    break :blk builtins[builtin_index].params;
+                },
+                .custom => |module_index| blk: {
+                    const callee_module = self.first_pass_result.modules[module_index];
+                    // FIXME make sure the callee module has already been codegen'd! that's where its num_temps actually gets filled in
+                    callee_num_temps = self.code_gen_results[module_index].num_temps;
+                    break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+                },
+            };
 
             var icall: InstrCall = .{
                 .result_loc = result_loc,
                 .field_index = call.field_index,
-                .temps = std.ArrayList(usize).init(state.allocator),
-                .args = try state.allocator.alloc(InstrCallArg, callee.params.len),
+                .temps = std.ArrayList(usize).init(self.allocator),
+                .args = try self.allocator.alloc(InstrCallArg, callee_params.len),
             };
             // TODO deinit
 
             // the callee needs temps for its own internal use
             var i: usize = 0;
-            while (i < callee.num_temps) : (i += 1) {
-                try icall.temps.append(state.num_temps);
-                state.num_temps += 1;
+            while (i < callee_num_temps) : (i += 1) {
+                try icall.temps.append(self.num_temps);
+                self.num_temps += 1;
             }
 
             // pass params
-            for (callee.params) |param, j| {
+            for (callee_params) |param, j| {
                 // find this arg in the call node. (not necessarily in the same order.)
                 const arg = blk: {
                     for (call.args.span()) |a| {
@@ -138,23 +158,23 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                 // allocate a temporary to store subexpression result
                 switch (param.param_type) {
                     .constant_or_buffer => {
-                        const out_index = state.num_temps;
-                        state.num_temps += 1;
-                        try genExpression(state, .{ .buffer = .{ .temp = out_index } }, arg.value);
+                        const out_index = self.num_temps;
+                        self.num_temps += 1;
+                        try genExpression(self, .{ .buffer = .{ .temp = out_index } }, arg.value);
 
                         icall.args[j] = .{ .temp = out_index };
                     },
                     .constant => {
-                        const out_index = state.num_temp_floats;
-                        state.num_temp_floats += 1;
-                        try genExpression(state, .{ .temp_float = out_index }, arg.value);
+                        const out_index = self.num_temp_floats;
+                        self.num_temp_floats += 1;
+                        try genExpression(self, .{ .temp_float = out_index }, arg.value);
 
                         icall.args[j] = .{ .temp_float = out_index };
                     },
                     .boolean => {
-                        const out_index = state.num_temp_bools;
-                        state.num_temp_bools += 1;
-                        try genExpression(state, .{ .temp_bool = out_index }, arg.value);
+                        const out_index = self.num_temp_bools;
+                        self.num_temp_bools += 1;
+                        try genExpression(self, .{ .temp_bool = out_index }, arg.value);
 
                         icall.args[j] = .{ .temp_bool = out_index };
                     },
@@ -162,14 +182,14 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                 }
             }
 
-            try state.instructions.append(.{ .call = icall });
+            try self.instructions.append(.{ .call = icall });
         },
         .literal => |literal| {
             switch (result_loc) {
                 .buffer => |buffer_loc| {
-                    const temp_float_index = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-                    try state.instructions.append(.{
+                    const temp_float_index = self.num_temp_floats;
+                    self.num_temp_floats += 1;
+                    try self.instructions.append(.{
                         .load_constant = .{
                             .out_index = temp_float_index,
                             .value = switch (literal) {
@@ -178,7 +198,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                             },
                         },
                     });
-                    try state.instructions.append(.{
+                    try self.instructions.append(.{
                         .float_to_buffer = .{
                             .out = buffer_loc,
                             .in_temp_float = temp_float_index,
@@ -186,7 +206,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     });
                 },
                 .temp_float => |index| {
-                    try state.instructions.append(.{
+                    try self.instructions.append(.{
                         .load_constant = .{
                             .out_index = index,
                             .value = switch (literal) {
@@ -197,7 +217,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     });
                 },
                 .temp_bool => |index| {
-                    try state.instructions.append(.{
+                    try self.instructions.append(.{
                         .load_boolean = .{
                             .out_index = index,
                             .value = switch (literal) {
@@ -210,21 +230,21 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
             }
         },
         .self_param => |param_index| {
-            const param = &state.module_def.resolved.params[param_index];
+            const param = self_params[param_index];
             switch (result_loc) {
                 .buffer => |buffer_loc| {
                     // result is a buffer. what is the param type?
                     switch (param.param_type) {
                         .constant => {
-                            const temp_float_index = state.num_temp_floats;
-                            state.num_temp_floats += 1;
-                            try state.instructions.append(.{
+                            const temp_float_index = self.num_temp_floats;
+                            self.num_temp_floats += 1;
+                            try self.instructions.append(.{
                                 .load_param_float = .{
                                     .out_temp_float = temp_float_index,
                                     .param_index = param_index,
                                 },
                             });
-                            try state.instructions.append(.{
+                            try self.instructions.append(.{
                                 .float_to_buffer = .{
                                     .out = buffer_loc,
                                     .in_temp_float = temp_float_index,
@@ -238,7 +258,7 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                     // result is a float. what is the param type?
                     switch (param.param_type) {
                         .constant => {
-                            try state.instructions.append(.{
+                            try self.instructions.append(.{
                                 .load_param_float = .{
                                     .out_temp_float = index,
                                     .param_index = param_index,
@@ -254,8 +274,8 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
         .binary_arithmetic => |m| {
             // no type checking has been performed yet...
             // (not true?)
-            const a_type = try getExpressionType(state.source, state.module_def, m.a);
-            const b_type = try getExpressionType(state.source, state.module_def, m.b);
+            const a_type = try getExpressionType(self.source, self_params, m.a);
+            const b_type = try getExpressionType(self.source, self_params, m.b);
 
             switch (result_loc) {
                 .temp_bool => {
@@ -264,18 +284,18 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                 .temp_float => |out_temp_float| {
                     // float = float + float
                     if (a_type != .constant or b_type != .constant) {
-                        return fail(state.source, expression.source_range, "dest is float, so operands must both be floats", .{});
+                        return fail(self.source, expression.source_range, "dest is float, so operands must both be floats", .{});
                     }
 
-                    const out_index_a = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-                    try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+                    const out_index_a = self.num_temp_floats;
+                    self.num_temp_floats += 1;
+                    try genExpression(self, .{ .temp_float = out_index_a }, m.a);
 
-                    const out_index_b = state.num_temp_floats;
-                    state.num_temp_floats += 1;
-                    try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+                    const out_index_b = self.num_temp_floats;
+                    self.num_temp_floats += 1;
+                    try genExpression(self, .{ .temp_float = out_index_b }, m.b);
 
-                    try state.instructions.append(.{
+                    try self.instructions.append(.{
                         .arith_float_float = .{
                             .operator = switch (m.operator) {
                                 .add => .add,
@@ -290,15 +310,15 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                 .buffer => |buffer_loc| {
                     // FIXME constant_or_buffer makes no sense here!
                     if (a_type == .constant_or_buffer and b_type == .constant) {
-                        const out_index_a = state.num_temps;
-                        state.num_temps += 1;
-                        try genExpression(state, .{ .buffer = .{ .temp = out_index_a } }, m.a);
+                        const out_index_a = self.num_temps;
+                        self.num_temps += 1;
+                        try genExpression(self, .{ .buffer = .{ .temp = out_index_a } }, m.a);
 
-                        const out_index_b = state.num_temp_floats;
-                        state.num_temp_floats += 1;
-                        try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+                        const out_index_b = self.num_temp_floats;
+                        self.num_temp_floats += 1;
+                        try genExpression(self, .{ .temp_float = out_index_b }, m.b);
 
-                        try state.instructions.append(.{
+                        try self.instructions.append(.{
                             .arith_buffer_float = .{
                                 .operator = switch (m.operator) {
                                     .add => .add,
@@ -310,15 +330,15 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                             },
                         });
                     } else if (a_type == .constant and b_type == .constant_or_buffer) {
-                        const out_index_a = state.num_temp_floats;
-                        state.num_temp_floats += 1;
-                        try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+                        const out_index_a = self.num_temp_floats;
+                        self.num_temp_floats += 1;
+                        try genExpression(self, .{ .temp_float = out_index_a }, m.a);
 
-                        const out_index_b = state.num_temps;
-                        state.num_temps += 1;
-                        try genExpression(state, .{ .buffer = .{ .temp = out_index_b } }, m.b);
+                        const out_index_b = self.num_temps;
+                        self.num_temps += 1;
+                        try genExpression(self, .{ .buffer = .{ .temp = out_index_b } }, m.b);
 
-                        try state.instructions.append(.{
+                        try self.instructions.append(.{
                             .arith_buffer_float = .{
                                 .operator = switch (m.operator) {
                                     .add => .add,
@@ -330,18 +350,18 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                             },
                         });
                     } else if (a_type == .constant and b_type == .constant) {
-                        const out_temp_float = state.num_temp_floats;
-                        state.num_temp_floats += 1;
+                        const out_temp_float = self.num_temp_floats;
+                        self.num_temp_floats += 1;
 
-                        const out_index_a = state.num_temp_floats;
-                        state.num_temp_floats += 1;
-                        try genExpression(state, .{ .temp_float = out_index_a }, m.a);
+                        const out_index_a = self.num_temp_floats;
+                        self.num_temp_floats += 1;
+                        try genExpression(self, .{ .temp_float = out_index_a }, m.a);
 
-                        const out_index_b = state.num_temp_floats;
-                        state.num_temp_floats += 1;
-                        try genExpression(state, .{ .temp_float = out_index_b }, m.b);
+                        const out_index_b = self.num_temp_floats;
+                        self.num_temp_floats += 1;
+                        try genExpression(self, .{ .temp_float = out_index_b }, m.b);
 
-                        try state.instructions.append(.{
+                        try self.instructions.append(.{
                             .arith_float_float = .{
                                 .operator = switch (m.operator) {
                                     .add => .add,
@@ -352,14 +372,14 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
                                 .b_temp_float = out_index_b,
                             },
                         });
-                        try state.instructions.append(.{
+                        try self.instructions.append(.{
                             .float_to_buffer = .{
                                 .out = buffer_loc,
                                 .in_temp_float = out_temp_float,
                             },
                         });
                     } else {
-                        return fail(state.source, expression.source_range, "dest is buffer, unsupported operand types", .{});
+                        return fail(self.source, expression.source_range, "dest is buffer, unsupported operand types", .{});
                     }
                 },
             }
@@ -374,11 +394,14 @@ pub const CodeGenResult = struct {
     instructions: []const Instruction,
 };
 
-pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !CodeGenResult {
-    var state: CodegenState = .{
+// code_gen_results is just there so we can read the num_temps of modules being called.
+pub fn codegen(source: Source, code_gen_results: []const CodeGenResult, first_pass_result: FirstPassResult, module_index: usize, expression: *const Expression, allocator: *std.mem.Allocator) !CodeGenResult {
+    var self: CodegenState = .{
         .allocator = allocator,
         .source = source,
-        .module_def = module_def,
+        .first_pass_result = first_pass_result,
+        .code_gen_results = code_gen_results,
+        .module_index = module_index,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .num_temps = 0,
         .num_temp_floats = 0,
@@ -386,22 +409,24 @@ pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expres
     };
     // TODO deinit
 
-    try genExpression(&state, .{ .buffer = .{ .output = 0 } }, expression);
+    try genExpression(&self, .{ .buffer = .{ .output = 0 } }, expression);
 
-    std.debug.warn("num_temps: {}\n", .{state.num_temps});
-    std.debug.warn("num_temp_floats: {}\n", .{state.num_temp_floats});
-    std.debug.warn("num_temp_bools: {}\n", .{state.num_temp_bools});
-    printBytecode(module_def, state.instructions.span());
+    std.debug.warn("num_temps: {}\n", .{self.num_temps});
+    std.debug.warn("num_temp_floats: {}\n", .{self.num_temp_floats});
+    std.debug.warn("num_temp_bools: {}\n", .{self.num_temp_bools});
+    printBytecode(&self);
     std.debug.warn("\n", .{});
 
     return CodeGenResult{
         .num_outputs = 1,
-        .num_temps = state.num_temps,
-        .instructions = state.instructions.span(),
+        .num_temps = self.num_temps,
+        .instructions = self.instructions.span(),
     };
 }
 
-pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruction) void {
+pub fn printBytecode(self: *CodegenState) void {
+    const self_module = self.first_pass_result.modules[self.module_index];
+    const instructions = self.instructions.span();
     std.debug.warn("bytecode:\n", .{});
     for (instructions) |instr| {
         std.debug.warn("    ", .{});
@@ -417,11 +442,21 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                     .temp_float => |n| std.debug.warn("temp_float{}", .{n}),
                     .temp_bool => |n| std.debug.warn("temp_bool{}", .{n}),
                 }
-                std.debug.warn(" = CALL #{}({}: {})\n", .{
-                    call.field_index,
-                    module_def.fields[call.field_index].name,
-                    module_def.fields[call.field_index].resolved_module.name,
-                });
+                const field = self.first_pass_result.module_fields[self_module.first_field + call.field_index];
+                const callee_module_name = switch (field.resolved_module_index) {
+                    .builtin => |builtin_index| builtins[builtin_index].name,
+                    .custom => |module_index| self.first_pass_result.modules[module_index].name,
+                };
+                const callee_params = switch (field.resolved_module_index) {
+                    .builtin => |builtin_index| blk: {
+                        break :blk builtins[builtin_index].params;
+                    },
+                    .custom => |module_index| blk: {
+                        const callee_module = self.first_pass_result.modules[module_index];
+                        break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+                    },
+                };
+                std.debug.warn(" = CALL #{}({}: {})\n", .{ call.field_index, field.name, callee_module_name });
                 std.debug.warn("        temps: [", .{});
                 for (call.temps.span()) |temp, i| {
                     if (i > 0) std.debug.warn(", ", .{});
@@ -429,8 +464,7 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                 }
                 std.debug.warn("]\n", .{});
                 for (call.args) |arg, i| {
-                    const param = &module_def.fields[call.field_index].resolved_module.params[i];
-                    std.debug.warn("        {} = ", .{param.name});
+                    std.debug.warn("        {} = ", .{callee_params[i].name});
                     switch (arg) {
                         .temp => |v| {
                             std.debug.warn("temp{}\n", .{v});
@@ -461,7 +495,7 @@ pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruc
                 std.debug.warn("temp_float{} = LOADPARAM_FLOAT ${}({})\n", .{
                     x.out_temp_float,
                     x.param_index,
-                    module_def.resolved.params[x.param_index].name,
+                    self.first_pass_result.module_params[self_module.first_param + x.param_index].name,
                 });
             },
             .arith_float_float => |x| {
