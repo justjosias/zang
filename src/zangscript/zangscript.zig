@@ -1,5 +1,4 @@
 const std = @import("std");
-const zang = @import("zang");
 const Source = @import("common.zig").Source;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;

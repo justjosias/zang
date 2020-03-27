@@ -3,9 +3,6 @@ const Parser = @import("common.zig").Parser;
 const Source = @import("common.zig").Source;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
-const TokenType = @import("tokenizer.zig").TokenType;
-const SourceLocation = @import("tokenizer.zig").SourceLocation;
-const builtins = @import("builtins.zig").builtins;
 const findBuiltin = @import("builtins.zig").findBuiltin;
 
 pub const ResolvedParamType = enum {
@@ -45,8 +42,6 @@ pub const CustomModule = struct {
     num_fields: usize,
 };
 
-// another TODO - use more of these "self" things so i don't have to pass so many arguments around
-// (especially in later passes)
 const FirstPass = struct {
     allocator: *std.mem.Allocator,
     parser: Parser,

@@ -2,11 +2,7 @@ const std = @import("std");
 const Source = @import("common.zig").Source;
 const fail = @import("common.zig").fail;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const ModuleDef = @import("first_pass.zig").ModuleDef;
 const Expression = @import("second_pass.zig").Expression;
-const CallArg = @import("second_pass.zig").CallArg;
-const Call = @import("second_pass.zig").Call;
-const Literal = @import("second_pass.zig").Literal;
 const getExpressionType = @import("second_pass.zig").getExpressionType;
 const builtins = @import("builtins.zig").builtins;
 
