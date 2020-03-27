@@ -4,9 +4,7 @@ const Source = @import("common.zig").Source;
 const Token = @import("tokenizer.zig").Token;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
-const ModuleDef = @import("first_pass.zig").ModuleDef;
-const ModuleParam = @import("first_pass.zig").ModuleParam;
-const ModuleParamDecl = @import("first_pass.zig").ModuleParamDecl;
+const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const firstPass = @import("first_pass.zig").firstPass;
 const secondPass = @import("second_pass.zig").secondPass;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
@@ -32,7 +30,7 @@ comptime {
 // need to provide those, too. it will be known only at runtime, i think.
 
 pub const Script = struct {
-    module_defs: []const ModuleDef,
+    first_pass_result: FirstPassResult,
     code_gen_results: []const CodeGenResult,
 };
 
@@ -60,7 +58,7 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
     const code_gen_results = try secondPass(source, tokens, result, allocator);
 
     return Script{
-        .module_defs = result.module_defs,
+        .first_pass_result = result,
         .code_gen_results = code_gen_results,
     };
 }
@@ -70,7 +68,7 @@ pub fn main() u8 {
     const script = loadScript("../../script.txt", allocator) catch return 1;
     // TODO defer script deinit
     // generate zig source
-    generateZig(script.module_defs, script.code_gen_results) catch |err| {
+    generateZig(script.first_pass_result, script.code_gen_results) catch |err| {
         std.debug.warn("{}\n", .{err});
         return 1;
     };

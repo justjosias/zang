@@ -45,7 +45,6 @@ pub const ModuleFieldDecl = struct {
 };
 
 pub const ModuleDef = struct {
-    name: []const u8,
     param_decls: []ModuleParamDecl,
     // in between the first and second passes, we'll resolve params from param_decls. (it's undefined during the first pass.)
     resolved: Module, // "signature" visible to outside (name, params, num_temps/outputs)
@@ -241,7 +240,6 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             };
         }
         module_defs[i] = .{
-            .name = module.name,
             .param_decls = param_decls,
             .fields = field_decls,
             .resolved = .{

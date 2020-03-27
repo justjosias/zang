@@ -1,21 +1,22 @@
 const std = @import("std");
-const ModuleDef = @import("first_pass.zig").ModuleDef;
+const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
+const builtins = @import("builtins.zig").builtins;
 
-pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const CodeGenResult) !void {
+pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const CodeGenResult) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_file_out_stream = stdout_file.outStream();
     const out = &stdout_file_out_stream.stream;
 
     try out.print("const zang = @import(\"zang\");\n", .{});
-    for (module_defs) |module_def, i| {
+    for (first_pass_result.modules) |module, i| {
         const code_gen_result = code_gen_results[i];
         try out.print("\n", .{});
-        try out.print("pub const {} = struct {{\n", .{module_def.name});
+        try out.print("pub const {} = struct {{\n", .{module.name});
         try out.print("    pub const num_outputs = {};\n", .{code_gen_result.num_outputs});
         try out.print("    pub const num_temps = {};\n", .{code_gen_result.num_temps});
         try out.print("    pub const Params = struct {{\n", .{});
-        for (module_def.resolved.params) |param| {
+        for (first_pass_result.module_params[module.first_param .. module.first_param + module.num_params]) |param| {
             const type_name = switch (param.param_type) {
                 .boolean => "bool",
                 .constant => "f32",
@@ -25,19 +26,27 @@ pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const Cod
         }
         try out.print("    }};\n", .{});
         try out.print("\n", .{});
-        for (module_def.fields) |field| {
-            try out.print("    {}: {},\n", .{ field.name, field.resolved_module.zig_name });
+        for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
+            const module_name = switch (field.resolved_module_index) {
+                .builtin => |builtin_index| builtins[builtin_index].zig_name,
+                .custom => |module_index| first_pass_result.modules[module_index].name,
+            };
+            try out.print("    {}: {},\n", .{ field.name, module_name });
         }
         try out.print("\n", .{});
-        try out.print("    pub fn init() {} {{\n", .{module_def.name});
+        try out.print("    pub fn init() {} {{\n", .{module.name});
         try out.print("        return .{{\n", .{});
-        for (module_def.fields) |field| {
-            try out.print("            .{} = {}.init(),\n", .{ field.name, field.resolved_module.zig_name });
+        for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
+            const module_name = switch (field.resolved_module_index) {
+                .builtin => |builtin_index| builtins[builtin_index].zig_name,
+                .custom => |module_index| first_pass_result.modules[module_index].name,
+            };
+            try out.print("            .{} = {}.init(),\n", .{ field.name, module_name });
         }
         try out.print("        }};\n", .{});
         try out.print("    }}\n", .{});
         try out.print("\n", .{});
-        try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module_def.name});
+        try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module.name});
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
                 .load_constant => |x| {
@@ -55,7 +64,7 @@ pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const Cod
                 .load_param_float => |x| {
                     try out.print("        const temp_float{}: f32 = params.{};\n", .{
                         x.out_temp_float,
-                        module_def.resolved.params[x.param_index].name,
+                        first_pass_result.module_params[module.first_param + x.param_index].name,
                     });
                 },
                 .arith_float_float => |x| {
@@ -100,7 +109,7 @@ pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const Cod
                     }
                 },
                 .call => |call| {
-                    const callee_module = module_def.fields[call.field_index].resolved_module;
+                    const field = first_pass_result.module_fields[module.first_field + call.field_index];
                     switch (call.result_loc) {
                         .buffer => |buffer_loc| {
                             switch (buffer_loc) {
@@ -111,9 +120,7 @@ pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const Cod
                         .temp_float => {},
                         .temp_bool => {},
                     }
-                    try out.print("        self.{}.paint(span, ", .{
-                        module_def.fields[call.field_index].name,
-                    });
+                    try out.print("        self.{}.paint(span, ", .{field.name});
                     // callee outputs
                     switch (call.result_loc) {
                         .buffer => |buffer_loc| {
@@ -135,21 +142,30 @@ pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const Cod
                     }
                     // callee params
                     try out.print("}}, .{{\n", .{});
+                    const callee_params = switch (field.resolved_module_index) {
+                        .builtin => |builtin_index| blk: {
+                            break :blk builtins[builtin_index].params;
+                        },
+                        .custom => |module_index| blk: {
+                            const callee_module = first_pass_result.modules[module_index];
+                            break :blk first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+                        },
+                    };
                     for (call.args) |arg, j| {
-                        const param = &callee_module.params[j];
-                        try out.print("            .{} = ", .{callee_module.params[j].name});
+                        const callee_param = callee_params[j];
+                        try out.print("            .{} = ", .{callee_param.name});
                         switch (arg) {
                             .temp => |v| {
-                                if (param.param_type == .constant_or_buffer) {
+                                if (callee_param.param_type == .constant_or_buffer) {
                                     try out.print("zang.buffer(temps[{}])", .{v});
                                 } else {
                                     unreachable;
                                 }
                             },
                             .temp_float => |n| {
-                                if (param.param_type == .constant_or_buffer) {
+                                if (callee_param.param_type == .constant_or_buffer) {
                                     try out.print("zang.constant(temp_float{})", .{n});
-                                } else if (param.param_type == .constant) {
+                                } else if (callee_param.param_type == .constant) {
                                     try out.print("temp_float{}", .{n});
                                 } else {
                                     unreachable;
