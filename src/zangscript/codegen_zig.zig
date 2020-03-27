@@ -1,17 +1,19 @@
 const std = @import("std");
 const ModuleDef = @import("first_pass.zig").ModuleDef;
+const CodeGenResult = @import("codegen.zig").CodeGenResult;
 
-pub fn generateZig(module_defs: []const ModuleDef) !void {
+pub fn generateZig(module_defs: []const ModuleDef, code_gen_results: []const CodeGenResult) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_file_out_stream = stdout_file.outStream();
     const out = &stdout_file_out_stream.stream;
 
     try out.print("const zang = @import(\"zang\");\n", .{});
-    for (module_defs) |module_def| {
+    for (module_defs) |module_def, i| {
+        const code_gen_result = code_gen_results[i];
         try out.print("\n", .{});
         try out.print("pub const {} = struct {{\n", .{module_def.name});
-        try out.print("    pub const num_outputs = {};\n", .{module_def.resolved.num_outputs});
-        try out.print("    pub const num_temps = {};\n", .{module_def.resolved.num_temps});
+        try out.print("    pub const num_outputs = {};\n", .{code_gen_result.num_outputs});
+        try out.print("    pub const num_temps = {};\n", .{code_gen_result.num_temps});
         try out.print("    pub const Params = struct {{\n", .{});
         for (module_def.resolved.params) |param| {
             const type_name = switch (param.param_type) {
@@ -36,7 +38,7 @@ pub fn generateZig(module_defs: []const ModuleDef) !void {
         try out.print("    }}\n", .{});
         try out.print("\n", .{});
         try out.print("    pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module_def.name});
-        for (module_def.instructions) |instr| {
+        for (code_gen_result.instructions) |instr| {
             switch (instr) {
                 .load_constant => |x| {
                     try out.print("        const temp_float{}: f32 = {d};\n", .{ x.out_index, x.value });
@@ -125,17 +127,17 @@ pub fn generateZig(module_defs: []const ModuleDef) !void {
                     }
                     // callee temps
                     try out.print(", .{{", .{});
-                    for (call.temps.span()) |n, i| {
-                        if (i > 0) {
+                    for (call.temps.span()) |n, j| {
+                        if (j > 0) {
                             try out.print(", ", .{});
                         }
                         try out.print("temps[{}]", .{n});
                     }
                     // callee params
                     try out.print("}}, .{{\n", .{});
-                    for (call.args) |arg, i| {
-                        const param = &callee_module.params[i];
-                        try out.print("            .{} = ", .{callee_module.params[i].name});
+                    for (call.args) |arg, j| {
+                        const param = &callee_module.params[j];
+                        try out.print("            .{} = ", .{callee_module.params[j].name});
                         switch (arg) {
                             .temp => |v| {
                                 if (param.param_type == .constant_or_buffer) {

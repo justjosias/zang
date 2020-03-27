@@ -9,6 +9,7 @@ const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ModuleParamDecl = @import("first_pass.zig").ModuleParamDecl;
 const firstPass = @import("first_pass.zig").firstPass;
 const secondPass = @import("second_pass.zig").secondPass;
+const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const generateZig = @import("codegen_zig.zig").generateZig;
 
 comptime {
@@ -32,6 +33,7 @@ comptime {
 
 pub const Script = struct {
     module_defs: []const ModuleDef,
+    code_gen_results: []const CodeGenResult,
 };
 
 pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) !Script {
@@ -55,10 +57,11 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
         //result.module_defs.deinit();
     }
 
-    try secondPass(source, tokens, result, allocator);
+    const code_gen_results = try secondPass(source, tokens, result, allocator);
 
     return Script{
         .module_defs = result.module_defs,
+        .code_gen_results = code_gen_results,
     };
 }
 
@@ -67,7 +70,7 @@ pub fn main() u8 {
     const script = loadScript("../../script.txt", allocator) catch return 1;
     // TODO defer script deinit
     // generate zig source
-    generateZig(script.module_defs) catch |err| {
+    generateZig(script.module_defs, script.code_gen_results) catch |err| {
         std.debug.warn("{}\n", .{err});
         return 1;
     };

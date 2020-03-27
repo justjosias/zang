@@ -368,7 +368,13 @@ fn genExpression(state: *CodegenState, result_loc: ResultLoc, expression: *const
     }
 }
 
-pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !void {
+pub const CodeGenResult = struct {
+    num_outputs: usize,
+    num_temps: usize,
+    instructions: []const Instruction,
+};
+
+pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expression, allocator: *std.mem.Allocator) !CodeGenResult {
     var state: CodegenState = .{
         .allocator = allocator,
         .source = source,
@@ -382,15 +388,17 @@ pub fn codegen(source: Source, module_def: *ModuleDef, expression: *const Expres
 
     try genExpression(&state, .{ .buffer = .{ .output = 0 } }, expression);
 
-    module_def.resolved.num_outputs = 1;
-    module_def.resolved.num_temps = state.num_temps;
-    module_def.instructions = state.instructions.span();
-
     std.debug.warn("num_temps: {}\n", .{state.num_temps});
     std.debug.warn("num_temp_floats: {}\n", .{state.num_temp_floats});
     std.debug.warn("num_temp_bools: {}\n", .{state.num_temp_bools});
     printBytecode(module_def, state.instructions.span());
     std.debug.warn("\n", .{});
+
+    return CodeGenResult{
+        .num_outputs = 1,
+        .num_temps = state.num_temps,
+        .instructions = state.instructions.span(),
+    };
 }
 
 pub fn printBytecode(module_def: *const ModuleDef, instructions: []const Instruction) void {

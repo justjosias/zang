@@ -12,6 +12,7 @@ const ModuleDef = @import("first_pass.zig").ModuleDef;
 const ModuleFieldDecl = @import("first_pass.zig").ModuleFieldDecl;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
+const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const codegen = @import("codegen.zig").codegen;
 
 pub const CallArg = struct {
@@ -374,12 +375,13 @@ fn paintBlock(self: *SecondPass, module_def: *ModuleDef) !*const Expression {
     return expr;
 }
 
+// return one CodeGenResult for each module
 pub fn secondPass(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
-) !void {
+) ![]const CodeGenResult {
     var second_pass: SecondPass = .{
         .allocator = allocator,
         .source = source,
@@ -387,7 +389,9 @@ pub fn secondPass(
         .first_pass_result = first_pass_result,
     };
 
-    for (first_pass_result.module_defs) |*module_def| {
+    var code_gen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
+
+    for (first_pass_result.module_defs) |*module_def, i| {
         const expression = try paintBlock(&second_pass, module_def);
 
         std.debug.warn("module '{}'\n", .{module_def.name});
@@ -397,8 +401,10 @@ pub fn secondPass(
         std.debug.warn("print expression:\n", .{});
         printExpression(first_pass_result.module_defs, module_def, expression, 1);
 
-        try codegen(source, module_def, expression, allocator);
+        code_gen_results[i] = try codegen(source, module_def, expression, allocator);
     }
+
+    return code_gen_results;
 }
 
 fn printExpression(module_defs: []const ModuleDef, module_def: *const ModuleDef, expression: *const Expression, indentation: usize) void {
