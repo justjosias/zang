@@ -458,6 +458,7 @@ fn codegenVisit(
     }
 
     // now resolve this one
+    // note: the codegen function reads from the `results` array to look up the num_temps of the fields
     const expression = expressions[module_index - builtins.len];
     results[module_index] = try codegen(source, results, first_pass_result, module_index, expression, allocator);
 }
