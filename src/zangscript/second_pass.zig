@@ -397,16 +397,9 @@ pub fn secondPass(
             continue;
         }
 
-        const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
-
         const expression = try paintBlock(allocator, source, tokens, first_pass_result, module, i);
 
-        std.debug.warn("module '{}'\n", .{module.name});
-        for (fields) |field| {
-            std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
-        }
-        std.debug.warn("print expression:\n", .{});
-        printExpression(fields, expression, 1);
+        printModule(first_pass_result, module, expression, 1);
 
         // we need to pass the (being mutated) code_gen_results array to this function, because
         // codegen'ing one module needs to know the num_temps of any module that it calls, and
@@ -417,6 +410,17 @@ pub fn secondPass(
     }
 
     return code_gen_results;
+}
+
+fn printModule(first_pass_result: FirstPassResult, module: CustomModule, expression: *const Expression, indentation: usize) void {
+    const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
+
+    std.debug.warn("module '{}'\n", .{module.name});
+    for (fields) |field| {
+        std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
+    }
+    std.debug.warn("print expression:\n", .{});
+    printExpression(fields, expression, 1);
 }
 
 fn printExpression(fields: []const ModuleField, expression: *const Expression, indentation: usize) void {
