@@ -72,9 +72,9 @@ pub fn fail(
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.debug.getStderrStream();
-        stderr.print("{}: ", .{source.filename}) catch {};
+        stderr.print(KYEL ++ KBOLD ++ "{}: " ++ KWHITE, .{source.filename}) catch {};
         failPrint(stderr, source.contents, fmt, args);
-        stderr.print("\n\n", .{}) catch {};
+        stderr.print(KNRM ++ "\n\n", .{}) catch {};
         return error.Failed;
     };
     // display the problematic line

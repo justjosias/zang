@@ -5,7 +5,7 @@ const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const CustomModule = @import("first_pass.zig").CustomModule;
+const Module = @import("first_pass.zig").Module;
 const ModuleField = @import("first_pass.zig").ModuleField;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
@@ -58,7 +58,7 @@ const SecondPass = struct {
     tokens: []const Token,
     parser: Parser,
     first_pass_result: FirstPassResult,
-    module: CustomModule,
+    module: Module,
     module_index: usize,
 };
 
@@ -344,7 +344,7 @@ fn paintBlock(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
-    module: CustomModule,
+    module: Module,
     module_index: usize,
 ) !*const Expression {
     const body_loc = first_pass_result.module_body_locations[module_index].?;
@@ -412,7 +412,7 @@ pub fn secondPass(
     return code_gen_results;
 }
 
-fn printModule(first_pass_result: FirstPassResult, module: CustomModule, expression: *const Expression, indentation: usize) void {
+fn printModule(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
     std.debug.warn("module '{}'\n", .{module.name});

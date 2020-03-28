@@ -11,7 +11,6 @@ pub const ResolvedParamType = enum {
     constant_or_buffer,
 };
 
-// this is separate because it's also used for builtin modules
 pub const ModuleParam = struct {
     name: []const u8,
     type_token: ?Token, // null if this comes from a builtin module
@@ -25,7 +24,7 @@ pub const ModuleField = struct {
     resolved_module_index: usize,
 };
 
-pub const CustomModule = struct {
+pub const Module = struct {
     name: []const u8,
     zig_name: []const u8,
     first_param: usize,
@@ -42,7 +41,7 @@ pub const ModuleBodyLocation = struct {
 const FirstPass = struct {
     allocator: *std.mem.Allocator,
     parser: Parser,
-    modules: std.ArrayList(CustomModule),
+    modules: std.ArrayList(Module),
     module_body_locations: std.ArrayList(?ModuleBodyLocation),
     module_params: std.ArrayList(ModuleParam),
     module_fields: std.ArrayList(ModuleField),
@@ -136,7 +135,7 @@ fn defineModule(self: *FirstPass) !void {
 }
 
 pub const FirstPassResult = struct {
-    modules: []const CustomModule,
+    modules: []const Module,
     module_body_locations: []const ?ModuleBodyLocation,
     module_params: []const ModuleParam,
     module_fields: []const ModuleField,
@@ -150,7 +149,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             .tokens = tokens,
             .i = 0,
         },
-        .modules = std.ArrayList(CustomModule).init(allocator),
+        .modules = std.ArrayList(Module).init(allocator),
         .module_body_locations = std.ArrayList(?ModuleBodyLocation).init(allocator),
         .module_params = std.ArrayList(ModuleParam).init(allocator),
         .module_fields = std.ArrayList(ModuleField).init(allocator),
@@ -190,7 +189,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     const module_fields = self.module_fields.toOwnedSlice();
 
     // resolve the types of params and fields
-    try resolveParamTypes(source, module_params);
+    try resolveParamTypes(source, modules, module_params);
     try resolveFieldTypes(source, modules, module_fields);
 
     return FirstPassResult{
@@ -202,44 +201,77 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
 }
 
 // this is the 1 1/2 pass - resolving the types of params and fields.
-// involves a bit a looking around because the type of a module's field can be another module.
 
-fn resolveParamTypes(source: Source, module_params: []ModuleParam) !void {
-    var start: usize = 0;
-    for (builtins) |builtin| {
-        start += builtin.params.len;
+const DataType = union(enum) {
+    param_type: ResolvedParamType,
+    module_index: usize,
+};
+
+fn parseDataType(source: Source, modules: []const Module, type_token: Token) !DataType {
+    const type_name = source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index];
+    if (std.mem.eql(u8, type_name, "boolean")) {
+        return DataType{ .param_type = .boolean };
     }
-    for (module_params[start..]) |*param| {
-        param.param_type = blk: {
-            const type_token = param.type_token.?; // only builtin modules have type_token=null
-            const type_name = source.contents[type_token.source_range.loc0.index..type_token.source_range.loc1.index];
-            if (std.mem.eql(u8, type_name, "boolean")) {
-                break :blk .boolean;
-            }
-            if (std.mem.eql(u8, type_name, "number")) {
-                break :blk .constant;
-            }
-            // TODO if a module was referenced, be nice and recognize that but say it's not allowed
-            return fail(source, type_token.source_range, "could not resolve param type `%`", .{type_token.source_range});
+    if (std.mem.eql(u8, type_name, "number")) {
+        return DataType{ .param_type = .constant };
+    }
+    for (modules) |module, i| {
+        if (std.mem.eql(u8, type_name, module.name)) {
+            return DataType{ .module_index = i };
+        }
+    }
+    return fail(source, type_token.source_range, "expected datatype, found `%`", .{type_token.source_range});
+}
+
+fn resolveParamTypes(source: Source, modules: []const Module, module_params: []ModuleParam) !void {
+    // loop over the global list of params
+    for (module_params) |*param| {
+        const type_token = param.type_token orelse continue; // skip builtin modules which are already resolved
+        const datatype = try parseDataType(source, modules, type_token);
+        param.param_type = switch (datatype) {
+            .param_type => |param_type| param_type,
+            .module_index => return fail(source, type_token.source_range, "module cannot be used as a param type", .{}),
         };
     }
 }
 
-fn resolveFieldTypes(source: Source, modules: []const CustomModule, module_fields: []ModuleField) !void {
-    for (module_fields) |*field| {
-        // TODO if a type like boolean/number was referenced, be nice and recognize that but say it's not allowed
-        for (modules) |module, i| {
-            if (std.mem.eql(u8, field.type_name, module.name)) {
-                // FIXME i don't even know which module this field belongs to
-                //if (j == current_module_index) {
-                //    // FIXME - do a full circular dependency detection
-                //    return fail(source, field.type_token.source_range, "cannot use self as field", .{});
-                //}
-                field.resolved_module_index = i;
-                break;
-            }
-        } else {
-            return fail(source, field.type_token.source_range, "could not resolve field type `%`", .{field.type_token.source_range});
+fn resolveFieldTypes(source: Source, modules: []const Module, module_fields: []ModuleField) !void {
+    for (modules) |module, module_index| {
+        const fields = module_fields[module.first_field .. module.first_field + module.num_fields];
+
+        for (fields) |*field| {
+            const datatype = try parseDataType(source, modules, field.type_token);
+            field.resolved_module_index = switch (datatype) {
+                .param_type => return fail(source, field.type_token.source_range, "field type must refer to a module", .{}),
+                .module_index => |i| i,
+            };
         }
+    }
+
+    // check for circular dependencies.
+    // TODO - this may not be necessary here. i have to visit the modules in dependency order
+    // in the second pass (because of num_temps), so maybe i should do this check there instead,
+    // instead of doing the work in both places
+    for (modules) |module, module_index| {
+        const fields = module_fields[module.first_field .. module.first_field + module.num_fields];
+
+        for (fields) |field| {
+            try checkForCircularDependencies(source, modules, module_fields, module_index, field, field);
+        }
+    }
+}
+
+fn checkForCircularDependencies(source: Source, modules: []const Module, module_fields: []const ModuleField, self_module_index: usize, original_field: ModuleField, field: ModuleField) error{Failed}!void {
+    const inner_module_index = field.resolved_module_index;
+
+    if (inner_module_index == self_module_index) {
+        return fail(source, original_field.type_token.source_range, "circular dependency in module fields", .{});
+    }
+
+    const inner_module = modules[inner_module_index];
+    const inner_fields = module_fields[inner_module.first_field .. inner_module.first_field + inner_module.num_fields];
+
+    for (inner_fields) |inner_field| {
+        try checkForCircularDependencies(source, modules, module_fields, self_module_index, original_field, inner_field);
     }
 }
