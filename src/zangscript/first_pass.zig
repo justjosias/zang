@@ -28,18 +28,22 @@ pub const ModuleField = struct {
 pub const CustomModule = struct {
     name: []const u8,
     zig_name: []const u8,
-    begin_token: usize,
-    end_token: usize,
     first_param: usize,
     num_params: usize,
     first_field: usize,
     num_fields: usize,
 };
 
+pub const ModuleBodyLocation = struct {
+    begin_token: usize,
+    end_token: usize,
+};
+
 const FirstPass = struct {
     allocator: *std.mem.Allocator,
     parser: Parser,
     modules: std.ArrayList(CustomModule),
+    module_body_locations: std.ArrayList(?ModuleBodyLocation),
     module_params: std.ArrayList(ModuleParam),
     module_fields: std.ArrayList(ModuleField),
 };
@@ -118,20 +122,22 @@ fn defineModule(self: *FirstPass) !void {
     try self.modules.append(.{
         .name = module_name,
         .zig_name = module_name,
-        .begin_token = begin_token,
-        .end_token = end_token,
         .first_param = self.module_params.len,
         .num_params = params.len,
         .first_field = self.module_fields.len,
         .num_fields = fields.len,
     });
-
+    try self.module_body_locations.append(ModuleBodyLocation{
+        .begin_token = begin_token,
+        .end_token = end_token,
+    });
     try self.module_params.appendSlice(params.toOwnedSlice());
     try self.module_fields.appendSlice(fields.toOwnedSlice());
 }
 
 pub const FirstPassResult = struct {
     modules: []const CustomModule,
+    module_body_locations: []const ?ModuleBodyLocation,
     module_params: []const ModuleParam,
     module_fields: []const ModuleField,
 };
@@ -145,6 +151,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
             .i = 0,
         },
         .modules = std.ArrayList(CustomModule).init(allocator),
+        .module_body_locations = std.ArrayList(?ModuleBodyLocation).init(allocator),
         .module_params = std.ArrayList(ModuleParam).init(allocator),
         .module_fields = std.ArrayList(ModuleField).init(allocator),
     };
@@ -154,13 +161,12 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
         try self.modules.append(.{
             .name = builtin.name,
             .zig_name = builtin.zig_name,
-            .begin_token = 0, // FIXME
-            .end_token = 0, // FIXME
             .first_param = self.module_params.len,
             .num_params = builtin.params.len,
             .first_field = 0,
             .num_fields = 0,
         });
+        try self.module_body_locations.append(null);
         try self.module_params.appendSlice(builtin.params);
     }
 
@@ -179,6 +185,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     }
 
     const modules = self.modules.toOwnedSlice();
+    const module_body_locations = self.module_body_locations.toOwnedSlice();
     const module_params = self.module_params.toOwnedSlice();
     const module_fields = self.module_fields.toOwnedSlice();
 
@@ -188,6 +195,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
 
     return FirstPassResult{
         .modules = modules,
+        .module_body_locations = module_body_locations,
         .module_params = module_params,
         .module_fields = module_fields,
     };

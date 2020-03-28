@@ -347,12 +347,13 @@ fn paintBlock(
     module: CustomModule,
     module_index: usize,
 ) !*const Expression {
+    const body_loc = first_pass_result.module_body_locations[module_index].?;
     var self: SecondPass = .{
         .allocator = allocator,
         .tokens = tokens,
         .parser = .{
             .source = source,
-            .tokens = tokens[module.begin_token..module.end_token],
+            .tokens = tokens[body_loc.begin_token..body_loc.end_token],
             .i = 0,
         },
         .first_pass_result = first_pass_result,
