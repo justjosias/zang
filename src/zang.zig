@@ -39,9 +39,6 @@ pub const Curve = mod_curve.Curve;
 pub const CurveNode = mod_curve.CurveNode;
 pub const InterpolationFunction = mod_curve.InterpolationFunction;
 
-const mod_dc = @import("zang/mod_dc.zig");
-pub const DC = mod_dc.DC;
-
 const mod_decimator = @import("zang/mod_decimator.zig");
 pub const Decimator = mod_decimator.Decimator;
 
