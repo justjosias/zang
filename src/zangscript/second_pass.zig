@@ -424,14 +424,23 @@ pub fn secondPass(
             continue;
         }
 
-        try codegenVisit(source, first_pass_result, expressions, codegen_visited, codegen_results, i, allocator);
+        try codegenVisit(source, first_pass_result, expressions, codegen_visited, codegen_results, i, i, allocator);
     }
 
     return codegen_results;
 }
 
 // resolve a module
-fn codegenVisit(source: Source, first_pass_result: FirstPassResult, expressions: []*const Expression, visited: []bool, results: []CodeGenResult, module_index: usize, allocator: *std.mem.Allocator) GenError!void {
+fn codegenVisit(
+    source: Source,
+    first_pass_result: FirstPassResult,
+    expressions: []*const Expression,
+    visited: []bool,
+    results: []CodeGenResult,
+    self_module_index: usize,
+    module_index: usize,
+    allocator: *std.mem.Allocator,
+) GenError!void {
     if (visited[module_index]) {
         return;
     }
@@ -440,7 +449,11 @@ fn codegenVisit(source: Source, first_pass_result: FirstPassResult, expressions:
     const module = first_pass_result.modules[module_index];
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
     for (fields) |field, field_index| {
-        try codegenVisit(source, first_pass_result, expressions, visited, results, field.resolved_module_index, allocator);
+        if (field.resolved_module_index == self_module_index) {
+            return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
+        }
+
+        try codegenVisit(source, first_pass_result, expressions, visited, results, self_module_index, field.resolved_module_index, allocator);
     }
 
     // now resolve this one

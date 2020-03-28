@@ -248,30 +248,5 @@ fn resolveFieldTypes(source: Source, modules: []const Module, module_fields: []M
         }
     }
 
-    // check for circular dependencies.
-    // TODO - this may not be necessary here. i have to visit the modules in dependency order
-    // in the second pass (because of num_temps), so maybe i should do this check there instead,
-    // instead of doing the work in both places
-    for (modules) |module, module_index| {
-        const fields = module_fields[module.first_field .. module.first_field + module.num_fields];
-
-        for (fields) |field| {
-            try checkForCircularDependencies(source, modules, module_fields, module_index, field, field);
-        }
-    }
-}
-
-fn checkForCircularDependencies(source: Source, modules: []const Module, module_fields: []const ModuleField, self_module_index: usize, original_field: ModuleField, field: ModuleField) error{Failed}!void {
-    const inner_module_index = field.resolved_module_index;
-
-    if (inner_module_index == self_module_index) {
-        return fail(source, original_field.type_token.source_range, "circular dependency in module fields", .{});
-    }
-
-    const inner_module = modules[inner_module_index];
-    const inner_fields = module_fields[inner_module.first_field .. inner_module.first_field + inner_module.num_fields];
-
-    for (inner_fields) |inner_field| {
-        try checkForCircularDependencies(source, modules, module_fields, self_module_index, original_field, inner_field);
-    }
+    // we will check for circular dependencies (through the fields) in the second pass.
 }
