@@ -6,12 +6,13 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
-const ModuleField = @import("first_pass.zig").ModuleField;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
+const GenError = @import("codegen.zig").GenError;
 const codegen = @import("codegen.zig").codegen;
 const builtins = @import("builtins.zig").builtins;
+const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
 
 pub const CallArg = struct {
     arg_name: []const u8,
@@ -385,86 +386,65 @@ pub fn secondPass(
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
 ) ![]const CodeGenResult {
-    var code_gen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
+    // parse paint expressions
+    var expressions = try allocator.alloc(*const Expression, first_pass_result.modules.len - builtins.len);
+    defer allocator.free(expressions);
 
     for (first_pass_result.modules) |module, i| {
         if (i < builtins.len) {
-            code_gen_results[i] = .{
-                .instructions = undefined, // FIXME - should be null
-                .num_outputs = builtins[i].num_outputs,
-                .num_temps = builtins[i].num_temps,
-            };
             continue;
         }
 
         const expression = try paintBlock(allocator, source, tokens, first_pass_result, module, i);
 
-        printModule(first_pass_result, module, expression, 1);
+        expressions[i - builtins.len] = expression;
 
-        // we need to pass the (being mutated) code_gen_results array to this function, because
-        // codegen'ing one module needs to know the num_temps of any module that it calls, and
-        // codegen is where we actually figure out what num_temps is
-        // TODO move this outside the loop (store the expressions in a temporary list).
-        // we need to be able to bounce around between modules based on dependencies.
-        code_gen_results[i] = try codegen(source, code_gen_results, first_pass_result, i, expression, allocator);
+        // diagnostic print
+        secondPassPrintModule(first_pass_result, module, expression, 1);
     }
 
-    return code_gen_results;
+    // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
+    // this has to be done in "dependency order", since a module needs to know the num_temps of its fields
+    // before it can figure out its own num_temps.
+    // codegen_visited tracks which modules we have visited so far.
+    var codegen_visited = try allocator.alloc(bool, first_pass_result.modules.len);
+    defer allocator.free(codegen_visited);
+    std.mem.set(bool, codegen_visited, false);
+
+    var codegen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
+
+    for (first_pass_result.modules) |module, i| {
+        if (i < builtins.len) {
+            codegen_results[i] = .{
+                .instructions = undefined, // FIXME - should be null
+                .num_outputs = builtins[i].num_outputs,
+                .num_temps = builtins[i].num_temps,
+            };
+            codegen_visited[i] = true;
+            continue;
+        }
+
+        try codegenVisit(source, first_pass_result, expressions, codegen_visited, codegen_results, i, allocator);
+    }
+
+    return codegen_results;
 }
 
-fn printModule(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
+// resolve a module
+fn codegenVisit(source: Source, first_pass_result: FirstPassResult, expressions: []*const Expression, visited: []bool, results: []CodeGenResult, module_index: usize, allocator: *std.mem.Allocator) GenError!void {
+    if (visited[module_index]) {
+        return;
+    }
+
+    // first, recursively resolve all modules that this one uses as its fields
+    const module = first_pass_result.modules[module_index];
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
+    for (fields) |field, field_index| {
+        try codegenVisit(source, first_pass_result, expressions, visited, results, field.resolved_module_index, allocator);
+    }
 
-    std.debug.warn("module '{}'\n", .{module.name});
-    for (fields) |field| {
-        std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
-    }
-    std.debug.warn("print expression:\n", .{});
-    printExpression(fields, expression, 1);
-}
-
-fn printExpression(fields: []const ModuleField, expression: *const Expression, indentation: usize) void {
-    var i: usize = 0;
-    while (i < indentation) : (i += 1) {
-        std.debug.warn("    ", .{});
-    }
-    switch (expression.inner) {
-        .call => |call| {
-            std.debug.warn("call self.{} (\n", .{fields[call.field_index].name});
-            for (call.args.span()) |arg| {
-                i = 0;
-                while (i < indentation + 1) : (i += 1) {
-                    std.debug.warn("    ", .{});
-                }
-                std.debug.warn("{}:\n", .{arg.arg_name});
-                printExpression(fields, arg.value, indentation + 2);
-            }
-            i = 0;
-            while (i < indentation) : (i += 1) {
-                std.debug.warn("    ", .{});
-            }
-            std.debug.warn(")\n", .{});
-        },
-        .literal => |literal| {
-            switch (literal) {
-                .boolean => |v| std.debug.warn("{}\n", .{v}),
-                .constant => |v| std.debug.warn("{d}\n", .{v}),
-                .constant_or_buffer => unreachable,
-            }
-        },
-        .self_param => |param_index| {
-            std.debug.warn("${}\n", .{param_index});
-        },
-        .binary_arithmetic => |m| {
-            switch (m.operator) {
-                .add => std.debug.warn("add\n", .{}),
-                .multiply => std.debug.warn("multiply\n", .{}),
-            }
-            printExpression(fields, m.a, indentation + 1);
-            printExpression(fields, m.b, indentation + 1);
-        },
-        .nothing => {
-            std.debug.warn("(nothing)\n", .{});
-        },
-    }
+    // now resolve this one
+    const expression = expressions[module_index - builtins.len];
+    results[module_index] = try codegen(source, results, first_pass_result, module_index, expression, allocator);
+    visited[module_index] = true;
 }

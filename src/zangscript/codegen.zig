@@ -97,7 +97,7 @@ const CodegenState = struct {
     num_temp_bools: usize,
 };
 
-const GenError = error{
+pub const GenError = error{
     Failed,
     OutOfMemory,
 };
