@@ -52,7 +52,6 @@ git submodule update
 ## Features
 Modules:
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
-* DC: just a way to paint incoming note frequencies into a buffer
 * Decimator: imitate a lower sample rate
 * Distortion: overdrive/clip the input sound
 * Envelope: ADSR (attack, decay, sustain, release) envelope generator
