@@ -430,7 +430,6 @@ pub fn secondPass(
     return codegen_results;
 }
 
-// resolve a module
 fn codegenVisit(
     source: Source,
     first_pass_result: FirstPassResult,
@@ -444,6 +443,8 @@ fn codegenVisit(
     if (visited[module_index]) {
         return;
     }
+
+    visited[module_index] = true;
 
     // first, recursively resolve all modules that this one uses as its fields
     const module = first_pass_result.modules[module_index];
@@ -459,5 +460,4 @@ fn codegenVisit(
     // now resolve this one
     const expression = expressions[module_index - builtins.len];
     results[module_index] = try codegen(source, results, first_pass_result, module_index, expression, allocator);
-    visited[module_index] = true;
 }
