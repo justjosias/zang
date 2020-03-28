@@ -37,14 +37,12 @@ pub const Instrument = struct {
         note_on: bool,
     };
 
-    dc: zang.DC,
     osc: zang.TriSawOsc,
     env: zang.Envelope,
     main_filter: zang.Filter,
 
     pub fn init() Instrument {
         return .{
-            .dc = zang.DC.init(),
             .osc = zang.TriSawOsc.init(),
             .env = zang.Envelope.init(),
             .main_filter = zang.Filter.init(),
@@ -59,7 +57,8 @@ pub const Instrument = struct {
         note_id_changed: bool,
         params: Params,
     ) void {
-        var i: usize = span.start; while (i < span.end) : (i += 1) {
+        var i: usize = span.start;
+        while (i < span.end) : (i += 1) {
             temps[0][i] = params.freq *
                 std.math.pow(f32, 2.0, params.freq_warble[i]);
         }
@@ -154,7 +153,7 @@ pub const OuterInstrument = struct {
         self.inner.paint(
             span,
             outputs,
-            .{temps[1], temps[2], temps[3]},
+            .{ temps[1], temps[2], temps[3] },
             note_id_changed,
             .{
                 .sample_rate = params.sample_rate,
@@ -209,7 +208,7 @@ pub const MainModule = struct {
                 self.outer.paint(
                     result.span,
                     .{temps[0]},
-                    .{temps[1], temps[2], temps[3], temps[4]},
+                    .{ temps[1], temps[2], temps[3], temps[4] },
                     result.note_id_changed,
                     result.params,
                 );
@@ -226,7 +225,7 @@ pub const MainModule = struct {
         self.echoes.paint(
             span,
             outputs,
-            .{temps[1], temps[2], temps[3], temps[4]},
+            .{ temps[1], temps[2], temps[3], temps[4] },
             .{
                 .input = temps[0],
                 .feedback_volume = 0.6,
