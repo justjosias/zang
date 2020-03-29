@@ -52,9 +52,9 @@ pub fn printBytecode(self: *CodegenState) void {
 
     std.debug.warn("module '{}'\n", .{self_module.name});
 
-    std.debug.warn("    num_temps: {}\n", .{self.num_temps});
-    std.debug.warn("    num_temp_floats: {}\n", .{self.num_temp_floats});
-    std.debug.warn("    num_temp_bools: {}\n", .{self.num_temp_bools});
+    std.debug.warn("    num_temps: {}\n", .{self.temp_buffers.finalCount()});
+    std.debug.warn("    num_temp_floats: {}\n", .{self.temp_floats.finalCount()});
+    std.debug.warn("    num_temp_bools: {}\n", .{self.temp_bools.finalCount()});
 
     std.debug.warn("bytecode:\n", .{});
     for (instructions) |instr| {
@@ -97,7 +97,7 @@ pub fn printBytecode(self: *CodegenState) void {
                     callee_module.name,
                 });
                 std.debug.warn("        temps: [", .{});
-                for (call.temps.span()) |temp, i| {
+                for (call.temps) |temp, i| {
                     if (i > 0) std.debug.warn(", ", .{});
                     std.debug.warn("temp{}", .{temp});
                 }

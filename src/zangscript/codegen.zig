@@ -23,6 +23,7 @@ const printBytecode = @import("codegen_print.zig").printBytecode;
 // as well since i don't have a lot of performance requirements for script mode.)
 
 // expression will return how it stored its result.
+// if it's a temp, the caller needs to make sure to release it.
 pub const ExpressionResult = union(enum) {
     temp_buffer: usize,
     temp_float: usize,
@@ -38,9 +39,9 @@ pub const InstrCall = struct {
     // which field of the "self" module we are calling
     field_index: usize,
     // list of temp buffers passed along for the callee's internal use, dependency injection style
-    temps: std.ArrayList(usize),
+    temps: []const usize,
     // list of argument param values (in the order of the callee module's params)
-    args: []ExpressionResult,
+    args: []const ExpressionResult,
 };
 
 pub const FloatValue = union(enum) {
@@ -102,9 +103,9 @@ pub const CodegenState = struct {
     codegen_results: []const CodeGenResult,
     module_index: usize,
     instructions: std.ArrayList(Instruction),
-    num_temps: usize,
-    num_temp_floats: usize,
-    num_temp_bools: usize,
+    temp_buffers: TempManager,
+    temp_floats: TempManager,
+    temp_bools: TempManager,
 };
 
 pub const GenError = error{
@@ -152,10 +153,61 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
     }
 }
 
+const TempManager = struct {
+    desc: []const u8,
+    slot_claimed: std.ArrayList(bool),
+
+    fn init(desc: []const u8, allocator: *std.mem.Allocator) TempManager {
+        return .{
+            .desc = desc,
+            .slot_claimed = std.ArrayList(bool).init(allocator),
+        };
+    }
+
+    fn deinit(self: *TempManager) void {
+        // check for leaks
+        for (self.slot_claimed.span()) |in_use| {
+            std.debug.assert(!in_use);
+        }
+        self.slot_claimed.deinit();
+    }
+
+    fn claim(self: *TempManager) !usize {
+        for (self.slot_claimed.span()) |*in_use, index| {
+            if (!in_use.*) {
+                in_use.* = true;
+                return index;
+            }
+        }
+        const index = self.slot_claimed.len;
+        try self.slot_claimed.append(true);
+        return index;
+    }
+
+    fn release(self: *TempManager, index: usize) void {
+        std.debug.assert(self.slot_claimed.span()[index]);
+        self.slot_claimed.span()[index] = false;
+    }
+
+    fn finalCount(self: *const TempManager) usize {
+        return self.slot_claimed.len;
+    }
+};
+
 // TODO eventually, genExpression should gain an optional parameter 'result_location' which is the lvalue of an assignment,
 // if applicable. for example when setting the module's output, we don't want it to generate a temp which then has to be
 // copied into the output. we want it to write straight to the output.
 // but this is just an optimization and can be done later.
+
+fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
+    switch (result) {
+        .temp_buffer => |i| self.temp_buffers.release(i),
+        .temp_float => |i| self.temp_floats.release(i),
+        .temp_bool => |i| self.temp_bools.release(i),
+        .literal => {},
+        .self_param => {},
+    }
+}
 
 // generate bytecode instructions for an expression.
 fn genExpression(self: *CodegenState, expression: *const Expression) GenError!ExpressionResult {
@@ -168,12 +220,13 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
         },
         .bin_arith => |m| {
             const ra = try genExpression(self, m.a);
+            defer releaseExpressionResult(self, ra);
             const rb = try genExpression(self, m.b);
+            defer releaseExpressionResult(self, rb);
             // float * float -> float
             if (getFloatValue(self, ra)) |a| {
                 if (getFloatValue(self, rb)) |b| {
-                    const temp_float_index = self.num_temp_floats;
-                    self.num_temp_floats += 1;
+                    const temp_float_index = try self.temp_floats.claim();
                     try self.instructions.append(.{
                         .arith_float_float = .{
                             .operator = m.op,
@@ -188,8 +241,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
             // buffer * float -> buffer
             if (getBufferValue(self, ra)) |a| {
                 if (getFloatValue(self, rb)) |b| {
-                    const temp_buffer_index = self.num_temps;
-                    self.num_temps += 1;
+                    const temp_buffer_index = try self.temp_buffers.claim();
                     try self.instructions.append(.{
                         .arith_buffer_float = .{
                             .operator = m.op,
@@ -204,8 +256,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
             // float * buffer -> buffer (swap it to buffer * float)
             if (getFloatValue(self, ra)) |a| {
                 if (getBufferValue(self, rb)) |b| {
-                    const temp_buffer_index = self.num_temps;
-                    self.num_temps += 1;
+                    const temp_buffer_index = try self.temp_buffers.claim();
                     try self.instructions.append(.{
                         .arith_buffer_float = .{
                             .operator = m.op,
@@ -220,8 +271,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
             // buffer * buffer -> buffer
             if (getBufferValue(self, ra)) |a| {
                 if (getBufferValue(self, rb)) |b| {
-                    const temp_buffer_index = self.num_temps;
-                    self.num_temps += 1;
+                    const temp_buffer_index = try self.temp_buffers.claim();
                     try self.instructions.append(.{
                         .arith_buffer_buffer = .{
                             .operator = m.op,
@@ -247,23 +297,19 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
             const callee_module = self.first_pass_result.modules[field.resolved_module_index];
             const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
 
-            var icall: InstrCall = .{
-                .out_temp_buffer_index = self.num_temps,
-                .field_index = call.field_index,
-                .temps = std.ArrayList(usize).init(self.allocator),
-                .args = try self.allocator.alloc(ExpressionResult, callee_params.len),
-            };
-            // TODO deinit
-            self.num_temps += 1;
-
             // the callee needs temps for its own internal use
-            var i: usize = 0;
-            while (i < callee_num_temps) : (i += 1) {
-                try icall.temps.append(self.num_temps);
-                self.num_temps += 1;
+            var temps = try self.allocator.alloc(usize, callee_num_temps); // TODO free this somewhere
+            for (temps) |*ptr| {
+                ptr.* = try self.temp_buffers.claim();
+            }
+            defer {
+                for (temps) |temp_buffer_index| {
+                    self.temp_buffers.release(temp_buffer_index);
+                }
             }
 
             // pass params
+            var args = try self.allocator.alloc(ExpressionResult, callee_params.len); // TODO free this somewhere
             for (callee_params) |param, j| {
                 // find this arg in the call node. (they are not necessarily in the same order)
                 const arg = for (call.args.span()) |a| {
@@ -305,8 +351,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                             },
                         };
                         if (ok == .convert) {
-                            const temp_buffer_index = self.num_temps;
-                            self.num_temps += 1;
+                            const temp_buffer_index = try self.temp_buffers.claim();
                             try self.instructions.append(.{
                                 .float_to_buffer = .{
                                     .out_temp_buffer_index = temp_buffer_index,
@@ -321,6 +366,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                                     },
                                 },
                             });
+                            releaseExpressionResult(self, arg_result);
                             arg_result = .{ .temp_buffer = temp_buffer_index };
                         }
                         if (ok == .invalid) {
@@ -358,12 +404,25 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                     },
                 }
 
-                icall.args[j] = arg_result;
+                args[j] = arg_result;
             }
 
-            try self.instructions.append(.{ .call = icall });
+            const out_temp_buffer_index = try self.temp_buffers.claim();
 
-            return ExpressionResult{ .temp_buffer = icall.out_temp_buffer_index };
+            try self.instructions.append(.{
+                .call = .{
+                    .out_temp_buffer_index = out_temp_buffer_index,
+                    .field_index = call.field_index,
+                    .temps = temps,
+                    .args = args,
+                },
+            });
+
+            for (callee_params) |param, j| {
+                defer releaseExpressionResult(self, args[j]);
+            }
+
+            return ExpressionResult{ .temp_buffer = out_temp_buffer_index };
         },
     }
 }
@@ -374,8 +433,8 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
             try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
         },
         .temp_float => |i| {
-            const temp_buffer_index = self.num_temps;
-            self.num_temps += 1;
+            const temp_buffer_index = try self.temp_buffers.claim();
+            defer self.temp_buffers.release(temp_buffer_index);
             try self.instructions.append(.{
                 .float_to_buffer = .{
                     .out_temp_buffer_index = temp_buffer_index,
@@ -388,8 +447,8 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
         .literal => |literal| switch (literal) {
             .boolean => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
             .number => |n| {
-                const temp_buffer_index = self.num_temps;
-                self.num_temps += 1;
+                const temp_buffer_index = try self.temp_buffers.claim();
+                defer self.temp_buffers.release(temp_buffer_index);
                 try self.instructions.append(.{
                     .float_to_buffer = .{
                         .out_temp_buffer_index = temp_buffer_index,
@@ -408,8 +467,8 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
                     try self.instructions.append(.{ .output = .{ .value = .{ .self_param = i } } });
                 },
                 .constant => {
-                    const temp_buffer_index = self.num_temps;
-                    self.num_temps += 1;
+                    const temp_buffer_index = try self.temp_buffers.claim();
+                    defer self.temp_buffers.release(temp_buffer_index);
                     try self.instructions.append(.{
                         .float_to_buffer = .{
                             .out_temp_buffer_index = temp_buffer_index,
@@ -439,11 +498,14 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
         .codegen_results = codegen_results,
         .module_index = module_index,
         .instructions = std.ArrayList(Instruction).init(allocator),
-        .num_temps = 0,
-        .num_temp_floats = 0,
-        .num_temp_bools = 0,
+        .temp_buffers = TempManager.init("buffer", allocator),
+        .temp_floats = TempManager.init("float", allocator),
+        .temp_bools = TempManager.init("bool", allocator),
     };
     errdefer self.instructions.deinit();
+    defer self.temp_buffers.deinit();
+    defer self.temp_floats.deinit();
+    defer self.temp_bools.deinit();
 
     // generate code for the main expression
     const result = try genExpression(&self, expression);
@@ -452,12 +514,15 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
     // (later i'll implement some kind of result-location thing so genExpression can write directly to the output)
     try genOutputInstruction(&self, expression.source_range, result);
 
+    // release the main expression's temp (if applicable)
+    releaseExpressionResult(&self, result);
+
     // diagnostic print
     printBytecode(&self);
 
     return CodeGenResult{
         .num_outputs = 1,
-        .num_temps = self.num_temps,
+        .num_temps = self.temp_buffers.finalCount(),
         .instructions = self.instructions.toOwnedSlice(),
     };
 }
