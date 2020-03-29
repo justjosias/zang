@@ -1,6 +1,7 @@
 const std = @import("std");
 const zang = @import("zang");
 const ModuleParam = @import("first_pass.zig").ModuleParam;
+const ParamTypeEnum = @import("first_pass.zig").ParamTypeEnum;
 
 pub const BuiltinModule = struct {
     name: []const u8,
@@ -9,6 +10,17 @@ pub const BuiltinModule = struct {
     num_temps: usize,
     num_outputs: usize,
 };
+
+fn getBuiltinEnum(comptime T: type) ParamTypeEnum {
+    comptime var values: [@typeInfo(T).Enum.fields.len][]const u8 = undefined;
+    inline for (@typeInfo(T).Enum.fields) |field, i| {
+        values[i] = field.name;
+    }
+    return .{
+        .zig_name = "zang." ++ @typeName(T),
+        .values = &values,
+    };
+}
 
 fn getBuiltinModule(comptime T: type) BuiltinModule {
     comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
@@ -21,6 +33,7 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
                 f32 => .constant,
                 []const f32 => .buffer,
                 zang.ConstantOrBuffer => .constant_or_buffer,
+                zang.DistortionType, zang.FilterType => .{ .one_of = getBuiltinEnum(field.field_type) },
                 else => @compileError("unsupported builtin field type: " ++ @typeName(field.field_type)),
             },
         };
@@ -36,10 +49,10 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
 
 pub const builtins = [_]BuiltinModule{
     // zang.Curve
-    // zang.Decimator
-    // zang.Distortion
+    getBuiltinModule(zang.Decimator),
+    getBuiltinModule(zang.Distortion),
     // zang.Envelope
-    // zang.Filter
+    getBuiltinModule(zang.Filter),
     getBuiltinModule(zang.Gate),
     getBuiltinModule(zang.Noise),
     // zang.Portamento

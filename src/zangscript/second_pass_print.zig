@@ -48,6 +48,7 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
             switch (literal) {
                 .boolean => |v| std.debug.warn("{}\n", .{v}),
                 .number => |v| std.debug.warn("{d}\n", .{v}),
+                .enum_value => |str| std.debug.warn("'{}'\n", .{str}),
             }
         },
         .self_param => |param_index| {

@@ -21,6 +21,7 @@ pub const TokenType = enum {
     kw_param,
     kw_true,
     identifier,
+    enum_value,
     number,
 };
 
@@ -124,6 +125,20 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == ';') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_semicolon);
+            continue;
+        }
+        if (src[loc.index] == '\'') {
+            loc.index += 1;
+            const start2 = loc;
+            while (loc.index < src.len and src[loc.index] != '\'') {
+                loc.index += 1;
+            }
+            if (loc.index == src.len) {
+                return fail(tokenizer.source, null, "expected `'`, found end of file", .{});
+            }
+            // TODO check value for illegal characters (e.g. newlines)
+            try addToken(tokenizer, start2, loc, .enum_value);
+            loc.index += 1;
             continue;
         }
         if (src[loc.index] >= '0' and src[loc.index] <= '9') {

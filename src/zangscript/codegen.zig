@@ -308,10 +308,17 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
 
             // pass params
             var args = try self.allocator.alloc(ExpressionResult, callee_params.len); // TODO free this somewhere
-            for (callee_params) |param, j| {
+            var args_filled: usize = 0;
+            errdefer {
+                var i: usize = 0;
+                while (i < args_filled) : (i += 1) {
+                    releaseExpressionResult(self, args[i]);
+                }
+            }
+            for (callee_params) |param, i| {
                 // find this arg in the call node. (they are not necessarily in the same order)
                 const arg = for (call.args.span()) |a| {
-                    if (a.callee_param_index == j) {
+                    if (a.callee_param_index == i) {
                         break a;
                     }
                 } else unreachable; // we already checked for missing params in second_pass
@@ -400,9 +407,31 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                             return fail(self.source, arg.value.source_range, "expected constant or waveform value", .{});
                         }
                     },
+                    .one_of => |e| {
+                        const ok = switch (arg_result) {
+                            // enum values can only exist as literals
+                            .literal => |literal| switch (literal) {
+                                .enum_value => |str| for (e.values) |allowed_value| {
+                                    if (std.mem.eql(u8, allowed_value, str)) {
+                                        break true;
+                                    }
+                                } else {
+                                    // TODO list the allowed enum values
+                                    return fail(self.source, arg.value.source_range, "not one of the allowed enum values", .{});
+                                },
+                                else => false,
+                            },
+                            else => false,
+                        };
+                        if (!ok) {
+                            // TODO list the allowed enum values
+                            return fail(self.source, arg.value.source_range, "expected enum value", .{});
+                        }
+                    },
                 }
 
-                args[j] = arg_result;
+                args[i] = arg_result;
+                args_filled += 1;
             }
 
             const out_temp_buffer_index = try self.temp_buffers.claim();
@@ -416,8 +445,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                 },
             });
 
-            for (callee_params) |param, j| {
-                defer releaseExpressionResult(self, args[j]);
+            for (callee_params) |param, i| {
+                releaseExpressionResult(self, args[i]);
             }
 
             return ExpressionResult{ .temp_buffer = out_temp_buffer_index };
@@ -455,6 +484,7 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
                 });
                 try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = temp_buffer_index } } });
             },
+            .enum_value => return fail(self.source, source_range, "paint block cannot return an enum value", .{}),
         },
         .self_param => |i| {
             const module = self.first_pass_result.modules[self.module_index];
@@ -476,6 +506,7 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
                     try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = temp_buffer_index } } });
                 },
                 .constant_or_buffer => unreachable, // impossible
+                .one_of => unreachable, // impossible
             }
         },
     }

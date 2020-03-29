@@ -13,6 +13,7 @@ fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) vo
             switch (literal) {
                 .boolean => |value| std.debug.warn("{}", .{value}),
                 .number => |value| std.debug.warn("{d}", .{value}),
+                .enum_value => |str| std.debug.warn("'{}'", .{str}),
             }
         },
         .self_param => |i| {

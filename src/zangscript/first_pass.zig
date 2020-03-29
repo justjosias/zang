@@ -5,7 +5,12 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const builtins = @import("builtins.zig").builtins;
 
-pub const ParamType = enum {
+pub const ParamTypeEnum = struct {
+    zig_name: []const u8,
+    values: []const []const u8,
+};
+
+pub const ParamType = union(enum) {
     boolean,
     buffer,
     constant,
@@ -16,6 +21,9 @@ pub const ParamType = enum {
     // or-buffer params, there would be 2^3 = 8 paint methods).
     // that's going to be a pain, so forget about it for now.
     constant_or_buffer,
+
+    // script modules also cannot use this
+    one_of: ParamTypeEnum,
 };
 
 pub const ModuleParam = struct {

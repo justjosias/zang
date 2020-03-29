@@ -16,6 +16,7 @@ fn printExpressionResult(first_pass_result: FirstPassResult, module: Module, out
             switch (literal) {
                 .boolean => |value| try out.print("{}", .{value}),
                 .number => |value| try out.print("{d}", .{value}),
+                .enum_value => |str| try out.print(".{}", .{str}),
             }
         },
         .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
@@ -60,6 +61,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 .buffer => "[]const f32",
                 .constant => "f32",
                 .constant_or_buffer => "zang.ConstantOrBuffer",
+                .one_of => |e| e.zig_name,
             };
             try out.print("        {}: {},\n", .{ param.name, type_name });
         }
@@ -155,6 +157,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                                     switch (literal) {
                                         .boolean => unreachable,
                                         .number => |value| try out.print("zang.constant({d})", .{value}),
+                                        .enum_value => unreachable,
                                     }
                                 },
                                 .self_param => |index| {
@@ -164,6 +167,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                                         .buffer => try out.print("zang.buffer(params.{})", .{param.name}),
                                         .constant => try out.print("zang.constant(params.{})", .{param.name}),
                                         .constant_or_buffer => try out.print("params.{}", .{param.name}),
+                                        .one_of => unreachable,
                                     }
                                 },
                             }

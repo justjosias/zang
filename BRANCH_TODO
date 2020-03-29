@@ -1,1 +1,1 @@
-first goal is to have a script module that simply calls a builtin module with literals for all the param values, and it actually paints.
+- zig API where you can pass a pack of custom builtin functions to be available to a script. maybe you access them by a prefix (module name) in the script, maybe they're just all in the global namespace along with the native builtins.

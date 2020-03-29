@@ -10,14 +10,22 @@ def Instrument:
 
     osc PulseOsc;
     mod SineOsc;
+    dist Distortion;
 begin
-    * 0.7 @osc(
-        color: $color,
-        sample_rate: $sample_rate,
-        freq:
-            * $freq
-                + 1
-                    * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
+    @dist(
+        ingain: 0.25,
+        outgain: 0.5,
+        offset: 0,
+        distortion_type: 'overdrive',
+        input:
+            * 0.7 @osc(
+                color: $color,
+                sample_rate: $sample_rate,
+                freq:
+                    * $freq
+                        + 1
+                            * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
+            )
     )
 end
 

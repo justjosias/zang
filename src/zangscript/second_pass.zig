@@ -48,10 +48,10 @@ pub const Expression = struct {
     inner: ExpressionInner,
 };
 
-// literals have their own datatypes...
 pub const Literal = union(enum) {
     boolean: bool,
     number: f32,
+    enum_value: []const u8,
 };
 
 const SecondPass = struct {
@@ -201,6 +201,10 @@ fn expectExpression(self: *SecondPass) ParseError!*const Expression {
                 return fail(self.parser.source, token.source_range, "malformatted number", .{});
             };
             return try createExpr(self, loc0, .{ .literal = .{ .number = n } });
+        },
+        .enum_value => {
+            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            return try createExpr(self, loc0, .{ .literal = .{ .enum_value = s } });
         },
         .sym_dollar => {
             const self_param = try parseSelfParam(self);
