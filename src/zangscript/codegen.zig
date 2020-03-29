@@ -154,12 +154,10 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
 }
 
 const TempManager = struct {
-    desc: []const u8,
     slot_claimed: std.ArrayList(bool),
 
-    fn init(desc: []const u8, allocator: *std.mem.Allocator) TempManager {
+    fn init(allocator: *std.mem.Allocator) TempManager {
         return .{
-            .desc = desc,
             .slot_claimed = std.ArrayList(bool).init(allocator),
         };
     }
@@ -498,9 +496,9 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
         .codegen_results = codegen_results,
         .module_index = module_index,
         .instructions = std.ArrayList(Instruction).init(allocator),
-        .temp_buffers = TempManager.init("buffer", allocator),
-        .temp_floats = TempManager.init("float", allocator),
-        .temp_bools = TempManager.init("bool", allocator),
+        .temp_buffers = TempManager.init(allocator),
+        .temp_floats = TempManager.init(allocator),
+        .temp_bools = TempManager.init(allocator),
     };
     errdefer self.instructions.deinit();
     defer self.temp_buffers.deinit();
