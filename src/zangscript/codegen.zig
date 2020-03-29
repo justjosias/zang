@@ -265,10 +265,9 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
 
             // pass params
             for (callee_params) |param, j| {
-                // find this arg in the call node. (not necessarily in the same order.)
-                // FIXME - second_pass can return the param_index, not the name.
+                // find this arg in the call node. (they are not necessarily in the same order)
                 const arg = for (call.args.span()) |a| {
-                    if (std.mem.eql(u8, a.arg_name, param.name)) {
+                    if (a.callee_param_index == j) {
                         break a;
                     }
                 } else unreachable; // we already checked for missing params in second_pass

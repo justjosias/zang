@@ -12,25 +12,31 @@ pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module,
         std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
     }
     std.debug.warn("expression:\n", .{});
-    printExpression(fields, expression, 1);
+    printExpression(first_pass_result, module, expression, 1);
     std.debug.warn("\n", .{});
 }
 
-fn printExpression(fields: []const ModuleField, expression: *const Expression, indentation: usize) void {
+fn printExpression(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
+    const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
+
     var i: usize = 0;
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});
     }
     switch (expression.inner) {
         .call => |call| {
-            std.debug.warn("call self.{} (\n", .{fields[call.field_index].name});
+            const field = fields[call.field_index];
+            const callee_module = first_pass_result.modules[field.resolved_module_index];
+            std.debug.warn("call self.{} (\n", .{field.name});
             for (call.args.span()) |arg| {
                 i = 0;
                 while (i < indentation + 1) : (i += 1) {
                     std.debug.warn("    ", .{});
                 }
-                std.debug.warn("{}:\n", .{arg.arg_name});
-                printExpression(fields, arg.value, indentation + 2);
+                std.debug.warn("{}:\n", .{
+                    first_pass_result.module_params[callee_module.first_param + arg.callee_param_index].name,
+                });
+                printExpression(first_pass_result, module, arg.value, indentation + 2);
             }
             i = 0;
             while (i < indentation) : (i += 1) {
@@ -52,8 +58,8 @@ fn printExpression(fields: []const ModuleField, expression: *const Expression, i
                 .add => std.debug.warn("add\n", .{}),
                 .mul => std.debug.warn("mul\n", .{}),
             }
-            printExpression(fields, m.a, indentation + 1);
-            printExpression(fields, m.b, indentation + 1);
+            printExpression(first_pass_result, module, m.a, indentation + 1);
+            printExpression(first_pass_result, module, m.b, indentation + 1);
         },
     }
 }

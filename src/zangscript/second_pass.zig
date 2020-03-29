@@ -16,7 +16,7 @@ const builtins = @import("builtins.zig").builtins;
 const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
 
 pub const CallArg = struct {
-    arg_name: []const u8,
+    callee_param_index: usize,
     value: *const Expression,
 };
 
@@ -75,7 +75,6 @@ fn parseSelfParam(self: *SecondPass) !usize {
             break i;
         }
     } else return fail(self.parser.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
-    // TODO type check?
     return param_index;
 }
 
@@ -90,64 +89,21 @@ fn parseCallArg(self: *SecondPass, field_name: []const u8, callee_params: []cons
     switch (token.tt) {
         .identifier => {
             const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            // find this param
-            var param_index: usize = undefined;
-            for (callee_params) |param, i| {
+            const param_index = for (callee_params) |param, i| {
                 if (std.mem.eql(u8, param.name, identifier)) {
-                    param_index = i;
-                    break;
+                    break i;
                 }
             } else {
                 return fail(self.parser.source, token.source_range, "module `#` has no param called `%`", .{ field_name, token.source_range });
-            }
+            };
             const param_type = callee_params[param_index].param_type;
-
-            const token2 = try self.parser.expect();
-            if (token2.tt != .sym_colon) {
-                return fail(self.parser.source, token2.source_range, "expected `:`, found `%`", .{token2.source_range});
+            const colon_token = try self.parser.expect();
+            if (colon_token.tt != .sym_colon) {
+                return fail(self.parser.source, colon_token.source_range, "expected `:`, found `%`", .{colon_token.source_range});
             }
             const subexpr = try expectExpression(self);
-            // type check!
-            // FIXME is this right place to do type checking?
-            // it could also be done in codegen. there are pros and cons to both...
-            // - typecheck in second_pass
-            //     - pro: could generate new AST instructions for things like implicit conversions
-            //     - con: both second_pass and codegen have huge instruction sets
-            //     - con: codegen still needs a lot of switch statements that will end up with
-            //            `else => unreachable` where the types don't match?
-            // - typecheck in codegen
-            //     - pro: second_pass and its instruction set remains very simple
-            //     - con: i have no tokens to use for error messages
-            // or, i could keep the second_pass instruction set simple but still typecheck in
-            // the second pass. codegen kind of just assumes that it's been done
-            //const self_params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-            //const subexpr_type = try getExpressionType(self.parser.source, self_params, subexpr);
-            //switch (param_type) {
-            //    .boolean => {
-            //        if (subexpr_type != .boolean) {
-            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting boolean)", .{});
-            //        }
-            //    },
-            //    .buffer => {
-            //        // buffer will coerce to constant_or_buffer
-            //        if (subexpr_type != .buffer and subexpr_type != .constant_or_buffer) {
-            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting number)", .{});
-            //        }
-            //    },
-            //    .constant => {
-            //        if (subexpr_type != .constant) {
-            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting constant)", .{});
-            //        }
-            //    },
-            //    .constant_or_buffer => {
-            //        // constant will coerce to constant_or_buffer
-            //        if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
-            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting number)", .{});
-            //        }
-            //    },
-            //}
             return CallArg{
-                .arg_name = identifier,
+                .callee_param_index = param_index,
                 .value = subexpr,
             };
         },
@@ -174,10 +130,8 @@ fn parseCall(self: *SecondPass) ParseError!Call {
     };
     const field = self.first_pass_result.module_fields[self.module.first_field + field_index];
     // arguments
-    const callee_params = blk: {
-        const callee_module = self.first_pass_result.modules[field.resolved_module_index];
-        break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-    };
+    const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+    const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
     var token = try self.parser.expect();
     if (token.tt != .sym_left_paren) {
         return fail(self.parser.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
@@ -203,14 +157,12 @@ fn parseCall(self: *SecondPass) ParseError!Call {
         try args.append(arg);
     }
     // make sure all args are accounted for
-    for (callee_params) |param| {
-        var found = false;
+    for (callee_params) |param, param_index| {
         for (args.span()) |arg| {
-            if (std.mem.eql(u8, arg.arg_name, param.name)) {
-                found = true;
+            if (arg.callee_param_index == param_index) {
+                break;
             }
-        }
-        if (!found) {
+        } else {
             return fail(self.parser.source, token.source_range, "call is missing param `#`", .{param.name}); // TODO improve message
         }
     }
