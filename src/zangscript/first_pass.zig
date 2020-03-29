@@ -5,16 +5,23 @@ const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const builtins = @import("builtins.zig").builtins;
 
-pub const ResolvedParamType = enum {
+pub const ParamType = enum {
     boolean,
+    buffer,
     constant,
+
+    // script modules are disallowed from using this one, for now. only builtins can use it.
+    // implementing this would require generating (in zig) a separate copy of the paint method
+    // for every combination of params being constant or buffer (so if there were 3 constant-
+    // or-buffer params, there would be 2^3 = 8 paint methods).
+    // that's going to be a pain, so forget about it for now.
     constant_or_buffer,
 };
 
 pub const ModuleParam = struct {
     name: []const u8,
     type_token: ?Token, // null if this comes from a builtin module
-    param_type: ResolvedParamType,
+    param_type: ParamType,
 };
 
 pub const ModuleField = struct {
@@ -203,7 +210,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
 // this is the 1 1/2 pass - resolving the types of params and fields.
 
 const DataType = union(enum) {
-    param_type: ResolvedParamType,
+    param_type: ParamType,
     module_index: usize,
 };
 
@@ -212,9 +219,14 @@ fn parseDataType(source: Source, modules: []const Module, type_token: Token) !Da
     if (std.mem.eql(u8, type_name, "boolean")) {
         return DataType{ .param_type = .boolean };
     }
-    if (std.mem.eql(u8, type_name, "number")) {
+    if (std.mem.eql(u8, type_name, "constant")) {
         return DataType{ .param_type = .constant };
     }
+    if (std.mem.eql(u8, type_name, "waveform")) {
+        return DataType{ .param_type = .buffer };
+    }
+    // for now, script modules are not allowed to have ConstantOrBuffer params (the codegen of those is going
+    // to be tricky, see my comment in the ParamType enum).
     for (modules) |module, i| {
         if (std.mem.eql(u8, type_name, module.name)) {
             return DataType{ .module_index = i };

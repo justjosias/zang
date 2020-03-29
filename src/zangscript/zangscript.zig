@@ -66,7 +66,6 @@ pub fn main() u8 {
     const allocator = std.heap.page_allocator;
     const script = loadScript("../../script.txt", allocator) catch return 1;
     // TODO defer script deinit
-    // generate zig source
     generateZig(script.first_pass_result, script.code_gen_results) catch |err| {
         std.debug.warn("{}\n", .{err});
         return 1;

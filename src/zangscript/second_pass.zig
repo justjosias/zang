@@ -1,13 +1,14 @@
 const std = @import("std");
 const Parser = @import("common.zig").Parser;
 const Source = @import("common.zig").Source;
+const SourceLocation = @import("common.zig").SourceLocation;
 const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
-const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
+const ParamType = @import("first_pass.zig").ParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const GenError = @import("codegen.zig").GenError;
 const codegen = @import("codegen.zig").codegen;
@@ -24,8 +25,13 @@ pub const Call = struct {
     args: std.ArrayList(CallArg),
 };
 
-pub const BinaryArithmetic = struct {
-    operator: enum { add, multiply },
+pub const BinArithOp = enum {
+    add,
+    mul,
+};
+
+pub const BinArith = struct {
+    op: BinArithOp,
     a: *const Expression,
     b: *const Expression,
 };
@@ -34,8 +40,7 @@ pub const ExpressionInner = union(enum) {
     call: Call,
     literal: Literal,
     self_param: usize,
-    binary_arithmetic: BinaryArithmetic,
-    nothing,
+    bin_arith: BinArith,
 };
 
 pub const Expression = struct {
@@ -43,15 +48,10 @@ pub const Expression = struct {
     inner: ExpressionInner,
 };
 
-pub const Literal = union(ResolvedParamType) {
+// literals have their own datatypes...
+pub const Literal = union(enum) {
     boolean: bool,
-    constant: f32,
-    constant_or_buffer: void, // not allowed
-};
-
-const ParseError = error{
-    Failed,
-    OutOfMemory,
+    number: f32,
 };
 
 const SecondPass = struct {
@@ -63,39 +63,26 @@ const SecondPass = struct {
     module_index: usize,
 };
 
-// maybe type checking should be a distinct pass, between second_pass and codegen...
-pub fn getExpressionType(source: Source, self_params: []const ModuleParam, expression: *const Expression) error{Failed}!ResolvedParamType {
-    switch (expression.inner) {
-        .call => |call| {
-            return .constant_or_buffer; // FIXME?
-        },
-        .literal => |literal| {
-            return literal;
-        },
-        .self_param => |param_index| {
-            return self_params[param_index].param_type;
-        },
-        .binary_arithmetic => |x| {
-            // in binary math, we support any combination of floats and buffers.
-            // if there's at least one buffer operand, the result will also be a buffer
-            const a = try getExpressionType(source, self_params, x.a);
-            const b = try getExpressionType(source, self_params, x.b);
-            if (a == .constant and b == .constant) {
-                return .constant;
-            }
-            if ((a == .constant or a == .constant_or_buffer) and (b == .constant or b == .constant_or_buffer)) {
-                return .constant_or_buffer;
-            }
-            switch (x.operator) {
-                .add => return fail(source, expression.source_range, "illegal operand types for `+`: `&`, `&`", .{ a, b }),
-                .multiply => return fail(source, expression.source_range, "illegal operand types for `*`: `&`, `&`", .{ a, b }),
-            }
-        },
-        .nothing => {
-            unreachable;
-        },
-    }
+fn parseSelfParam(self: *SecondPass) !usize {
+    const name_token = try self.parser.expect();
+    const name = switch (name_token.tt) {
+        .identifier => self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
+        else => return fail(self.parser.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
+    };
+    const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+    const param_index = for (params) |param, i| {
+        if (std.mem.eql(u8, param.name, name)) {
+            break i;
+        }
+    } else return fail(self.parser.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
+    // TODO type check?
+    return param_index;
 }
+
+const ParseError = error{
+    Failed,
+    OutOfMemory,
+};
 
 // `module_def` is the module we're in (the "self").
 // we also need to know the module type of what we're calling, so we can look up its params
@@ -119,8 +106,7 @@ fn parseCallArg(self: *SecondPass, field_name: []const u8, callee_params: []cons
             if (token2.tt != .sym_colon) {
                 return fail(self.parser.source, token2.source_range, "expected `:`, found `%`", .{token2.source_range});
             }
-            const token3 = try self.parser.expect();
-            const subexpr = try parseExpression(self, token3);
+            const subexpr = try expectExpression(self);
             // type check!
             // FIXME is this right place to do type checking?
             // it could also be done in codegen. there are pros and cons to both...
@@ -134,26 +120,32 @@ fn parseCallArg(self: *SecondPass, field_name: []const u8, callee_params: []cons
             //     - con: i have no tokens to use for error messages
             // or, i could keep the second_pass instruction set simple but still typecheck in
             // the second pass. codegen kind of just assumes that it's been done
-            const self_params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-            const subexpr_type = try getExpressionType(self.parser.source, self_params, subexpr);
-            switch (param_type) {
-                .boolean => {
-                    if (subexpr_type != .boolean) {
-                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting boolean)", .{});
-                    }
-                },
-                .constant => {
-                    if (subexpr_type != .constant) {
-                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting constant)", .{});
-                    }
-                },
-                .constant_or_buffer => {
-                    // constant will coerce to constant_or_buffer
-                    if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
-                        return fail(self.parser.source, token3.source_range, "type mismatch (expecting number)", .{});
-                    }
-                },
-            }
+            //const self_params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+            //const subexpr_type = try getExpressionType(self.parser.source, self_params, subexpr);
+            //switch (param_type) {
+            //    .boolean => {
+            //        if (subexpr_type != .boolean) {
+            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting boolean)", .{});
+            //        }
+            //    },
+            //    .buffer => {
+            //        // buffer will coerce to constant_or_buffer
+            //        if (subexpr_type != .buffer and subexpr_type != .constant_or_buffer) {
+            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting number)", .{});
+            //        }
+            //    },
+            //    .constant => {
+            //        if (subexpr_type != .constant) {
+            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting constant)", .{});
+            //        }
+            //    },
+            //    .constant_or_buffer => {
+            //        // constant will coerce to constant_or_buffer
+            //        if (subexpr_type != .constant and subexpr_type != .constant_or_buffer) {
+            //            return fail(self.parser.source, subexpr.source_range, "type mismatch (expecting number)", .{});
+            //        }
+            //    },
+            //}
             return CallArg{
                 .arg_name = identifier,
                 .value = subexpr,
@@ -163,22 +155,6 @@ fn parseCallArg(self: *SecondPass, field_name: []const u8, callee_params: []cons
             return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
         },
     }
-}
-
-fn parseSelfParam(self: *SecondPass) ParseError!usize {
-    const name_token = try self.parser.expect();
-    const name = switch (name_token.tt) {
-        .identifier => self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
-        else => return fail(self.parser.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
-    };
-    const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-    const param_index = for (params) |param, i| {
-        if (std.mem.eql(u8, param.name, name)) {
-            break i;
-        }
-    } else return fail(self.parser.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
-    // TODO type check?
-    return param_index;
 }
 
 fn parseCall(self: *SecondPass) ParseError!Call {
@@ -244,97 +220,55 @@ fn parseCall(self: *SecondPass) ParseError!Call {
     };
 }
 
-fn parseExpression(self: *SecondPass, token: Token) ParseError!*const Expression {
+fn createExpr(self: *SecondPass, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
+    // you pass the location of the start of the expression. this function will use the parser's
+    // current location to set the expression's end location
+    const loc1 = if (self.parser.i == 0) loc0 else self.parser.tokens[self.parser.i - 1].source_range.loc1;
+    const expr = try self.allocator.create(Expression);
+    expr.* = .{
+        .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
+        .inner = inner,
+    };
+    return expr;
+}
+
+fn expectExpression(self: *SecondPass) ParseError!*const Expression {
+    const token = try self.parser.expect();
+    const loc0 = token.source_range.loc0;
+
     switch (token.tt) {
         .kw_false => {
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = token.source_range,
-                .inner = .{ .literal = .{ .boolean = false } },
-            };
-            return expr;
+            return try createExpr(self, loc0, .{ .literal = .{ .boolean = false } });
         },
         .kw_true => {
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = token.source_range,
-                .inner = .{ .literal = .{ .boolean = true } },
-            };
-            return expr;
+            return try createExpr(self, loc0, .{ .literal = .{ .boolean = true } });
         },
         .number => {
-            const n = std.fmt.parseFloat(f32, self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index]) catch {
+            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const n = std.fmt.parseFloat(f32, s) catch {
                 return fail(self.parser.source, token.source_range, "malformatted number", .{});
             };
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = token.source_range,
-                .inner = .{ .literal = .{ .constant = n } },
-            };
-            return expr;
+            return try createExpr(self, loc0, .{ .literal = .{ .number = n } });
         },
         .sym_dollar => {
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = .{
-                    .loc0 = token.source_range.loc0,
-                    .loc1 = expr.source_range.loc1,
-                },
-                .inner = .{ .self_param = try parseSelfParam(self) },
-            };
-            return expr;
+            const self_param = try parseSelfParam(self);
+            return try createExpr(self, loc0, .{ .self_param = self_param });
         },
         .sym_at => {
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = .{
-                    .loc0 = token.source_range.loc0,
-                    .loc1 = expr.source_range.loc1,
-                },
-                .inner = .{ .call = try parseCall(self) },
-            };
-            return expr;
+            const call = try parseCall(self);
+            return try createExpr(self, loc0, .{ .call = call });
         },
         .sym_plus => {
-            const a = try parseExpression(self, try self.parser.expect());
-            const b = try parseExpression(self, try self.parser.expect());
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = .{
-                    .loc0 = token.source_range.loc0,
-                    .loc1 = b.source_range.loc1,
-                },
-                .inner = .{
-                    .binary_arithmetic = .{
-                        .operator = .add,
-                        .a = a,
-                        .b = b,
-                    },
-                },
-            };
-            return expr;
+            const a = try expectExpression(self);
+            const b = try expectExpression(self);
+            return try createExpr(self, loc0, .{ .bin_arith = .{ .op = .add, .a = a, .b = b } });
         },
         .sym_asterisk => {
-            const a = try parseExpression(self, try self.parser.expect());
-            const b = try parseExpression(self, try self.parser.expect());
-            const expr = try self.allocator.create(Expression);
-            expr.* = .{
-                .source_range = .{
-                    .loc0 = token.source_range.loc0,
-                    .loc1 = b.source_range.loc1,
-                },
-                .inner = .{
-                    .binary_arithmetic = .{
-                        .operator = .multiply,
-                        .a = a,
-                        .b = b,
-                    },
-                },
-            };
-            return expr;
+            const a = try expectExpression(self);
+            const b = try expectExpression(self);
+            return try createExpr(self, loc0, .{ .bin_arith = .{ .op = .mul, .a = a, .b = b } });
         },
         else => {
-            //return fail(source, token.source_range, "expected `@` or `end`, found `%`", .{token.source_range});
             return fail(self.parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
         },
     }
@@ -348,7 +282,7 @@ fn paintBlock(
     module: Module,
     module_index: usize,
 ) !*const Expression {
-    const body_loc = first_pass_result.module_body_locations[module_index].?;
+    const body_loc = first_pass_result.module_body_locations[module_index].?; // this is only null for builtin modules
     var self: SecondPass = .{
         .allocator = allocator,
         .tokens = tokens,
@@ -361,23 +295,12 @@ fn paintBlock(
         .module = module,
         .module_index = module_index,
     };
-    while (true) {
-        const token = try self.parser.expect();
-        if (token.tt == .kw_end) {
-            break;
-        }
-        return try parseExpression(&self, token);
+    const expression = try expectExpression(&self);
+    const token = try self.parser.expect();
+    if (token.tt != .kw_end) {
+        return fail(source, token.source_range, "expected `end`, found `%`", .{token.source_range});
     }
-    const expr = try allocator.create(Expression);
-    expr.* = .{
-        // FIXME
-        .source_range = .{
-            .loc0 = .{ .line = 0, .index = 0 },
-            .loc1 = .{ .line = 0, .index = 0 },
-        },
-        .inner = .nothing,
-    };
-    return expr;
+    return expression;
 }
 
 pub fn secondPass(

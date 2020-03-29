@@ -1,35 +1,101 @@
 const std = @import("std");
 const CodegenState = @import("codegen.zig").CodegenState;
+const ExpressionResult = @import("codegen.zig").ExpressionResult;
+const BufferValue = @import("codegen.zig").BufferValue;
+const FloatValue = @import("codegen.zig").FloatValue;
+
+fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) void {
+    switch (result) {
+        .temp_buffer => |i| std.debug.warn("temp{}", .{i}),
+        .temp_float => |i| std.debug.warn("temp_float{}", .{i}),
+        .temp_bool => |i| std.debug.warn("temp_bool{}", .{i}),
+        .literal => |literal| {
+            switch (literal) {
+                .boolean => |value| std.debug.warn("{}", .{value}),
+                .number => |value| std.debug.warn("{d}", .{value}),
+            }
+        },
+        .self_param => |i| {
+            const module = self.first_pass_result.modules[self.module_index];
+            const param = self.first_pass_result.module_params[module.first_param + i];
+            std.debug.warn("params.{}", .{param.name});
+        },
+    }
+}
+
+fn printFloatValue(self: *const CodegenState, value: FloatValue) void {
+    switch (value) {
+        .temp_float_index => |i| std.debug.warn("temp_float{}", .{i}),
+        .self_param => |i| { // guaranteed to be of type `constant`
+            const module = self.first_pass_result.modules[self.module_index];
+            const param = self.first_pass_result.module_params[module.first_param + i];
+            std.debug.warn("params.{}", .{param.name});
+        },
+        .literal => |v| std.debug.warn("{d}", .{v}),
+    }
+}
+
+fn printBufferValue(self: *const CodegenState, value: BufferValue) void {
+    switch (value) {
+        .temp_buffer_index => |i| std.debug.warn("temp{}", .{i}),
+        .self_param => |i| { // guaranteed to be of type `buffer`
+            const module = self.first_pass_result.modules[self.module_index];
+            const param = self.first_pass_result.module_params[module.first_param + i];
+            std.debug.warn("params.{}", .{param.name});
+        },
+    }
+}
 
 pub fn printBytecode(self: *CodegenState) void {
     const self_module = self.first_pass_result.modules[self.module_index];
     const instructions = self.instructions.span();
 
-    std.debug.warn("num_temps: {}\n", .{self.num_temps});
-    std.debug.warn("num_temp_floats: {}\n", .{self.num_temp_floats});
-    std.debug.warn("num_temp_bools: {}\n", .{self.num_temp_bools});
+    std.debug.warn("module '{}'\n", .{self_module.name});
+
+    std.debug.warn("    num_temps: {}\n", .{self.num_temps});
+    std.debug.warn("    num_temp_floats: {}\n", .{self.num_temp_floats});
+    std.debug.warn("    num_temp_bools: {}\n", .{self.num_temp_bools});
+
     std.debug.warn("bytecode:\n", .{});
     for (instructions) |instr| {
         std.debug.warn("    ", .{});
         switch (instr) {
+            .float_to_buffer => |x| {
+                std.debug.warn("temp{} = FLOAT_TO_BUFFER ", .{x.out_temp_buffer_index});
+                printFloatValue(self, x.in);
+                std.debug.warn("\n", .{});
+            },
+            .arith_float_float => |x| {
+                std.debug.warn("temp_float{} = ARITH_FLOAT_FLOAT({}) ", .{ x.out_temp_float_index, x.operator });
+                printFloatValue(self, x.a);
+                std.debug.warn(" ", .{});
+                printFloatValue(self, x.b);
+                std.debug.warn("\n", .{});
+            },
+            .arith_buffer_float => |x| {
+                std.debug.warn("temp{} = ARITH_BUFFER_FLOAT({}) ", .{ x.out_temp_buffer_index, x.operator });
+                printBufferValue(self, x.a);
+                std.debug.warn(" ", .{});
+                printFloatValue(self, x.b);
+                std.debug.warn("\n", .{});
+            },
+            .arith_buffer_buffer => |x| {
+                std.debug.warn("temp{} = ARITH_BUFFER_BUFFER({}) ", .{ x.out_temp_buffer_index, x.operator });
+                printBufferValue(self, x.a);
+                std.debug.warn(" ", .{});
+                printBufferValue(self, x.b);
+                std.debug.warn("\n", .{});
+            },
             .call => |call| {
-                switch (call.result_loc) {
-                    .buffer => |buffer_loc| {
-                        switch (buffer_loc) {
-                            .output => |n| std.debug.warn("output{}", .{n}),
-                            .temp => |n| std.debug.warn("temp{}", .{n}),
-                        }
-                    },
-                    .temp_float => |n| std.debug.warn("temp_float{}", .{n}),
-                    .temp_bool => |n| std.debug.warn("temp_bool{}", .{n}),
-                }
                 const field = self.first_pass_result.module_fields[self_module.first_field + call.field_index];
-                const callee_module_name = self.first_pass_result.modules[field.resolved_module_index].name;
-                const callee_params = blk: {
-                    const callee_module = self.first_pass_result.modules[field.resolved_module_index];
-                    break :blk self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-                };
-                std.debug.warn(" = CALL #{}({}: {})\n", .{ call.field_index, field.name, callee_module_name });
+                const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+                const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+                std.debug.warn("temp{} = CALL #{}({}: {})\n", .{
+                    call.out_temp_buffer_index,
+                    call.field_index,
+                    field.name,
+                    callee_module.name,
+                });
                 std.debug.warn("        temps: [", .{});
                 for (call.temps.span()) |temp, i| {
                     if (i > 0) std.debug.warn(", ", .{});
@@ -38,57 +104,14 @@ pub fn printBytecode(self: *CodegenState) void {
                 std.debug.warn("]\n", .{});
                 for (call.args) |arg, i| {
                     std.debug.warn("        {} = ", .{callee_params[i].name});
-                    switch (arg) {
-                        .temp => |v| {
-                            std.debug.warn("temp{}\n", .{v});
-                        },
-                        .temp_float => |n| {
-                            std.debug.warn("temp_float{}\n", .{n});
-                        },
-                        .temp_bool => |n| {
-                            std.debug.warn("temp_bool{}\n", .{n});
-                        },
-                    }
+                    printExpressionResult(self, arg);
+                    std.debug.warn("\n", .{});
                 }
             },
-            .load_constant => |x| {
-                std.debug.warn("temp_float{} = LOADCONSTANT {d}\n", .{ x.out_index, x.value });
-            },
-            .load_boolean => |x| {
-                std.debug.warn("temp_bool{} = LOADBOOLEAN {}\n", .{ x.out_index, x.value });
-            },
-            .float_to_buffer => |x| {
-                switch (x.out) {
-                    .temp => |n| std.debug.warn("temp{}", .{n}),
-                    .output => |n| std.debug.warn("output{}", .{n}),
-                }
-                std.debug.warn(" = FLOAT_TO_BUFFER temp_float{}\n", .{x.in_temp_float});
-            },
-            .load_param_float => |x| {
-                std.debug.warn("temp_float{} = LOADPARAM_FLOAT ${}({})\n", .{
-                    x.out_temp_float,
-                    x.param_index,
-                    self.first_pass_result.module_params[self_module.first_param + x.param_index].name,
-                });
-            },
-            .arith_float_float => |x| {
-                std.debug.warn("temp_float{} = ARITH_FLOAT_FLOAT {} temp_float{} temp_float{}\n", .{
-                    x.operator,
-                    x.out_temp_float,
-                    x.a_temp_float,
-                    x.b_temp_float,
-                });
-            },
-            .arith_buffer_float => |x| {
-                switch (x.out) {
-                    .temp => |n| std.debug.warn("temp{}", .{n}),
-                    .output => |n| std.debug.warn("output{}", .{n}),
-                }
-                std.debug.warn(" = ARITH_BUFFER_FLOAT {} temp{} temp_float{}\n", .{
-                    x.operator,
-                    x.temp_index,
-                    x.temp_float_index,
-                });
+            .output => |x| {
+                std.debug.warn("output0 = ", .{});
+                printBufferValue(self, x.value);
+                std.debug.warn("\n", .{});
             },
         }
     }

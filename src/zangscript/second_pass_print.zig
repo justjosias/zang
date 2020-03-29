@@ -11,8 +11,9 @@ pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module,
     for (fields) |field| {
         std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
     }
-    std.debug.warn("print expression:\n", .{});
+    std.debug.warn("expression:\n", .{});
     printExpression(fields, expression, 1);
+    std.debug.warn("\n", .{});
 }
 
 fn printExpression(fields: []const ModuleField, expression: *const Expression, indentation: usize) void {
@@ -40,23 +41,19 @@ fn printExpression(fields: []const ModuleField, expression: *const Expression, i
         .literal => |literal| {
             switch (literal) {
                 .boolean => |v| std.debug.warn("{}\n", .{v}),
-                .constant => |v| std.debug.warn("{d}\n", .{v}),
-                .constant_or_buffer => unreachable,
+                .number => |v| std.debug.warn("{d}\n", .{v}),
             }
         },
         .self_param => |param_index| {
             std.debug.warn("${}\n", .{param_index});
         },
-        .binary_arithmetic => |m| {
-            switch (m.operator) {
+        .bin_arith => |m| {
+            switch (m.op) {
                 .add => std.debug.warn("add\n", .{}),
-                .multiply => std.debug.warn("multiply\n", .{}),
+                .mul => std.debug.warn("mul\n", .{}),
             }
             printExpression(fields, m.a, indentation + 1);
             printExpression(fields, m.b, indentation + 1);
-        },
-        .nothing => {
-            std.debug.warn("(nothing)\n", .{});
         },
     }
 }

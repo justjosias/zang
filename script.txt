@@ -3,9 +3,9 @@
 // it could even be hardcoded so you don't have to set it as a param at all
 
 def Instrument:
-    param sample_rate number;
-    param freq number;
-    param color number;
+    param sample_rate constant;
+    param freq waveform;
+    param color constant;
     param note_on boolean;
 
     osc PulseOsc;
@@ -22,9 +22,9 @@ begin
 end
 
 def OuterInstrument:
-    param sample_rate number;
+    param sample_rate constant;
 
     instr Instrument;
 begin
-    @instr(sample_rate: $sample_rate, freq: 440, color: 0.7, note_on: true)
+    @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
 end

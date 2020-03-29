@@ -11,14 +11,15 @@ pub const BuiltinModule = struct {
 };
 
 fn getBuiltinModule(comptime T: type) BuiltinModule {
-    var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
-    for (@typeInfo(T.Params).Struct.fields) |field, i| {
+    comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
+    inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{
             .name = field.name,
             .type_token = null,
             .param_type = switch (field.field_type) {
                 bool => .boolean,
                 f32 => .constant,
+                []const f32 => .buffer,
                 zang.ConstantOrBuffer => .constant_or_buffer,
                 else => @compileError("unsupported builtin field type: " ++ @typeName(field.field_type)),
             },
@@ -34,7 +35,16 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
 }
 
 pub const builtins = [_]BuiltinModule{
+    // zang.Curve
+    // zang.Decimator
+    // zang.Distortion
+    // zang.Envelope
+    // zang.Filter
+    getBuiltinModule(zang.Gate),
+    getBuiltinModule(zang.Noise),
+    // zang.Portamento
     getBuiltinModule(zang.PulseOsc),
+    // zang.Sampler
     getBuiltinModule(zang.SineOsc),
     getBuiltinModule(zang.TriSawOsc),
 };
