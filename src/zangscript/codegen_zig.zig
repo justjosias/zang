@@ -132,7 +132,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 .call => |call| {
                     const field = first_pass_result.module_fields[module.first_field + call.field_index];
                     try out.print("        zang.zero(span, temps[{}]);\n", .{call.out_temp_buffer_index});
-                    try out.print("        self.{}.paint(span, temps[{}], .{{", .{ field.name, call.out_temp_buffer_index });
+                    try out.print("        self.{}.paint(span, .{{temps[{}]}}, .{{", .{ field.name, call.out_temp_buffer_index });
                     // callee temps
                     for (call.temps) |n, j| {
                         if (j > 0) {
