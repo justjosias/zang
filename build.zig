@@ -17,6 +17,7 @@ const examples = [_][]const u8 {
     "delay",
     "mouse",
     "two",
+    "script",
 };
 
 pub fn build(b: *std.build.Builder) void {
