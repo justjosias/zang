@@ -45,12 +45,18 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+        var freq_buf: [AUDIO_BUFFER_SIZE]f32 = undefined;
+
         const rel_freq = common.getKeyRelFreq(key) orelse return;
         if (down or (if (self.key) |nh| nh == key else false)) {
             self.key = if (down) key else null;
+
+            const freq = a4 * rel_freq;
+            zang.set(zang.Span.init(0, AUDIO_BUFFER_SIZE), &freq_buf, freq);
+
             self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = a4 * rel_freq,
+                .freq = &freq_buf,
                 .color = 0.5,
                 .note_on = down,
             });

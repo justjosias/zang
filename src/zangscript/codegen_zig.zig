@@ -26,14 +26,14 @@ fn printExpressionResult(first_pass_result: FirstPassResult, module: Module, out
 fn printBufferValue(first_pass_result: FirstPassResult, module: Module, out: var, value: BufferValue) !void {
     switch (value) {
         .temp_buffer_index => |i| try out.print("temps[{}]", .{i}),
-        .self_param => |i| try out.print("self.{}", .{first_pass_result.module_params[module.first_param + i].name}),
+        .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
     }
 }
 
 fn printFloatValue(first_pass_result: FirstPassResult, module: Module, out: var, value: FloatValue) !void {
     switch (value) {
         .temp_float_index => |i| try out.print("temp_float{}", .{i}),
-        .self_param => |i| try out.print("self.{}", .{first_pass_result.module_params[module.first_param + i].name}),
+        .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
         .literal => |v| try out.print("{d}", .{v}),
     }
 }
