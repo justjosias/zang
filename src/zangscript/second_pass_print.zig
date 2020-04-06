@@ -44,6 +44,18 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
             }
             std.debug.warn(")\n", .{});
         },
+        .delay => |delay| {
+            std.debug.warn("delay {} (\n", .{delay.num_samples});
+            printExpression(first_pass_result, module, delay.expr, indentation + 1);
+            i = 0;
+            while (i < indentation) : (i += 1) {
+                std.debug.warn("    ", .{});
+            }
+            std.debug.warn(")\n", .{});
+        },
+        .feedback => {
+            std.debug.warn("feedback\n", .{});
+        },
         .literal => |literal| {
             switch (literal) {
                 .boolean => |v| std.debug.warn("{}\n", .{v}),

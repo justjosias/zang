@@ -34,5 +34,7 @@ def OuterInstrument:
 
     instr Instrument;
 begin
-    @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
+    delay 1000 begin
+        + feedback @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
+    end
 end

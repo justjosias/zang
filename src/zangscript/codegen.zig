@@ -23,8 +23,10 @@ const printBytecode = @import("codegen_print.zig").printBytecode;
 // as well since i don't have a lot of performance requirements for script mode.)
 
 // expression will return how it stored its result.
-// if it's a temp, the caller needs to make sure to release it.
+// if it's a temp, the caller needs to make sure to release it (by calling
+// releaseExpressionResult).
 pub const ExpressionResult = union(enum) {
+    temp_buffer_weak: usize, // not freed by releaseExpressionResult
     temp_buffer: usize,
     temp_float: usize,
     temp_bool: usize,
@@ -42,6 +44,20 @@ pub const InstrCall = struct {
     temps: []const usize,
     // list of argument param values (in the order of the callee module's params)
     args: []const ExpressionResult,
+};
+
+// i might consider replacing this begin/end pair with a single InstrDelay
+// which actually contains a sublist of Instructions?
+pub const InstrDelayBegin = struct {
+    delay_index: usize,
+    out_temp_buffer_index: usize,
+    feedback_temp_buffer_index: usize,
+};
+
+pub const InstrDelayEnd = struct {
+    delay_index: usize,
+    out_temp_buffer_index: usize,
+    inner_value: BufferValue,
 };
 
 pub const FloatValue = union(enum) {
@@ -93,7 +109,13 @@ pub const Instruction = union(enum) {
     arith_buffer_float: InstrArithBufferFloat,
     arith_buffer_buffer: InstrArithBufferBuffer,
     call: InstrCall,
+    delay_begin: InstrDelayBegin,
+    delay_end: InstrDelayEnd,
     output: InstrOutput,
+};
+
+pub const DelayDecl = struct {
+    num_samples: usize,
 };
 
 pub const CodegenState = struct {
@@ -106,6 +128,7 @@ pub const CodegenState = struct {
     temp_buffers: TempManager,
     temp_floats: TempManager,
     temp_bools: TempManager,
+    delays: std.ArrayList(DelayDecl),
 };
 
 pub const GenError = error{
@@ -132,12 +155,18 @@ fn getFloatValue(self: *CodegenState, result: ExpressionResult) ?FloatValue {
                 else => null,
             };
         },
-        else => return null,
+        .temp_buffer_weak,
+        .temp_buffer,
+        .temp_bool,
+        => return null,
     }
 }
 
 fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
     switch (result) {
+        .temp_buffer_weak => |i| {
+            return BufferValue{ .temp_buffer_index = i };
+        },
         .temp_buffer => |i| {
             return BufferValue{ .temp_buffer_index = i };
         },
@@ -149,7 +178,10 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
             }
             return null;
         },
-        else => return null,
+        .temp_float,
+        .temp_bool,
+        .literal,
+        => return null,
     }
 }
 
@@ -199,6 +231,7 @@ const TempManager = struct {
 
 fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
     switch (result) {
+        .temp_buffer_weak => {},
         .temp_buffer => |i| self.temp_buffers.release(i),
         .temp_float => |i| self.temp_floats.release(i),
         .temp_bool => |i| self.temp_bools.release(i),
@@ -208,7 +241,7 @@ fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
 }
 
 // generate bytecode instructions for an expression.
-fn genExpression(self: *CodegenState, expression: *const Expression) GenError!ExpressionResult {
+fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
     switch (expression.inner) {
         .literal => |literal| {
             return ExpressionResult{ .literal = literal };
@@ -217,9 +250,9 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
             return ExpressionResult{ .self_param = param_index };
         },
         .bin_arith => |m| {
-            const ra = try genExpression(self, m.a);
+            const ra = try genExpression(self, m.a, maybe_feedback_temp_index);
             defer releaseExpressionResult(self, ra);
-            const rb = try genExpression(self, m.b);
+            const rb = try genExpression(self, m.b, maybe_feedback_temp_index);
             defer releaseExpressionResult(self, rb);
             // float * float -> float
             if (getFloatValue(self, ra)) |a| {
@@ -323,12 +356,13 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                     }
                 } else unreachable; // we already checked for missing params in second_pass
 
-                var arg_result = try genExpression(self, arg.value);
+                var arg_result = try genExpression(self, arg.value, maybe_feedback_temp_index);
 
                 // typecheck the argument
                 switch (param.param_type) {
                     .boolean => {
                         const ok = switch (arg_result) {
+                            .temp_buffer_weak => false,
                             .temp_buffer => false,
                             .temp_float => false,
                             .temp_bool => true,
@@ -342,6 +376,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                     .buffer => {
                         const Ok = enum { valid, invalid, convert };
                         const ok: Ok = switch (arg_result) {
+                            .temp_buffer_weak => .valid,
                             .temp_buffer => .valid,
                             .temp_float => .convert,
                             .temp_bool => .invalid,
@@ -380,6 +415,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                     },
                     .constant => {
                         const ok = switch (arg_result) {
+                            .temp_buffer_weak => false,
                             .temp_buffer => false,
                             .temp_float => true,
                             .temp_bool => false,
@@ -392,6 +428,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
                     },
                     .constant_or_buffer => {
                         const ok = switch (arg_result) {
+                            .temp_buffer_weak => true,
                             .temp_buffer => true,
                             .temp_float => true,
                             .temp_bool => false,
@@ -451,11 +488,58 @@ fn genExpression(self: *CodegenState, expression: *const Expression) GenError!Ex
 
             return ExpressionResult{ .temp_buffer = out_temp_buffer_index };
         },
+        .delay => |delay| {
+            if (maybe_feedback_temp_index != null) {
+                // i might be able to support this, but why?
+                return fail(self.source, expression.source_range, "you cannot nest delay operations", .{});
+            }
+
+            const delay_index = self.delays.len;
+            try self.delays.append(.{ .num_samples = delay.num_samples });
+
+            const feedback_temp_index = try self.temp_buffers.claim();
+            defer self.temp_buffers.release(feedback_temp_index);
+
+            const temp_buffer_index = try self.temp_buffers.claim();
+            try self.instructions.append(.{
+                .delay_begin = .{
+                    .delay_index = delay_index,
+                    .out_temp_buffer_index = temp_buffer_index,
+                    .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
+                },
+            });
+
+            const inner_result = try genExpression(self, delay.expr, feedback_temp_index);
+            defer releaseExpressionResult(self, inner_result);
+
+            const inner_value = getBufferValue(self, inner_result) orelse {
+                return fail(self.source, expression.source_range, "invalid operand types", .{});
+            };
+
+            try self.instructions.append(.{
+                .delay_end = .{
+                    .delay_index = delay_index,
+                    .out_temp_buffer_index = temp_buffer_index,
+                    .inner_value = inner_value,
+                },
+            });
+
+            return ExpressionResult{ .temp_buffer = temp_buffer_index };
+        },
+        .feedback => {
+            const feedback_temp_index = maybe_feedback_temp_index orelse {
+                return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+            };
+            return ExpressionResult{ .temp_buffer_weak = feedback_temp_index };
+        },
     }
 }
 
 pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, result: ExpressionResult) !void {
     switch (result) {
+        .temp_buffer_weak => |i| {
+            try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
+        },
         .temp_buffer => |i| {
             try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
         },
@@ -515,6 +599,7 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
 pub const CodeGenResult = struct {
     num_outputs: usize,
     num_temps: usize,
+    delays: []const DelayDecl, // owned slice
     instructions: []const Instruction, // owned slice (might need to remove `const` to make it free-able?)
 };
 
@@ -530,14 +615,16 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
         .temp_buffers = TempManager.init(allocator),
         .temp_floats = TempManager.init(allocator),
         .temp_bools = TempManager.init(allocator),
+        .delays = std.ArrayList(DelayDecl).init(allocator),
     };
     errdefer self.instructions.deinit();
+    errdefer self.delays.deinit();
     defer self.temp_buffers.deinit();
     defer self.temp_floats.deinit();
     defer self.temp_bools.deinit();
 
     // generate code for the main expression
-    const result = try genExpression(&self, expression);
+    const result = try genExpression(&self, expression, null);
 
     // generate code for copying the expression result to the output.
     // (later i'll implement some kind of result-location thing so genExpression can write directly to the output)
@@ -552,6 +639,7 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
     return CodeGenResult{
         .num_outputs = 1,
         .num_temps = self.temp_buffers.finalCount(),
+        .delays = self.delays.toOwnedSlice(),
         .instructions = self.instructions.toOwnedSlice(),
     };
 }

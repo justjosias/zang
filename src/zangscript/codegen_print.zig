@@ -6,6 +6,7 @@ const FloatValue = @import("codegen.zig").FloatValue;
 
 fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) void {
     switch (result) {
+        .temp_buffer_weak => |i| std.debug.warn("temp{}", .{i}),
         .temp_buffer => |i| std.debug.warn("temp{}", .{i}),
         .temp_float => |i| std.debug.warn("temp_float{}", .{i}),
         .temp_bool => |i| std.debug.warn("temp_bool{}", .{i}),
@@ -108,6 +109,14 @@ pub fn printBytecode(self: *CodegenState) void {
                     printExpressionResult(self, arg);
                     std.debug.warn("\n", .{});
                 }
+            },
+            .delay_begin => |delay_begin| {
+                std.debug.warn("DELAY_BEGIN\n", .{});
+            },
+            .delay_end => |delay_end| {
+                std.debug.warn("temp{} = DELAY_END ", .{delay_end.out_temp_buffer_index});
+                printBufferValue(self, delay_end.inner_value);
+                std.debug.warn("\n", .{});
             },
             .output => |x| {
                 std.debug.warn("output0 = ", .{});

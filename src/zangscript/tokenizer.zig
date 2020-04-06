@@ -16,8 +16,10 @@ pub const TokenType = enum {
     sym_semicolon,
     kw_begin,
     kw_def,
+    kw_delay,
     kw_end,
     kw_false,
+    kw_feedback,
     kw_param,
     kw_true,
     identifier,
@@ -168,10 +170,14 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .kw_begin);
         } else if (std.mem.eql(u8, token, "def")) {
             try addToken(tokenizer, start, loc, .kw_def);
+        } else if (std.mem.eql(u8, token, "delay")) {
+            try addToken(tokenizer, start, loc, .kw_delay);
         } else if (std.mem.eql(u8, token, "end")) {
             try addToken(tokenizer, start, loc, .kw_end);
         } else if (std.mem.eql(u8, token, "false")) {
             try addToken(tokenizer, start, loc, .kw_false);
+        } else if (std.mem.eql(u8, token, "feedback")) {
+            try addToken(tokenizer, start, loc, .kw_feedback);
         } else if (std.mem.eql(u8, token, "param")) {
             try addToken(tokenizer, start, loc, .kw_param);
         } else if (std.mem.eql(u8, token, "true")) {

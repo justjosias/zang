@@ -124,10 +124,17 @@ fn defineModule(self: *FirstPass) !void {
 
     // skip paint block
     const begin_token = self.parser.i;
+    var num_inner_blocks: usize = 0; // "delay" ops use inner blocks
     while (true) {
         const token = try self.parser.expect();
         switch (token.tt) {
-            .kw_end => break,
+            .kw_begin => num_inner_blocks += 1,
+            .kw_end => {
+                if (num_inner_blocks == 0) {
+                    break;
+                }
+                num_inner_blocks -= 1;
+            },
             else => {},
         }
     }

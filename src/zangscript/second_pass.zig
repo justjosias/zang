@@ -25,6 +25,11 @@ pub const Call = struct {
     args: std.ArrayList(CallArg),
 };
 
+pub const Delay = struct {
+    num_samples: usize,
+    expr: *const Expression,
+};
+
 pub const BinArithOp = enum {
     add,
     mul,
@@ -38,9 +43,11 @@ pub const BinArith = struct {
 
 pub const ExpressionInner = union(enum) {
     call: Call,
+    delay: Delay,
     literal: Literal,
     self_param: usize,
     bin_arith: BinArith,
+    feedback, // only allowed within `delay` expressions
 };
 
 pub const Expression = struct {
@@ -172,6 +179,35 @@ fn parseCall(self: *SecondPass) ParseError!Call {
     };
 }
 
+fn parseDelay(self: *SecondPass) ParseError!Delay {
+    // constant number for the number of delay samples (this is a limitation of my current delay implementation)
+    const num_samples = blk: {
+        const token = try self.parser.expect();
+        const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+        const n = std.fmt.parseInt(usize, s, 10) catch {
+            return fail(self.parser.source, token.source_range, "malformatted integer", .{});
+        };
+        break :blk n;
+    };
+    // keyword `begin`
+    const begin_token = try self.parser.expect();
+    if (begin_token.tt != .kw_begin) {
+        return fail(self.parser.source, begin_token.source_range, "expected `begin`, found `%`", .{begin_token.source_range});
+    }
+    // inner expression
+    const expr = try expectExpression(self);
+    // keyword `end`
+    const end_token = try self.parser.expect();
+    if (end_token.tt != .kw_end) {
+        return fail(self.parser.source, end_token.source_range, "expected `end`, found `%`", .{end_token.source_range});
+    }
+    // done
+    return Delay{
+        .num_samples = num_samples,
+        .expr = expr,
+    };
+}
+
 fn createExpr(self: *SecondPass, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
     // you pass the location of the start of the expression. this function will use the parser's
     // current location to set the expression's end location
@@ -223,6 +259,13 @@ fn expectExpression(self: *SecondPass) ParseError!*const Expression {
             const a = try expectExpression(self);
             const b = try expectExpression(self);
             return try createExpr(self, loc0, .{ .bin_arith = .{ .op = .mul, .a = a, .b = b } });
+        },
+        .kw_delay => {
+            const delay = try parseDelay(self);
+            return try createExpr(self, loc0, .{ .delay = delay });
+        },
+        .kw_feedback => {
+            return try createExpr(self, loc0, .feedback);
         },
         else => {
             return fail(self.parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
@@ -298,6 +341,7 @@ pub fn secondPass(
                 .instructions = undefined, // FIXME - should be null
                 .num_outputs = builtins[i].num_outputs,
                 .num_temps = builtins[i].num_temps,
+                .delays = undefined, // FIXME - should be null?
             };
             codegen_visited[i] = true;
             continue;
