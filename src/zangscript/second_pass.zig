@@ -47,6 +47,7 @@ pub const ExpressionInner = union(enum) {
     literal: Literal,
     self_param: usize,
     bin_arith: BinArith,
+    local: usize, // statement index pointing to a let-assignment
     feedback, // only allowed within `delay` expressions
 };
 
@@ -61,6 +62,16 @@ pub const Literal = union(enum) {
     enum_value: []const u8,
 };
 
+pub const LetAssignment = struct {
+    name: []const u8,
+    expression: *const Expression,
+};
+
+pub const Statement = union(enum) {
+    let_assignment: LetAssignment,
+    output: *const Expression,
+};
+
 const SecondPass = struct {
     allocator: *std.mem.Allocator,
     tokens: []const Token,
@@ -68,6 +79,7 @@ const SecondPass = struct {
     first_pass_result: FirstPassResult,
     module: Module,
     module_index: usize,
+    statements: std.ArrayList(Statement),
 };
 
 fn parseSelfParam(self: *SecondPass) !usize {
@@ -225,6 +237,22 @@ fn expectExpression(self: *SecondPass) ParseError!*const Expression {
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
+        .identifier => {
+            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const index = for (self.statements.span()) |statement, i| {
+                switch (statement) {
+                    .let_assignment => |x| {
+                        if (std.mem.eql(u8, x.name, s)) {
+                            break i;
+                        }
+                    },
+                    else => {},
+                }
+            } else {
+                return fail(self.parser.source, token.source_range, "no local called `%`", .{token.source_range});
+            };
+            return try createExpr(self, loc0, .{ .local = index });
+        },
         .kw_false => {
             return try createExpr(self, loc0, .{ .literal = .{ .boolean = false } });
         },
@@ -280,7 +308,7 @@ fn paintBlock(
     first_pass_result: FirstPassResult,
     module: Module,
     module_index: usize,
-) !*const Expression {
+) ![]const Statement {
     const body_loc = first_pass_result.module_body_locations[module_index].?; // this is only null for builtin modules
     var self: SecondPass = .{
         .allocator = allocator,
@@ -293,13 +321,54 @@ fn paintBlock(
         .first_pass_result = first_pass_result,
         .module = module,
         .module_index = module_index,
+        .statements = std.ArrayList(Statement).init(allocator),
     };
-    const expression = try expectExpression(&self);
-    const token = try self.parser.expect();
-    if (token.tt != .kw_end) {
-        return fail(source, token.source_range, "expected `end`, found `%`", .{token.source_range});
+    errdefer self.statements.deinit();
+
+    while (self.parser.next()) |token| {
+        switch (token.tt) {
+            .kw_end => break,
+            .kw_let => {
+                const name_token = try self.parser.expect();
+                if (name_token.tt != .identifier) {
+                    return fail(source, name_token.source_range, "expected identifier", .{});
+                }
+                const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
+                const equals_token = try self.parser.expect();
+                if (equals_token.tt != .sym_equals) {
+                    return fail(source, equals_token.source_range, "expect `=`, found `%`", .{equals_token.source_range});
+                }
+                for (self.statements.span()) |statement| {
+                    switch (statement) {
+                        .let_assignment => |x| {
+                            if (std.mem.eql(u8, x.name, name)) {
+                                return fail(source, name_token.source_range, "redeclaration of local `#`", .{name});
+                            }
+                        },
+                        .output => {},
+                    }
+                }
+                const expr = try expectExpression(&self);
+                try self.statements.append(.{
+                    .let_assignment = .{
+                        .name = name,
+                        .expression = expr,
+                    },
+                });
+            },
+            .kw_out => {
+                const expr = try expectExpression(&self);
+                try self.statements.append(.{
+                    .output = expr,
+                });
+            },
+            else => {
+                return fail(source, token.source_range, "expected `let`, `out` or `end`, found `%`", .{token.source_range});
+            },
+        }
     }
-    return expression;
+
+    return self.statements.toOwnedSlice();
 }
 
 pub fn secondPass(
@@ -308,21 +377,21 @@ pub fn secondPass(
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
 ) ![]const CodeGenResult {
-    // parse paint expressions
-    var expressions = try allocator.alloc(*const Expression, first_pass_result.modules.len - builtins.len);
-    defer allocator.free(expressions);
+    // parse paint blocks
+    var module_blocks = try allocator.alloc([]const Statement, first_pass_result.modules.len - builtins.len);
+    defer allocator.free(module_blocks);
 
     for (first_pass_result.modules) |module, i| {
         if (i < builtins.len) {
             continue;
         }
 
-        const expression = try paintBlock(allocator, source, tokens, first_pass_result, module, i);
+        const statements = try paintBlock(allocator, source, tokens, first_pass_result, module, i);
 
-        expressions[i - builtins.len] = expression;
+        module_blocks[i - builtins.len] = statements;
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, expression, 1);
+        secondPassPrintModule(first_pass_result, module, statements, 1);
     }
 
     // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
@@ -347,7 +416,7 @@ pub fn secondPass(
             continue;
         }
 
-        try codegenVisit(source, first_pass_result, expressions, codegen_visited, codegen_results, i, i, allocator);
+        try codegenVisit(source, first_pass_result, module_blocks, codegen_visited, codegen_results, i, i, allocator);
     }
 
     return codegen_results;
@@ -356,7 +425,7 @@ pub fn secondPass(
 fn codegenVisit(
     source: Source,
     first_pass_result: FirstPassResult,
-    expressions: []*const Expression,
+    module_blocks: []const []const Statement,
     visited: []bool,
     results: []CodeGenResult,
     self_module_index: usize,
@@ -377,11 +446,11 @@ fn codegenVisit(
             return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
         }
 
-        try codegenVisit(source, first_pass_result, expressions, visited, results, self_module_index, field.resolved_module_index, allocator);
+        try codegenVisit(source, first_pass_result, module_blocks, visited, results, self_module_index, field.resolved_module_index, allocator);
     }
 
     // now resolve this one
     // note: the codegen function reads from the `results` array to look up the num_temps of the fields
-    const expression = expressions[module_index - builtins.len];
-    results[module_index] = try codegen(source, results, first_pass_result, module_index, expression, allocator);
+    const statements = module_blocks[module_index - builtins.len];
+    results[module_index] = try codegen(source, results, first_pass_result, module_index, statements, allocator);
 }

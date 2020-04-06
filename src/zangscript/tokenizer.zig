@@ -10,6 +10,7 @@ pub const TokenType = enum {
     sym_colon,
     sym_comma,
     sym_dollar,
+    sym_equals,
     sym_left_paren,
     sym_plus,
     sym_right_paren,
@@ -20,6 +21,8 @@ pub const TokenType = enum {
     kw_end,
     kw_false,
     kw_feedback,
+    kw_let,
+    kw_out,
     kw_param,
     kw_true,
     identifier,
@@ -109,6 +112,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .sym_dollar);
             continue;
         }
+        if (src[loc.index] == '=') {
+            loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_equals);
+            continue;
+        }
         if (src[loc.index] == '(') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_left_paren);
@@ -178,6 +186,10 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .kw_false);
         } else if (std.mem.eql(u8, token, "feedback")) {
             try addToken(tokenizer, start, loc, .kw_feedback);
+        } else if (std.mem.eql(u8, token, "let")) {
+            try addToken(tokenizer, start, loc, .kw_let);
+        } else if (std.mem.eql(u8, token, "out")) {
+            try addToken(tokenizer, start, loc, .kw_out);
         } else if (std.mem.eql(u8, token, "param")) {
             try addToken(tokenizer, start, loc, .kw_param);
         } else if (std.mem.eql(u8, token, "true")) {

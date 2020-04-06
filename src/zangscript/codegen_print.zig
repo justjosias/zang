@@ -62,6 +62,11 @@ pub fn printBytecode(self: *CodegenState) void {
     for (instructions) |instr| {
         std.debug.warn("    ", .{});
         switch (instr) {
+            .copy_buffer => |x| {
+                std.debug.warn("temp{} = COPY_BUFFER ", .{x.out_temp_buffer_index});
+                printBufferValue(self, x.in);
+                std.debug.warn("\n", .{});
+            },
             .float_to_buffer => |x| {
                 std.debug.warn("temp{} = FLOAT_TO_BUFFER ", .{x.out_temp_buffer_index});
                 printFloatValue(self, x.in);

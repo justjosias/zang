@@ -7,6 +7,7 @@ const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ParamType = @import("first_pass.zig").ParamType;
 const BinArithOp = @import("second_pass.zig").BinArithOp;
 const Expression = @import("second_pass.zig").Expression;
+const Statement = @import("second_pass.zig").Statement;
 const Literal = @import("second_pass.zig").Literal;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
@@ -60,6 +61,11 @@ pub const InstrDelayEnd = struct {
     inner_value: BufferValue,
 };
 
+pub const InstrCopyBuffer = struct {
+    out_temp_buffer_index: usize,
+    in: BufferValue,
+};
+
 pub const FloatValue = union(enum) {
     temp_float_index: usize,
     self_param: usize, // guaranteed to be of type `constant`
@@ -104,6 +110,7 @@ pub const InstrOutput = struct {
 };
 
 pub const Instruction = union(enum) {
+    copy_buffer: InstrCopyBuffer,
     float_to_buffer: InstrFloatToBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_buffer_float: InstrArithBufferFloat,
@@ -128,6 +135,7 @@ pub const CodegenState = struct {
     temp_buffers: TempManager,
     temp_floats: TempManager,
     temp_bools: TempManager,
+    statement_temps: []?usize,
     delays: std.ArrayList(DelayDecl),
 };
 
@@ -245,6 +253,9 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
     switch (expression.inner) {
         .literal => |literal| {
             return ExpressionResult{ .literal = literal };
+        },
+        .local => |index| {
+            return ExpressionResult{ .temp_buffer_weak = self.statement_temps[index].? };
         },
         .self_param => |param_index| {
             return ExpressionResult{ .self_param = param_index };
@@ -535,7 +546,12 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
     }
 }
 
-pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, result: ExpressionResult) !void {
+fn genOutput(self: *CodegenState, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!void {
+    const result = try genExpression(self, expression, maybe_feedback_temp_index);
+    defer releaseExpressionResult(self, result);
+
+    const source_range = expression.source_range;
+
     switch (result) {
         .temp_buffer_weak => |i| {
             try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
@@ -596,6 +612,63 @@ pub fn genOutputInstruction(self: *CodegenState, source_range: SourceRange, resu
     }
 }
 
+fn genStatement(self: *CodegenState, statement_index: usize, statement: Statement, maybe_feedback_temp_index: ?usize) GenError!void {
+    switch (statement) {
+        .let_assignment => |x| {
+            // for now, only buffer type is supported for let-assignments
+            const result = try genExpression(self, x.expression, maybe_feedback_temp_index);
+
+            // TODO support other types? in other cases, no temp should be generated, probably?
+            // like self_param and literal can just be passed through since there's no work
+            // involved in getting their value
+            const temp_buffer_index = switch (result) {
+                //.temp_buffer_weak => |i| {},
+                .temp_buffer => |i| {
+                    // if genExpression allocated a new temp for its result, record that temp
+                    // to be released at the end of codegen (otherwise a leak will be detected)
+                    // note: be careful if support for temp_buffer_weak is added. we'll want to record
+                    // the statement_temp, but NOT release it at the end, since something else is already
+                    // committed to releasing it
+                    self.statement_temps[statement_index] = i;
+                },
+                //temp_float: usize,
+                //temp_bool: usize,
+                //literal: Literal,
+                //self_param: usize,
+                else => {
+                    return fail(self.source, x.expression.source_range, "assignment value must be a buffer-typed expression", .{});
+                },
+            };
+
+            // old implementation (copying):
+
+            //const temp_buffer_index = try self.temp_buffers.claim();
+            //self.statement_temps[statement_index] = temp_buffer_index;
+
+            //// TODO genExpression should be able to take an optional result-location.
+            //// only if not provided will it generate a temp for its result
+            //const result = try genExpression(self, x.expression, maybe_feedback_temp_index);
+            //defer releaseExpressionResult(self, result);
+
+            //try self.instructions.append(.{
+            //    .copy_buffer = .{
+            //        .out_temp_buffer_index = temp_buffer_index,
+            //        .in = .{
+            //            .temp_buffer_index = switch (result) {
+            //                .temp_buffer_weak => |i| i,
+            //                .temp_buffer => |i| i,
+            //                else => unreachable, // FIXME - if reachable this should be a proper error
+            //            },
+            //        },
+            //    },
+            //});
+        },
+        .output => |expression| {
+            try genOutput(self, expression, maybe_feedback_temp_index);
+        },
+    }
+}
+
 pub const CodeGenResult = struct {
     num_outputs: usize,
     num_temps: usize,
@@ -604,7 +677,14 @@ pub const CodeGenResult = struct {
 };
 
 // codegen_results is just there so we can read the num_temps of modules being called.
-pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pass_result: FirstPassResult, module_index: usize, expression: *const Expression, allocator: *std.mem.Allocator) !CodeGenResult {
+pub fn codegen(
+    source: Source,
+    codegen_results: []const CodeGenResult,
+    first_pass_result: FirstPassResult,
+    module_index: usize,
+    statements: []const Statement,
+    allocator: *std.mem.Allocator,
+) !CodeGenResult {
     var self: CodegenState = .{
         .allocator = allocator,
         .source = source,
@@ -615,6 +695,7 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
         .temp_buffers = TempManager.init(allocator),
         .temp_floats = TempManager.init(allocator),
         .temp_bools = TempManager.init(allocator),
+        .statement_temps = try allocator.alloc(?usize, statements.len),
         .delays = std.ArrayList(DelayDecl).init(allocator),
     };
     errdefer self.instructions.deinit();
@@ -622,16 +703,18 @@ pub fn codegen(source: Source, codegen_results: []const CodeGenResult, first_pas
     defer self.temp_buffers.deinit();
     defer self.temp_floats.deinit();
     defer self.temp_bools.deinit();
+    defer allocator.free(self.statement_temps);
 
-    // generate code for the main expression
-    const result = try genExpression(&self, expression, null);
+    std.mem.set(?usize, self.statement_temps, null);
 
-    // generate code for copying the expression result to the output.
-    // (later i'll implement some kind of result-location thing so genExpression can write directly to the output)
-    try genOutputInstruction(&self, expression.source_range, result);
+    for (statements) |statement, i| {
+        try genStatement(&self, i, statement, null);
+    }
 
-    // release the main expression's temp (if applicable)
-    releaseExpressionResult(&self, result);
+    for (statements) |_, i| {
+        const temp_buffer_index = self.statement_temps[i] orelse continue;
+        self.temp_buffers.release(temp_buffer_index);
+    }
 
     // diagnostic print
     printBytecode(&self);

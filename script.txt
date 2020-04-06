@@ -12,21 +12,15 @@ def Instrument:
     mod SineOsc;
     dist Distortion;
 begin
-    @dist(
-        ingain: 0.25,
-        outgain: 0.5,
-        offset: 0,
-        distortion_type: 'overdrive',
-        input:
-            * 0.7 @osc(
-                color: $color,
-                sample_rate: $sample_rate,
-                freq:
-                    * $freq
-                        + 1
-                            * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
-            )
-    )
+    let freq =
+        * $freq
+            + 1
+                * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
+
+    let input =
+        * 0.7 @osc(color: $color, sample_rate: $sample_rate, freq: freq)
+
+    out @dist(ingain: 0.25, outgain: 0.5, offset: 0, distortion_type: 'overdrive', input: input)
 end
 
 def OuterInstrument:
@@ -34,7 +28,7 @@ def OuterInstrument:
 
     instr Instrument;
 begin
-    delay 1000 begin
+    out delay 1000 begin
         + feedback @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
     end
 end

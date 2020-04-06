@@ -123,6 +123,12 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         var span: []const u8 = "span";
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
+                .copy_buffer => |x| {
+                    try indent(out, indentation);
+                    try out.print("zang.copy({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
+                    try printBufferValue(first_pass_result, module, out, x.in);
+                    try out.print(");\n", .{});
+                },
                 .float_to_buffer => |x| {
                     try indent(out, indentation);
                     try out.print("zang.set({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
@@ -146,14 +152,11 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     try indent(out, indentation);
                     try out.print("zang.zero({}, temps[{}]);\n", .{ span, x.out_temp_buffer_index });
                     try indent(out, indentation);
-                    try out.print("zang.{}Scalar({}, temps[{}], ", .{
-                        switch (x.operator) {
-                            .add => @as([]const u8, "add"),
-                            .mul => @as([]const u8, "multiply"),
-                        },
-                        span,
-                        x.out_temp_buffer_index,
-                    });
+                    switch (x.operator) {
+                        .add => try out.print("zang.addScalar", .{}),
+                        .mul => try out.print("zang.multiplyScalar", .{}),
+                    }
+                    try out.print("({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
                     try printBufferValue(first_pass_result, module, out, x.a);
                     try out.print(", ", .{});
                     try printFloatValue(first_pass_result, module, out, x.b);

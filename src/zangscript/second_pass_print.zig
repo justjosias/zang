@@ -3,17 +3,37 @@ const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleField = @import("first_pass.zig").ModuleField;
 const Expression = @import("second_pass.zig").Expression;
+const Statement = @import("second_pass.zig").Statement;
 
-pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
+pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, statements: []const Statement, indentation: usize) void {
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
     std.debug.warn("module '{}'\n", .{module.name});
     for (fields) |field| {
         std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
     }
-    std.debug.warn("expression:\n", .{});
-    printExpression(first_pass_result, module, expression, 1);
+    std.debug.warn("statements:\n", .{});
+    for (statements) |statement| {
+        printStatement(first_pass_result, module, statement, 1);
+    }
     std.debug.warn("\n", .{});
+}
+
+fn printStatement(first_pass_result: FirstPassResult, module: Module, statement: Statement, indentation: usize) void {
+    var i: usize = 0;
+    while (i < indentation) : (i += 1) {
+        std.debug.warn("    ", .{});
+    }
+    switch (statement) {
+        .let_assignment => |x| {
+            std.debug.warn("LET {} =\n", .{x.name});
+            printExpression(first_pass_result, module, x.expression, indentation + 1);
+        },
+        .output => |expression| {
+            std.debug.warn("OUT\n", .{});
+            printExpression(first_pass_result, module, expression, indentation + 1);
+        },
+    }
 }
 
 fn printExpression(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
@@ -43,6 +63,10 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
                 std.debug.warn("    ", .{});
             }
             std.debug.warn(")\n", .{});
+        },
+        .local => |index| {
+            // TODO print local name
+            std.debug.warn("local{}\n", .{index});
         },
         .delay => |delay| {
             std.debug.warn("delay {} (\n", .{delay.num_samples});
