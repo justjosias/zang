@@ -26,9 +26,12 @@ end
 def OuterInstrument:
     param sample_rate constant;
 
+    noise Noise;
     instr Instrument;
 begin
     out delay 1000 begin
-        + feedback @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
+        let damn = @noise()
+
+        out + feedback @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
     end
 end

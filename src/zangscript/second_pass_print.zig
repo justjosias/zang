@@ -4,8 +4,10 @@ const Module = @import("first_pass.zig").Module;
 const ModuleField = @import("first_pass.zig").ModuleField;
 const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
+const Local = @import("second_pass.zig").Local;
+const Scope = @import("second_pass.zig").Scope;
 
-pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, statements: []const Statement, indentation: usize) void {
+pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, locals: []const Local, scope: *const Scope, indentation: usize) void {
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
     std.debug.warn("module '{}'\n", .{module.name});
@@ -13,30 +15,31 @@ pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module,
         std.debug.warn("    field {}: {}\n", .{ field.name, field.type_name });
     }
     std.debug.warn("statements:\n", .{});
-    for (statements) |statement| {
-        printStatement(first_pass_result, module, statement, 1);
+    for (scope.statements.span()) |statement| {
+        printStatement(first_pass_result, module, locals, statement, 1);
     }
     std.debug.warn("\n", .{});
 }
 
-fn printStatement(first_pass_result: FirstPassResult, module: Module, statement: Statement, indentation: usize) void {
+fn printStatement(first_pass_result: FirstPassResult, module: Module, locals: []const Local, statement: Statement, indentation: usize) void {
     var i: usize = 0;
     while (i < indentation) : (i += 1) {
         std.debug.warn("    ", .{});
     }
     switch (statement) {
         .let_assignment => |x| {
-            std.debug.warn("LET {} =\n", .{x.name});
-            printExpression(first_pass_result, module, x.expression, indentation + 1);
+            const local = locals[x.local_index];
+            std.debug.warn("LET {} =\n", .{local.name});
+            printExpression(first_pass_result, module, locals, x.expression, indentation + 1);
         },
         .output => |expression| {
             std.debug.warn("OUT\n", .{});
-            printExpression(first_pass_result, module, expression, indentation + 1);
+            printExpression(first_pass_result, module, locals, expression, indentation + 1);
         },
     }
 }
 
-fn printExpression(first_pass_result: FirstPassResult, module: Module, expression: *const Expression, indentation: usize) void {
+fn printExpression(first_pass_result: FirstPassResult, module: Module, locals: []const Local, expression: *const Expression, indentation: usize) void {
     const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
 
     var i: usize = 0;
@@ -56,7 +59,7 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
                 std.debug.warn("{}:\n", .{
                     first_pass_result.module_params[callee_module.first_param + arg.callee_param_index].name,
                 });
-                printExpression(first_pass_result, module, arg.value, indentation + 2);
+                printExpression(first_pass_result, module, locals, arg.value, indentation + 2);
             }
             i = 0;
             while (i < indentation) : (i += 1) {
@@ -64,13 +67,15 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
             }
             std.debug.warn(")\n", .{});
         },
-        .local => |index| {
-            // TODO print local name
-            std.debug.warn("local{}\n", .{index});
+        .local => |local_index| {
+            const local = locals[local_index];
+            std.debug.warn("{}\n", .{local.name});
         },
         .delay => |delay| {
             std.debug.warn("delay {} (\n", .{delay.num_samples});
-            printExpression(first_pass_result, module, delay.expr, indentation + 1);
+            for (delay.scope.statements.span()) |statement| {
+                printStatement(first_pass_result, module, locals, statement, indentation + 1);
+            }
             i = 0;
             while (i < indentation) : (i += 1) {
                 std.debug.warn("    ", .{});
@@ -95,8 +100,8 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, expressio
                 .add => std.debug.warn("add\n", .{}),
                 .mul => std.debug.warn("mul\n", .{}),
             }
-            printExpression(first_pass_result, module, m.a, indentation + 1);
-            printExpression(first_pass_result, module, m.b, indentation + 1);
+            printExpression(first_pass_result, module, locals, m.a, indentation + 1);
+            printExpression(first_pass_result, module, locals, m.b, indentation + 1);
         },
     }
 }

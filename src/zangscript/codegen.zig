@@ -6,9 +6,11 @@ const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ParamType = @import("first_pass.zig").ParamType;
 const BinArithOp = @import("second_pass.zig").BinArithOp;
+const Literal = @import("second_pass.zig").Literal;
+const Local = @import("second_pass.zig").Local;
 const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
-const Literal = @import("second_pass.zig").Literal;
+const Scope = @import("second_pass.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
@@ -131,11 +133,12 @@ pub const CodegenState = struct {
     first_pass_result: FirstPassResult,
     codegen_results: []const CodeGenResult,
     module_index: usize,
+    locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
     temp_floats: TempManager,
     temp_bools: TempManager,
-    statement_temps: []?usize,
+    local_temps: []?usize,
     delays: std.ArrayList(DelayDecl),
 };
 
@@ -255,7 +258,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
             return ExpressionResult{ .literal = literal };
         },
         .local => |index| {
-            return ExpressionResult{ .temp_buffer_weak = self.statement_temps[index].? };
+            return ExpressionResult{ .temp_buffer_weak = self.local_temps[index].? };
         },
         .self_param => |param_index| {
             return ExpressionResult{ .self_param = param_index };
@@ -520,8 +523,27 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                 },
             });
 
-            const inner_result = try genExpression(self, delay.expr, feedback_temp_index);
+            // FIXME - i'm stuck here. i can't get the output out of the delay block.
+            // i think i need to implement result locations in second_pass before i can get this working.
+            //for (delay.scope.statements.span()) |statement| {
+            //    try genStatement(self, statement, feedback_temp_index);
+            //}
+
+            // BEGIN HACK
+            // i'm just grabbing the last output statement and using its expression.
+            // if it referenced any locals that were declared within the delay block, i guess this won't work.
+            // see FIXME comment above
+            var maybe_last_expr: ?*const Expression = null;
+            for (delay.scope.statements.span()) |statement| {
+                switch (statement) {
+                    .output => |expr| maybe_last_expr = expr,
+                    else => {},
+                }
+            }
+            const expr = maybe_last_expr.?;
+            const inner_result = try genExpression(self, expr, feedback_temp_index);
             defer releaseExpressionResult(self, inner_result);
+            // END HACK
 
             const inner_value = getBufferValue(self, inner_result) orelse {
                 return fail(self.source, expression.source_range, "invalid operand types", .{});
@@ -612,7 +634,7 @@ fn genOutput(self: *CodegenState, expression: *const Expression, maybe_feedback_
     }
 }
 
-fn genStatement(self: *CodegenState, statement_index: usize, statement: Statement, maybe_feedback_temp_index: ?usize) GenError!void {
+fn genStatement(self: *CodegenState, statement: Statement, maybe_feedback_temp_index: ?usize) GenError!void {
     switch (statement) {
         .let_assignment => |x| {
             // for now, only buffer type is supported for let-assignments
@@ -629,7 +651,7 @@ fn genStatement(self: *CodegenState, statement_index: usize, statement: Statemen
                     // note: be careful if support for temp_buffer_weak is added. we'll want to record
                     // the statement_temp, but NOT release it at the end, since something else is already
                     // committed to releasing it
-                    self.statement_temps[statement_index] = i;
+                    self.local_temps[x.local_index] = i;
                 },
                 //temp_float: usize,
                 //temp_bool: usize,
@@ -682,7 +704,8 @@ pub fn codegen(
     codegen_results: []const CodeGenResult,
     first_pass_result: FirstPassResult,
     module_index: usize,
-    statements: []const Statement,
+    locals: []const Local,
+    scope: *const Scope,
     allocator: *std.mem.Allocator,
 ) !CodeGenResult {
     var self: CodegenState = .{
@@ -691,11 +714,12 @@ pub fn codegen(
         .first_pass_result = first_pass_result,
         .codegen_results = codegen_results,
         .module_index = module_index,
+        .locals = locals,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .temp_buffers = TempManager.init(allocator),
         .temp_floats = TempManager.init(allocator),
         .temp_bools = TempManager.init(allocator),
-        .statement_temps = try allocator.alloc(?usize, statements.len),
+        .local_temps = try allocator.alloc(?usize, locals.len),
         .delays = std.ArrayList(DelayDecl).init(allocator),
     };
     errdefer self.instructions.deinit();
@@ -703,16 +727,16 @@ pub fn codegen(
     defer self.temp_buffers.deinit();
     defer self.temp_floats.deinit();
     defer self.temp_bools.deinit();
-    defer allocator.free(self.statement_temps);
+    defer allocator.free(self.local_temps);
 
-    std.mem.set(?usize, self.statement_temps, null);
+    std.mem.set(?usize, self.local_temps, null);
 
-    for (statements) |statement, i| {
-        try genStatement(&self, i, statement, null);
+    for (scope.statements.span()) |statement| {
+        try genStatement(&self, statement, null);
     }
 
-    for (statements) |_, i| {
-        const temp_buffer_index = self.statement_temps[i] orelse continue;
+    for (self.local_temps) |maybe_temp_buffer_index| {
+        const temp_buffer_index = maybe_temp_buffer_index orelse continue;
         self.temp_buffers.release(temp_buffer_index);
     }
 
