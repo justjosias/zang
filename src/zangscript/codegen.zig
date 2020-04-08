@@ -29,6 +29,7 @@ const printBytecode = @import("codegen_print.zig").printBytecode;
 // if it's a temp, the caller needs to make sure to release it (by calling
 // releaseExpressionResult).
 pub const ExpressionResult = union(enum) {
+    nothing, // used if this was an assignment (with result_loc)
     temp_buffer_weak: usize, // not freed by releaseExpressionResult
     temp_buffer: usize,
     temp_float: usize,
@@ -40,7 +41,7 @@ pub const ExpressionResult = union(enum) {
 // call one of self's fields (paint the child module)
 pub const InstrCall = struct {
     // paint always results in a buffer.
-    out_temp_buffer_index: usize,
+    out: BufferDest,
     // which field of the "self" module we are calling
     field_index: usize,
     // list of temp buffers passed along for the callee's internal use, dependency injection style
@@ -53,17 +54,17 @@ pub const InstrCall = struct {
 // which actually contains a sublist of Instructions?
 pub const InstrDelayBegin = struct {
     delay_index: usize,
-    out_temp_buffer_index: usize,
+    out: BufferDest,
     feedback_temp_buffer_index: usize,
 };
 
 pub const InstrDelayEnd = struct {
     delay_index: usize,
-    out_temp_buffer_index: usize,
+    out: BufferDest,
     inner_value: BufferValue,
 };
 
-pub const InstrAddBufferTo = struct {
+pub const InstrCopyBuffer = struct {
     out: BufferDest,
     in: BufferValue,
 };
@@ -80,8 +81,8 @@ pub const InstrFloatToBuffer = struct {
 };
 
 pub const InstrArithFloatFloat = struct {
-    operator: BinArithOp,
     out_temp_float_index: usize,
+    operator: BinArithOp,
     a: FloatValue,
     b: FloatValue,
 };
@@ -89,8 +90,8 @@ pub const InstrArithFloatFloat = struct {
 // for these, we don't generate a "float_to_buffer" because some of the builtin
 // arithmetic functions support buffer*float
 pub const InstrArithBufferFloat = struct {
+    out: BufferDest,
     operator: BinArithOp,
-    out_temp_buffer_index: usize,
     a: BufferValue,
     b: FloatValue,
 };
@@ -106,14 +107,14 @@ pub const BufferValue = union(enum) {
 };
 
 pub const InstrArithBufferBuffer = struct {
+    out: BufferDest,
     operator: BinArithOp,
-    out_temp_buffer_index: usize,
     a: BufferValue,
     b: BufferValue,
 };
 
 pub const Instruction = union(enum) {
-    add_buffer_to: InstrAddBufferTo,
+    copy_buffer: InstrCopyBuffer,
     float_to_buffer: InstrFloatToBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_buffer_float: InstrArithBufferFloat,
@@ -166,6 +167,7 @@ fn getFloatValue(self: *CodegenState, result: ExpressionResult) ?FloatValue {
                 else => null,
             };
         },
+        .nothing,
         .temp_buffer_weak,
         .temp_buffer,
         .temp_bool,
@@ -189,6 +191,7 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
             }
             return null;
         },
+        .nothing,
         .temp_float,
         .temp_bool,
         .literal,
@@ -242,6 +245,7 @@ const TempManager = struct {
 
 fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
     switch (result) {
+        .nothing => {},
         .temp_buffer_weak => {},
         .temp_buffer => |i| self.temp_buffers.release(i),
         .temp_float => |i| self.temp_floats.release(i),
@@ -252,21 +256,60 @@ fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
 }
 
 // generate bytecode instructions for an expression.
-fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
+// if result_loc is not null, we must write to that location instead of generating a temp.
+fn genExpression(self: *CodegenState, expression: *const Expression, maybe_result_loc: ?BufferDest, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
+    const sr = expression.source_range;
+
     switch (expression.inner) {
         .literal => |literal| {
-            return ExpressionResult{ .literal = literal };
+            if (maybe_result_loc) |result_loc| {
+                switch (literal) {
+                    .boolean => return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{}),
+                    .number => |n| {
+                        try self.instructions.append(.{
+                            .float_to_buffer = .{
+                                .out = result_loc,
+                                .in = .{ .literal = n },
+                            },
+                        });
+                    },
+                    .enum_value => return fail(self.source, sr, "buffer-typed result loc cannot accept enum value", .{}),
+                }
+                return ExpressionResult.nothing;
+            } else {
+                return ExpressionResult{ .literal = literal };
+            }
         },
-        .local => |index| {
-            return ExpressionResult{ .temp_buffer_weak = self.local_temps[index].? };
+        .local => |local_index| {
+            if (maybe_result_loc) |result_loc| {
+                try self.instructions.append(.{
+                    .copy_buffer = .{
+                        .out = result_loc,
+                        .in = .{ .temp_buffer_index = self.local_temps[local_index].? },
+                    },
+                });
+                return ExpressionResult.nothing;
+            } else {
+                return ExpressionResult{ .temp_buffer_weak = self.local_temps[local_index].? };
+            }
         },
         .self_param => |param_index| {
-            return ExpressionResult{ .self_param = param_index };
+            if (maybe_result_loc) |result_loc| {
+                try self.instructions.append(.{
+                    .copy_buffer = .{
+                        .out = result_loc,
+                        .in = .{ .self_param = param_index },
+                    },
+                });
+                return ExpressionResult.nothing;
+            } else {
+                return ExpressionResult{ .self_param = param_index };
+            }
         },
         .bin_arith => |m| {
-            const ra = try genExpression(self, m.a, maybe_feedback_temp_index);
+            const ra = try genExpression(self, m.a, null, maybe_feedback_temp_index);
             defer releaseExpressionResult(self, ra);
-            const rb = try genExpression(self, m.b, maybe_feedback_temp_index);
+            const rb = try genExpression(self, m.b, null, maybe_feedback_temp_index);
             defer releaseExpressionResult(self, rb);
             // float * float -> float
             if (getFloatValue(self, ra)) |a| {
@@ -280,52 +323,99 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                             .b = b,
                         },
                     });
-                    return ExpressionResult{ .temp_float = temp_float_index };
+                    if (maybe_result_loc) |result_loc| {
+                        try self.instructions.append(.{
+                            .float_to_buffer = .{
+                                .out = result_loc,
+                                .in = .{ .temp_float_index = temp_float_index },
+                            },
+                        });
+                        self.temp_floats.release(temp_float_index);
+                        return ExpressionResult.nothing;
+                    } else {
+                        return ExpressionResult{ .temp_float = temp_float_index };
+                    }
                 }
             }
             // buffer * float -> buffer
             if (getBufferValue(self, ra)) |a| {
                 if (getFloatValue(self, rb)) |b| {
-                    const temp_buffer_index = try self.temp_buffers.claim();
-                    try self.instructions.append(.{
-                        .arith_buffer_float = .{
-                            .operator = m.op,
-                            .out_temp_buffer_index = temp_buffer_index,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    if (maybe_result_loc) |result_loc| {
+                        try self.instructions.append(.{
+                            .arith_buffer_float = .{
+                                .out = result_loc,
+                                .operator = m.op,
+                                .a = a,
+                                .b = b,
+                            },
+                        });
+                        return ExpressionResult.nothing;
+                    } else {
+                        const temp_buffer_index = try self.temp_buffers.claim();
+                        try self.instructions.append(.{
+                            .arith_buffer_float = .{
+                                .out = .{ .temp_buffer_index = temp_buffer_index },
+                                .operator = m.op,
+                                .a = a,
+                                .b = b,
+                            },
+                        });
+                        return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    }
                 }
             }
             // float * buffer -> buffer (swap it to buffer * float)
             if (getFloatValue(self, ra)) |a| {
                 if (getBufferValue(self, rb)) |b| {
-                    const temp_buffer_index = try self.temp_buffers.claim();
-                    try self.instructions.append(.{
-                        .arith_buffer_float = .{
-                            .operator = m.op,
-                            .out_temp_buffer_index = temp_buffer_index,
-                            .a = b,
-                            .b = a,
-                        },
-                    });
-                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    if (maybe_result_loc) |result_loc| {
+                        try self.instructions.append(.{
+                            .arith_buffer_float = .{
+                                .out = result_loc,
+                                .operator = m.op,
+                                .a = b,
+                                .b = a,
+                            },
+                        });
+                        return ExpressionResult.nothing;
+                    } else {
+                        const temp_buffer_index = try self.temp_buffers.claim();
+                        try self.instructions.append(.{
+                            .arith_buffer_float = .{
+                                .out = .{ .temp_buffer_index = temp_buffer_index },
+                                .operator = m.op,
+                                .a = b,
+                                .b = a,
+                            },
+                        });
+                        return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    }
                 }
             }
             // buffer * buffer -> buffer
             if (getBufferValue(self, ra)) |a| {
                 if (getBufferValue(self, rb)) |b| {
-                    const temp_buffer_index = try self.temp_buffers.claim();
-                    try self.instructions.append(.{
-                        .arith_buffer_buffer = .{
-                            .operator = m.op,
-                            .out_temp_buffer_index = temp_buffer_index,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    if (maybe_result_loc) |result_loc| {
+                        try self.instructions.append(.{
+                            .arith_buffer_buffer = .{
+                                .out = result_loc,
+                                .operator = m.op,
+                                .a = a,
+                                .b = b,
+                            },
+                        });
+                        return ExpressionResult.nothing;
+                    } else {
+                        const temp_buffer_index = try self.temp_buffers.claim();
+                        try self.instructions.append(.{
+                            .arith_buffer_buffer = .{
+                                .out = .{ .temp_buffer_index = temp_buffer_index },
+                                .operator = m.op,
+                                .a = a,
+                                .b = b,
+                            },
+                        });
+                        return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                    }
                 }
             }
             std.debug.warn("ra: {}\nrb: {}\n", .{ ra, rb });
@@ -370,12 +460,13 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                     }
                 } else unreachable; // we already checked for missing params in second_pass
 
-                var arg_result = try genExpression(self, arg.value, maybe_feedback_temp_index);
+                var arg_result = try genExpression(self, arg.value, null, maybe_feedback_temp_index);
 
                 // typecheck the argument
                 switch (param.param_type) {
                     .boolean => {
                         const ok = switch (arg_result) {
+                            .nothing => unreachable,
                             .temp_buffer_weak => false,
                             .temp_buffer => false,
                             .temp_float => false,
@@ -390,6 +481,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                     .buffer => {
                         const Ok = enum { valid, invalid, convert };
                         const ok: Ok = switch (arg_result) {
+                            .nothing => unreachable,
                             .temp_buffer_weak => .valid,
                             .temp_buffer => .valid,
                             .temp_float => .convert,
@@ -405,6 +497,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                             },
                         };
                         if (ok == .convert) {
+                            // TODO this should be using result_loc code, since it's like an assignment.
+                            // i already have code for this coercion in that path anyway
                             const temp_buffer_index = try self.temp_buffers.claim();
                             try self.instructions.append(.{
                                 .float_to_buffer = .{
@@ -429,6 +523,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                     },
                     .constant => {
                         const ok = switch (arg_result) {
+                            .nothing => unreachable,
                             .temp_buffer_weak => false,
                             .temp_buffer => false,
                             .temp_float => true,
@@ -442,6 +537,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                     },
                     .constant_or_buffer => {
                         const ok = switch (arg_result) {
+                            .nothing => unreachable,
                             .temp_buffer_weak => true,
                             .temp_buffer => true,
                             .temp_float => true,
@@ -485,22 +581,39 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                 args_filled += 1;
             }
 
-            const out_temp_buffer_index = try self.temp_buffers.claim();
+            if (maybe_result_loc) |result_loc| {
+                try self.instructions.append(.{
+                    .call = .{
+                        .out = result_loc,
+                        .field_index = call.field_index,
+                        .temps = temps,
+                        .args = args,
+                    },
+                });
 
-            try self.instructions.append(.{
-                .call = .{
-                    .out_temp_buffer_index = out_temp_buffer_index,
-                    .field_index = call.field_index,
-                    .temps = temps,
-                    .args = args,
-                },
-            });
+                for (callee_params) |param, i| {
+                    releaseExpressionResult(self, args[i]);
+                }
 
-            for (callee_params) |param, i| {
-                releaseExpressionResult(self, args[i]);
+                return ExpressionResult.nothing;
+            } else {
+                const out_temp_buffer_index = try self.temp_buffers.claim();
+
+                try self.instructions.append(.{
+                    .call = .{
+                        .out = .{ .temp_buffer_index = out_temp_buffer_index },
+                        .field_index = call.field_index,
+                        .temps = temps,
+                        .args = args,
+                    },
+                });
+
+                for (callee_params) |param, i| {
+                    releaseExpressionResult(self, args[i]);
+                }
+
+                return ExpressionResult{ .temp_buffer = out_temp_buffer_index };
             }
-
-            return ExpressionResult{ .temp_buffer = out_temp_buffer_index };
         },
         .delay => |delay| {
             if (maybe_feedback_temp_index != null) {
@@ -514,11 +627,20 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
             const feedback_temp_index = try self.temp_buffers.claim();
             defer self.temp_buffers.release(feedback_temp_index);
 
-            const temp_buffer_index = try self.temp_buffers.claim();
+            //const temp_buffer_index = try self.temp_buffers.claim();
+            var temp_buffer_index: usize = undefined; // only defined if maybe_result_loc == null
+            var out: BufferDest = undefined;
+            if (maybe_result_loc) |result_loc| {
+                out = result_loc;
+            } else {
+                temp_buffer_index = try self.temp_buffers.claim();
+                out = .{ .temp_buffer_index = temp_buffer_index };
+            }
+
             try self.instructions.append(.{
                 .delay_begin = .{
+                    .out = out,
                     .delay_index = delay_index,
-                    .out_temp_buffer_index = temp_buffer_index,
                     .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
                 },
             });
@@ -541,7 +663,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                 }
             }
             const expr = maybe_last_expr.?;
-            const inner_result = try genExpression(self, expr, feedback_temp_index);
+            const inner_result = try genExpression(self, expr, null, feedback_temp_index);
             defer releaseExpressionResult(self, inner_result);
             // END HACK
 
@@ -551,151 +673,59 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
 
             try self.instructions.append(.{
                 .delay_end = .{
+                    .out = out,
                     .delay_index = delay_index,
-                    .out_temp_buffer_index = temp_buffer_index,
                     .inner_value = inner_value,
                 },
             });
 
-            return ExpressionResult{ .temp_buffer = temp_buffer_index };
+            if (maybe_result_loc != null) {
+                return ExpressionResult.nothing;
+            } else {
+                return ExpressionResult{ .temp_buffer = temp_buffer_index };
+            }
         },
         .feedback => {
             const feedback_temp_index = maybe_feedback_temp_index orelse {
                 return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
             };
-            return ExpressionResult{ .temp_buffer_weak = feedback_temp_index };
-        },
-    }
-}
-
-fn genOutput(self: *CodegenState, expression: *const Expression, result_loc: BufferDest, maybe_feedback_temp_index: ?usize) GenError!void {
-    // generate an expression. it will store its result in a temp
-    const result = try genExpression(self, expression, maybe_feedback_temp_index);
-    defer releaseExpressionResult(self, result);
-
-    const source_range = expression.source_range;
-
-    switch (result) {
-        .temp_buffer_weak => |i| {
-            try self.instructions.append(.{
-                .add_buffer_to = .{
-                    .out = result_loc,
-                    .in = .{ .temp_buffer_index = i },
-                },
-            });
-        },
-        .temp_buffer => |i| {
-            try self.instructions.append(.{
-                .add_buffer_to = .{
-                    .out = result_loc,
-                    .in = .{ .temp_buffer_index = i },
-                },
-            });
-        },
-        .temp_float => |i| {
-            try self.instructions.append(.{
-                .float_to_buffer = .{
-                    .out = result_loc,
-                    .in = .{ .temp_float_index = i },
-                },
-            });
-        },
-        .temp_bool => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
-        .literal => |literal| switch (literal) {
-            .boolean => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
-            .number => |n| {
+            if (maybe_result_loc) |result_loc| {
                 try self.instructions.append(.{
-                    .float_to_buffer = .{
+                    .copy_buffer = .{
                         .out = result_loc,
-                        .in = .{ .literal = n },
+                        .in = .{ .temp_buffer_index = feedback_temp_index },
                     },
                 });
-            },
-            .enum_value => return fail(self.source, source_range, "paint block cannot return an enum value", .{}),
-        },
-        .self_param => |i| {
-            const module = self.first_pass_result.modules[self.module_index];
-            const param = self.first_pass_result.module_params[module.first_param + i];
-            switch (param.param_type) {
-                .boolean => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
-                .buffer => {
-                    try self.instructions.append(.{
-                        .add_buffer_to = .{
-                            .out = result_loc,
-                            .in = .{ .self_param = i },
-                        },
-                    });
-                },
-                .constant => {
-                    try self.instructions.append(.{
-                        .float_to_buffer = .{
-                            .out = result_loc,
-                            .in = .{ .self_param = i },
-                        },
-                    });
-                },
-                .constant_or_buffer => unreachable, // impossible
-                .one_of => unreachable, // impossible
+                return ExpressionResult.nothing;
+            } else {
+                return ExpressionResult{ .temp_buffer_weak = feedback_temp_index };
             }
         },
     }
 }
 
+// TODO this needs to take a result loc too!
+// you should be able to create a begin...end block, where you can use `out` to yield a result
 fn genStatement(self: *CodegenState, statement: Statement, maybe_feedback_temp_index: ?usize) GenError!void {
     switch (statement) {
         .let_assignment => |x| {
             // for now, only buffer type is supported for let-assignments
-            const result = try genExpression(self, x.expression, maybe_feedback_temp_index);
+            // create a "temp" to hold the value
+            const temp_buffer_index = try self.temp_buffers.claim();
 
-            // TODO support other types? in other cases, no temp should be generated, probably?
-            // like self_param and literal can just be passed through since there's no work
-            // involved in getting their value
-            const temp_buffer_index = switch (result) {
-                //.temp_buffer_weak => |i| {},
-                .temp_buffer => |i| {
-                    // if genExpression allocated a new temp for its result, record that temp
-                    // to be released at the end of codegen (otherwise a leak will be detected)
-                    // note: be careful if support for temp_buffer_weak is added. we'll want to record
-                    // the statement_temp, but NOT release it at the end, since something else is already
-                    // committed to releasing it
-                    self.local_temps[x.local_index] = i;
-                },
-                //temp_float: usize,
-                //temp_bool: usize,
-                //literal: Literal,
-                //self_param: usize,
-                else => {
-                    return fail(self.source, x.expression.source_range, "assignment value must be a buffer-typed expression", .{});
-                },
-            };
+            // mark the temp to be released at the end of all codegen
+            self.local_temps[x.local_index] = temp_buffer_index;
 
-            // old implementation (copying):
+            const result_loc: BufferDest = .{ .temp_buffer_index = temp_buffer_index };
 
-            //const temp_buffer_index = try self.temp_buffers.claim();
-            //self.statement_temps[statement_index] = temp_buffer_index;
-
-            //// TODO genExpression should be able to take an optional result-location.
-            //// only if not provided will it generate a temp for its result
-            //const result = try genExpression(self, x.expression, maybe_feedback_temp_index);
-            //defer releaseExpressionResult(self, result);
-
-            //try self.instructions.append(.{
-            //    .copy_buffer = .{
-            //        .out_temp_buffer_index = temp_buffer_index,
-            //        .in = .{
-            //            .temp_buffer_index = switch (result) {
-            //                .temp_buffer_weak => |i| i,
-            //                .temp_buffer => |i| i,
-            //                else => unreachable, // FIXME - if reachable this should be a proper error
-            //            },
-            //        },
-            //    },
-            //});
+            const result = try genExpression(self, x.expression, result_loc, maybe_feedback_temp_index);
+            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
         },
         .output => |expression| {
             const result_loc: BufferDest = .{ .output_index = 0 };
 
-            try genOutput(self, expression, result_loc, maybe_feedback_temp_index);
+            const result = try genExpression(self, expression, result_loc, maybe_feedback_temp_index);
+            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
         },
     }
 }

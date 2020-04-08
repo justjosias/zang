@@ -7,6 +7,7 @@ const BufferDest = @import("codegen.zig").BufferDest;
 
 fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) void {
     switch (result) {
+        .nothing => unreachable,
         .temp_buffer_weak => |i| std.debug.warn("temp{}", .{i}),
         .temp_buffer => |i| std.debug.warn("temp{}", .{i}),
         .temp_float => |i| std.debug.warn("temp_float{}", .{i}),
@@ -70,9 +71,9 @@ pub fn printBytecode(self: *CodegenState) void {
     for (instructions) |instr| {
         std.debug.warn("    ", .{});
         switch (instr) {
-            .add_buffer_to => |x| {
+            .copy_buffer => |x| {
                 printBufferDest(self, x.out);
-                std.debug.warn(" += ", .{});
+                std.debug.warn(" = ", .{});
                 printBufferValue(self, x.in);
                 std.debug.warn("\n", .{});
             },
@@ -90,14 +91,16 @@ pub fn printBytecode(self: *CodegenState) void {
                 std.debug.warn("\n", .{});
             },
             .arith_buffer_float => |x| {
-                std.debug.warn("temp{} = ARITH_BUFFER_FLOAT({}) ", .{ x.out_temp_buffer_index, x.operator });
+                printBufferDest(self, x.out);
+                std.debug.warn(" = ARITH_BUFFER_FLOAT({}) ", .{x.operator});
                 printBufferValue(self, x.a);
                 std.debug.warn(" ", .{});
                 printFloatValue(self, x.b);
                 std.debug.warn("\n", .{});
             },
             .arith_buffer_buffer => |x| {
-                std.debug.warn("temp{} = ARITH_BUFFER_BUFFER({}) ", .{ x.out_temp_buffer_index, x.operator });
+                printBufferDest(self, x.out);
+                std.debug.warn(" = ARITH_BUFFER_BUFFER({}) ", .{x.operator});
                 printBufferValue(self, x.a);
                 std.debug.warn(" ", .{});
                 printBufferValue(self, x.b);
@@ -107,8 +110,8 @@ pub fn printBytecode(self: *CodegenState) void {
                 const field = self.first_pass_result.module_fields[self_module.first_field + call.field_index];
                 const callee_module = self.first_pass_result.modules[field.resolved_module_index];
                 const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
-                std.debug.warn("temp{} = CALL #{}({}: {})\n", .{
-                    call.out_temp_buffer_index,
+                printBufferDest(self, call.out);
+                std.debug.warn(" = CALL #{}({}: {})\n", .{
                     call.field_index,
                     field.name,
                     callee_module.name,
@@ -129,7 +132,8 @@ pub fn printBytecode(self: *CodegenState) void {
                 std.debug.warn("DELAY_BEGIN\n", .{});
             },
             .delay_end => |delay_end| {
-                std.debug.warn("temp{} = DELAY_END ", .{delay_end.out_temp_buffer_index});
+                printBufferDest(self, delay_end.out);
+                std.debug.warn(" = DELAY_END ", .{});
                 printBufferValue(self, delay_end.inner_value);
                 std.debug.warn("\n", .{});
             },

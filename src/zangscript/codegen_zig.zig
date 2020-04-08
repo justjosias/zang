@@ -10,6 +10,7 @@ const builtins = @import("builtins.zig").builtins;
 
 fn printExpressionResult(first_pass_result: FirstPassResult, module: Module, out: var, result: ExpressionResult) !void {
     switch (result) {
+        .nothing => unreachable,
         .temp_buffer_weak => |i| try out.print("temps[{}]", .{i}),
         .temp_buffer => |i| try out.print("temps[{}]", .{i}),
         .temp_float => |i| try out.print("temp_float{}", .{i}),
@@ -131,9 +132,9 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         var span: []const u8 = "span";
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
-                .add_buffer_to => |x| {
+                .copy_buffer => |x| {
                     try indent(out, indentation);
-                    try out.print("zang.addInto({}, ", .{span});
+                    try out.print("zang.copy({}, ", .{span});
                     try printBufferDest(out, x.out);
                     try out.print(", ", .{});
                     try printBufferValue(first_pass_result, module, out, x.in);
@@ -162,13 +163,18 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 },
                 .arith_buffer_float => |x| {
                     try indent(out, indentation);
-                    try out.print("zang.zero({}, temps[{}]);\n", .{ span, x.out_temp_buffer_index });
+                    try out.print("zang.zero({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(");\n", .{});
+
                     try indent(out, indentation);
                     switch (x.operator) {
                         .add => try out.print("zang.addScalar", .{}),
                         .mul => try out.print("zang.multiplyScalar", .{}),
                     }
-                    try out.print("({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
+                    try out.print("({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(", ", .{});
                     try printBufferValue(first_pass_result, module, out, x.a);
                     try out.print(", ", .{});
                     try printFloatValue(first_pass_result, module, out, x.b);
@@ -176,16 +182,18 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 },
                 .arith_buffer_buffer => |x| {
                     try indent(out, indentation);
-                    try out.print("zang.zero({}, temps[{}]);\n", .{ span, x.out_temp_buffer_index });
+                    try out.print("zang.zero({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(");\n", .{});
+
                     try indent(out, indentation);
-                    try out.print("zang.{}({}, temps[{}], ", .{
-                        switch (x.operator) {
-                            .add => @as([]const u8, "add"),
-                            .mul => @as([]const u8, "multiply"),
-                        },
-                        span,
-                        x.out_temp_buffer_index,
-                    });
+                    switch (x.operator) {
+                        .add => try out.print("zang.add", .{}),
+                        .mul => try out.print("zang.multiply", .{}),
+                    }
+                    try out.print("({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(", ", .{});
                     try printBufferValue(first_pass_result, module, out, x.a);
                     try out.print(", ", .{});
                     try printBufferValue(first_pass_result, module, out, x.b);
@@ -193,10 +201,16 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 },
                 .call => |call| {
                     const field = first_pass_result.module_fields[module.first_field + call.field_index];
+
                     try indent(out, indentation);
-                    try out.print("zang.zero({}, temps[{}]);\n", .{ span, call.out_temp_buffer_index });
+                    try out.print("zang.zero({}, ", .{span});
+                    try printBufferDest(out, call.out);
+                    try out.print(");\n", .{});
+
                     try indent(out, indentation);
-                    try out.print("self.{}.paint({}, .{{temps[{}]}}, .{{", .{ field.name, span, call.out_temp_buffer_index });
+                    try out.print("self.{}.paint({}, .{{", .{ field.name, span });
+                    try printBufferDest(out, call.out);
+                    try out.print("}}, .{{", .{});
                     // callee temps
                     for (call.temps) |n, j| {
                         if (j > 0) {
@@ -216,6 +230,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                         if (callee_param.param_type == .constant_or_buffer) {
                             // coerce to ConstantOrBuffer?
                             switch (arg) {
+                                .nothing => {},
                                 .temp_buffer_weak => |index| try out.print("zang.buffer(temps[{}])", .{index}),
                                 .temp_buffer => |index| try out.print("zang.buffer(temps[{}])", .{index}),
                                 .temp_float => |index| try out.print("zang.constant(temp_float{})", .{index}),
@@ -252,30 +267,40 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     // we'll have done some overlapping zeroing.
                     // maybe readDelayBuffer should do the zeroing internally.
                     try indent(out, indentation);
-                    try out.print("zang.zero({}, temps[{}]);\n", .{ span, delay_begin.out_temp_buffer_index });
+                    try out.print("zang.zero({}, ", .{span});
+                    try printBufferDest(out, delay_begin.out);
+                    try out.print(");\n", .{});
+
                     try indent(out, indentation);
                     try out.print("{{\n", .{});
                     indentation += 1;
+
                     try indent(out, indentation);
                     try out.print("var start = span.start;\n", .{});
+
                     try indent(out, indentation);
                     try out.print("const end = span.end;\n", .{});
+
                     try indent(out, indentation);
                     try out.print("while (start < end) {{\n", .{});
                     indentation += 1;
+
                     try indent(out, indentation);
                     try out.print("// temps[{}] will contain the delay buffer's previous contents\n", .{
                         delay_begin.feedback_temp_buffer_index,
                     });
+
                     try indent(out, indentation);
                     try out.print("zang.zero(zang.Span.init(start, end), temps[{}]);\n", .{
                         delay_begin.feedback_temp_buffer_index,
                     });
+
                     try indent(out, indentation);
                     try out.print("const samples_read = self.delay{}.readDelayBuffer(temps[{}][start..end]);\n", .{
                         delay_begin.delay_index,
                         delay_begin.feedback_temp_buffer_index,
                     });
+
                     try indent(out, indentation);
                     try out.print("const inner_span = zang.Span.init(start, start + samples_read);\n", .{});
                     span = "inner_span";
@@ -284,15 +309,16 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     // is sent to the delay buffer. i need some new syntax in the language before i can implement
                     // this properly
                     try out.print("\n", .{});
+
                     try indent(out, indentation);
                     try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
+
                     try indent(out, indentation);
-                    try out.print("zang.addInto({}, temps[{}], temps[{}]);\n", .{
-                        span,
-                        delay_begin.out_temp_buffer_index,
-                        delay_begin.feedback_temp_buffer_index,
-                    });
+                    try out.print("zang.addInto({}, ", .{span});
+                    try printBufferDest(out, delay_begin.out);
+                    try out.print(", temps[{}]);\n", .{delay_begin.feedback_temp_buffer_index});
                     try out.print("\n", .{});
+
                     try indent(out, indentation);
                     try out.print("// inner expression\n", .{});
                 },

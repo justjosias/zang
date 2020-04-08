@@ -56,7 +56,7 @@ pub const ExpressionInner = union(enum) {
     literal: Literal,
     self_param: usize,
     bin_arith: BinArith,
-    local: usize, // statement index pointing to Local
+    local: usize, // index into flat `locals` array
     feedback, // only allowed within `delay` expressions
 };
 
