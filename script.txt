@@ -23,15 +23,24 @@ begin
     out @dist(ingain: 0.25, outgain: 0.5, offset: 0, distortion_type: 'overdrive', input: input)
 end
 
+def Echoes:
+    param input waveform;
+    param echo_volume constant;
+begin
+    out delay 1000 begin
+        let x = + $input * $echo_volume feedback
+        out x
+        feedback x
+    end
+end
+
 def OuterInstrument:
     param sample_rate constant;
 
-    noise Noise;
     instr Instrument;
+    echoes Echoes;
 begin
-    out delay 1000 begin
-        let damn = @noise()
+    let input = @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
 
-        out + feedback @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
-    end
+    out @echoes(input: input, echo_volume: 0.5)
 end

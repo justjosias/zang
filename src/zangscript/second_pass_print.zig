@@ -36,6 +36,10 @@ fn printStatement(first_pass_result: FirstPassResult, module: Module, locals: []
             std.debug.warn("OUT\n", .{});
             printExpression(first_pass_result, module, locals, expression, indentation + 1);
         },
+        .feedback => |expression| {
+            std.debug.warn("FEEDBACK\n", .{});
+            printExpression(first_pass_result, module, locals, expression, indentation + 1);
+        },
     }
 }
 

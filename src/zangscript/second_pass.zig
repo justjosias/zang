@@ -79,6 +79,7 @@ pub const LetAssignment = struct {
 pub const Statement = union(enum) {
     let_assignment: LetAssignment,
     output: *const Expression,
+    feedback: *const Expression,
 };
 
 const SecondPass = struct {
@@ -340,6 +341,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                                 }
                             },
                             .output => {},
+                            .feedback => {},
                         }
                     }
                 }
@@ -359,6 +361,12 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                 const expr = try expectExpression(self, scope);
                 try scope.statements.append(.{
                     .output = expr,
+                });
+            },
+            .kw_feedback => {
+                const expr = try expectExpression(self, scope);
+                try scope.statements.append(.{
+                    .feedback = expr,
                 });
             },
             else => {

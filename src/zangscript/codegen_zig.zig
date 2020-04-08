@@ -286,6 +286,16 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     indentation += 1;
 
                     try indent(out, indentation);
+                    try out.print("// temps[{}] will be the destination for writing into the feedback buffer\n", .{
+                        delay_begin.feedback_out_temp_buffer_index,
+                    });
+
+                    try indent(out, indentation);
+                    try out.print("zang.zero(zang.Span.init(start, end), temps[{}]);\n", .{
+                        delay_begin.feedback_out_temp_buffer_index,
+                    });
+
+                    try indent(out, indentation);
                     try out.print("// temps[{}] will contain the delay buffer's previous contents\n", .{
                         delay_begin.feedback_temp_buffer_index,
                     });
@@ -310,14 +320,14 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     // this properly
                     try out.print("\n", .{});
 
-                    try indent(out, indentation);
-                    try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
+                    //try indent(out, indentation);
+                    //try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
 
-                    try indent(out, indentation);
-                    try out.print("zang.addInto({}, ", .{span});
-                    try printBufferDest(out, delay_begin.out);
-                    try out.print(", temps[{}]);\n", .{delay_begin.feedback_temp_buffer_index});
-                    try out.print("\n", .{});
+                    //try indent(out, indentation);
+                    //try out.print("zang.addInto({}, ", .{span});
+                    //try printBufferDest(out, delay_begin.out);
+                    //try out.print(", temps[{}]);\n", .{delay_begin.feedback_temp_buffer_index});
+                    //try out.print("\n", .{});
 
                     try indent(out, indentation);
                     try out.print("// inner expression\n", .{});
@@ -329,7 +339,8 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     try out.print("// write expression result into the delay buffer\n", .{});
                     try indent(out, indentation);
                     try out.print("self.delay{}.writeDelayBuffer(", .{delay_end.delay_index});
-                    try printBufferValue(first_pass_result, module, out, delay_end.inner_value);
+                    try out.print("temps[{}]", .{delay_end.feedback_out_temp_buffer_index});
+                    //try printBufferValue(first_pass_result, module, out, delay_end.inner_value);
                     try out.print("[start..start + samples_read]);\n", .{});
                     try indent(out, indentation);
                     try out.print("start += samples_read;\n", .{});

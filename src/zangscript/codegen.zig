@@ -10,6 +10,7 @@ const Literal = @import("second_pass.zig").Literal;
 const Local = @import("second_pass.zig").Local;
 const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
+const LetAssignment = @import("second_pass.zig").LetAssignment;
 const Scope = @import("second_pass.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
@@ -55,13 +56,14 @@ pub const InstrCall = struct {
 pub const InstrDelayBegin = struct {
     delay_index: usize,
     out: BufferDest,
+    feedback_out_temp_buffer_index: usize,
     feedback_temp_buffer_index: usize,
 };
 
 pub const InstrDelayEnd = struct {
     delay_index: usize,
     out: BufferDest,
-    inner_value: BufferValue,
+    feedback_out_temp_buffer_index: usize,
 };
 
 pub const InstrCopyBuffer = struct {
@@ -664,45 +666,39 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                 break :blk .{ .temp_buffer_index = temp_buffer_index };
             };
 
+            const feedback_out_temp_index = try self.temp_buffers.claim();
+            defer self.temp_buffers.release(feedback_out_temp_index);
+
             try self.instructions.append(.{
                 .delay_begin = .{
                     .out = out,
                     .delay_index = delay_index,
+                    .feedback_out_temp_buffer_index = feedback_out_temp_index,
                     .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
                 },
             });
 
-            // FIXME - i'm stuck here. i can't get the output out of the delay block.
-            // i think i need to implement result locations in second_pass before i can get this working.
-            //for (delay.scope.statements.span()) |statement| {
-            //    try genStatement(self, statement, feedback_temp_index);
-            //}
-
-            // BEGIN HACK
-            // i'm just grabbing the last output statement and using its expression.
-            // if it referenced any locals that were declared within the delay block, i guess this won't work.
-            // see FIXME comment above
-            var maybe_last_expr: ?*const Expression = null;
             for (delay.scope.statements.span()) |statement| {
                 switch (statement) {
-                    .output => |expr| maybe_last_expr = expr,
-                    else => {},
+                    .let_assignment => |x| {
+                        try genLetAssignment(self, x, feedback_temp_index);
+                    },
+                    .output => |expr| {
+                        const result = try genExpression(self, expr, .{ .result_loc = out }, feedback_temp_index);
+                        defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+                    },
+                    .feedback => |expr| {
+                        const result = try genExpression(self, expr, .{ .result_loc = .{ .temp_buffer_index = feedback_out_temp_index } }, feedback_temp_index);
+                        defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+                    },
                 }
             }
-            const expr = maybe_last_expr.?;
-            const inner_result = try genExpression(self, expr, .none, feedback_temp_index);
-            defer releaseExpressionResult(self, inner_result);
-            // END HACK
-
-            const inner_value = getBufferValue(self, inner_result) orelse {
-                return fail(self.source, expression.source_range, "invalid operand types", .{});
-            };
 
             try self.instructions.append(.{
                 .delay_end = .{
                     .out = out,
+                    .feedback_out_temp_buffer_index = feedback_out_temp_index,
                     .delay_index = delay_index,
-                    .inner_value = inner_value,
                 },
             });
 
@@ -717,32 +713,19 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
     }
 }
 
-// TODO this needs to take a result loc too!
-// you should be able to create a begin...end block, where you can use `out` to yield a result
-fn genStatement(self: *CodegenState, statement: Statement, maybe_feedback_temp_index: ?usize) GenError!void {
-    switch (statement) {
-        .let_assignment => |x| {
-            // for now, only buffer type is supported for let-assignments
-            // create a "temp" to hold the value
-            const temp_buffer_index = try self.temp_buffers.claim();
+fn genLetAssignment(self: *CodegenState, x: LetAssignment, maybe_feedback_temp_index: ?usize) GenError!void {
+    // for now, only buffer type is supported for let-assignments
+    // create a "temp" to hold the value
+    const temp_buffer_index = try self.temp_buffers.claim();
 
-            // mark the temp to be released at the end of all codegen
-            self.local_temps[x.local_index] = temp_buffer_index;
+    // mark the temp to be released at the end of all codegen
+    self.local_temps[x.local_index] = temp_buffer_index;
 
-            const result_info: ResultInfo = .{
-                .result_loc = .{ .temp_buffer_index = temp_buffer_index },
-            };
-            const result = try genExpression(self, x.expression, result_info, maybe_feedback_temp_index);
-            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
-        },
-        .output => |expression| {
-            const result_info: ResultInfo = .{
-                .result_loc = .{ .output_index = 0 },
-            };
-            const result = try genExpression(self, expression, result_info, maybe_feedback_temp_index);
-            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
-        },
-    }
+    const result_info: ResultInfo = .{
+        .result_loc = .{ .temp_buffer_index = temp_buffer_index },
+    };
+    const result = try genExpression(self, x.expression, result_info, maybe_feedback_temp_index);
+    defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
 }
 
 pub const CodeGenResult = struct {
@@ -786,7 +769,19 @@ pub fn codegen(
     std.mem.set(?usize, self.local_temps, null);
 
     for (scope.statements.span()) |statement| {
-        try genStatement(&self, statement, null);
+        switch (statement) {
+            .let_assignment => |x| {
+                try genLetAssignment(&self, x, null);
+            },
+            .output => |expression| {
+                const result_info: ResultInfo = .{ .result_loc = .{ .output_index = 0 } };
+                const result = try genExpression(&self, expression, result_info, null);
+                defer releaseExpressionResult(&self, result); // this should do nothing (because we passed a result loc)
+            },
+            .feedback => |expression| {
+                return fail(source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+            },
+        }
     }
 
     for (self.local_temps) |maybe_temp_buffer_index| {

@@ -134,7 +134,7 @@ pub fn printBytecode(self: *CodegenState) void {
             .delay_end => |delay_end| {
                 printBufferDest(self, delay_end.out);
                 std.debug.warn(" = DELAY_END ", .{});
-                printBufferValue(self, delay_end.inner_value);
+                //printBufferValue(self, delay_end.inner_value); // FIXME
                 std.debug.warn("\n", .{});
             },
         }
