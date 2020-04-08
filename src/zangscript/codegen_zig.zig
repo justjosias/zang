@@ -5,6 +5,7 @@ const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
+const BufferDest = @import("codegen.zig").BufferDest;
 const builtins = @import("builtins.zig").builtins;
 
 fn printExpressionResult(first_pass_result: FirstPassResult, module: Module, out: var, result: ExpressionResult) !void {
@@ -28,6 +29,13 @@ fn printBufferValue(first_pass_result: FirstPassResult, module: Module, out: var
     switch (value) {
         .temp_buffer_index => |i| try out.print("temps[{}]", .{i}),
         .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
+    }
+}
+
+fn printBufferDest(out: var, value: BufferDest) !void {
+    switch (value) {
+        .temp_buffer_index => |i| try out.print("temps[{}]", .{i}),
+        .output_index => |i| try out.print("outputs[{}]", .{i}),
     }
 }
 
@@ -123,15 +131,19 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         var span: []const u8 = "span";
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
-                .copy_buffer => |x| {
+                .add_buffer_to => |x| {
                     try indent(out, indentation);
-                    try out.print("zang.copy({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
+                    try out.print("zang.addInto({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(", ", .{});
                     try printBufferValue(first_pass_result, module, out, x.in);
                     try out.print(");\n", .{});
                 },
                 .float_to_buffer => |x| {
                     try indent(out, indentation);
-                    try out.print("zang.set({}, temps[{}], ", .{ span, x.out_temp_buffer_index });
+                    try out.print("zang.set({}, ", .{span});
+                    try printBufferDest(out, x.out);
+                    try out.print(", ", .{});
                     try printFloatValue(first_pass_result, module, out, x.in);
                     try out.print(");\n", .{});
                 },
@@ -301,12 +313,6 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     indentation -= 1;
                     try indent(out, indentation);
                     try out.print("}}\n", .{});
-                },
-                .output => |x| {
-                    try indent(out, indentation);
-                    try out.print("zang.addInto({}, outputs[0], ", .{span});
-                    try printBufferValue(first_pass_result, module, out, x.value);
-                    try out.print(");\n", .{});
                 },
             }
         }

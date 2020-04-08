@@ -63,8 +63,8 @@ pub const InstrDelayEnd = struct {
     inner_value: BufferValue,
 };
 
-pub const InstrCopyBuffer = struct {
-    out_temp_buffer_index: usize,
+pub const InstrAddBufferTo = struct {
+    out: BufferDest,
     in: BufferValue,
 };
 
@@ -75,7 +75,7 @@ pub const FloatValue = union(enum) {
 };
 
 pub const InstrFloatToBuffer = struct {
-    out_temp_buffer_index: usize,
+    out: BufferDest,
     in: FloatValue,
 };
 
@@ -95,6 +95,11 @@ pub const InstrArithBufferFloat = struct {
     b: FloatValue,
 };
 
+pub const BufferDest = union(enum) {
+    temp_buffer_index: usize,
+    output_index: usize,
+};
+
 pub const BufferValue = union(enum) {
     temp_buffer_index: usize,
     self_param: usize, // guaranteed to be of type `buffer`
@@ -107,12 +112,8 @@ pub const InstrArithBufferBuffer = struct {
     b: BufferValue,
 };
 
-pub const InstrOutput = struct {
-    value: BufferValue,
-};
-
 pub const Instruction = union(enum) {
-    copy_buffer: InstrCopyBuffer,
+    add_buffer_to: InstrAddBufferTo,
     float_to_buffer: InstrFloatToBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_buffer_float: InstrArithBufferFloat,
@@ -120,7 +121,6 @@ pub const Instruction = union(enum) {
     call: InstrCall,
     delay_begin: InstrDelayBegin,
     delay_end: InstrDelayEnd,
-    output: InstrOutput,
 };
 
 pub const DelayDecl = struct {
@@ -408,7 +408,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
                             const temp_buffer_index = try self.temp_buffers.claim();
                             try self.instructions.append(.{
                                 .float_to_buffer = .{
-                                    .out_temp_buffer_index = temp_buffer_index,
+                                    .out = .{ .temp_buffer_index = temp_buffer_index },
                                     .in = switch (arg_result) {
                                         .temp_float => |index| FloatValue{ .temp_float_index = index },
                                         .literal => |literal| switch (literal) {
@@ -568,7 +568,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression, maybe_feedb
     }
 }
 
-fn genOutput(self: *CodegenState, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!void {
+fn genOutput(self: *CodegenState, expression: *const Expression, result_loc: BufferDest, maybe_feedback_temp_index: ?usize) GenError!void {
+    // generate an expression. it will store its result in a temp
     const result = try genExpression(self, expression, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, result);
 
@@ -576,35 +577,39 @@ fn genOutput(self: *CodegenState, expression: *const Expression, maybe_feedback_
 
     switch (result) {
         .temp_buffer_weak => |i| {
-            try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
+            try self.instructions.append(.{
+                .add_buffer_to = .{
+                    .out = result_loc,
+                    .in = .{ .temp_buffer_index = i },
+                },
+            });
         },
         .temp_buffer => |i| {
-            try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = i } } });
+            try self.instructions.append(.{
+                .add_buffer_to = .{
+                    .out = result_loc,
+                    .in = .{ .temp_buffer_index = i },
+                },
+            });
         },
         .temp_float => |i| {
-            const temp_buffer_index = try self.temp_buffers.claim();
-            defer self.temp_buffers.release(temp_buffer_index);
             try self.instructions.append(.{
                 .float_to_buffer = .{
-                    .out_temp_buffer_index = temp_buffer_index,
+                    .out = result_loc,
                     .in = .{ .temp_float_index = i },
                 },
             });
-            try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = temp_buffer_index } } });
         },
         .temp_bool => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
         .literal => |literal| switch (literal) {
             .boolean => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
             .number => |n| {
-                const temp_buffer_index = try self.temp_buffers.claim();
-                defer self.temp_buffers.release(temp_buffer_index);
                 try self.instructions.append(.{
                     .float_to_buffer = .{
-                        .out_temp_buffer_index = temp_buffer_index,
+                        .out = result_loc,
                         .in = .{ .literal = n },
                     },
                 });
-                try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = temp_buffer_index } } });
             },
             .enum_value => return fail(self.source, source_range, "paint block cannot return an enum value", .{}),
         },
@@ -614,18 +619,20 @@ fn genOutput(self: *CodegenState, expression: *const Expression, maybe_feedback_
             switch (param.param_type) {
                 .boolean => return fail(self.source, source_range, "paint block cannot return a boolean", .{}),
                 .buffer => {
-                    try self.instructions.append(.{ .output = .{ .value = .{ .self_param = i } } });
-                },
-                .constant => {
-                    const temp_buffer_index = try self.temp_buffers.claim();
-                    defer self.temp_buffers.release(temp_buffer_index);
                     try self.instructions.append(.{
-                        .float_to_buffer = .{
-                            .out_temp_buffer_index = temp_buffer_index,
+                        .add_buffer_to = .{
+                            .out = result_loc,
                             .in = .{ .self_param = i },
                         },
                     });
-                    try self.instructions.append(.{ .output = .{ .value = .{ .temp_buffer_index = temp_buffer_index } } });
+                },
+                .constant => {
+                    try self.instructions.append(.{
+                        .float_to_buffer = .{
+                            .out = result_loc,
+                            .in = .{ .self_param = i },
+                        },
+                    });
                 },
                 .constant_or_buffer => unreachable, // impossible
                 .one_of => unreachable, // impossible
@@ -686,7 +693,9 @@ fn genStatement(self: *CodegenState, statement: Statement, maybe_feedback_temp_i
             //});
         },
         .output => |expression| {
-            try genOutput(self, expression, maybe_feedback_temp_index);
+            const result_loc: BufferDest = .{ .output_index = 0 };
+
+            try genOutput(self, expression, result_loc, maybe_feedback_temp_index);
         },
     }
 }

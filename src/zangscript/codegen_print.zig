@@ -3,6 +3,7 @@ const CodegenState = @import("codegen.zig").CodegenState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
+const BufferDest = @import("codegen.zig").BufferDest;
 
 fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) void {
     switch (result) {
@@ -37,6 +38,13 @@ fn printFloatValue(self: *const CodegenState, value: FloatValue) void {
     }
 }
 
+fn printBufferDest(self: *const CodegenState, dest: BufferDest) void {
+    switch (dest) {
+        .temp_buffer_index => |i| std.debug.warn("temp{}", .{i}),
+        .output_index => |i| std.debug.warn("output{}", .{i}),
+    }
+}
+
 fn printBufferValue(self: *const CodegenState, value: BufferValue) void {
     switch (value) {
         .temp_buffer_index => |i| std.debug.warn("temp{}", .{i}),
@@ -62,13 +70,15 @@ pub fn printBytecode(self: *CodegenState) void {
     for (instructions) |instr| {
         std.debug.warn("    ", .{});
         switch (instr) {
-            .copy_buffer => |x| {
-                std.debug.warn("temp{} = COPY_BUFFER ", .{x.out_temp_buffer_index});
+            .add_buffer_to => |x| {
+                printBufferDest(self, x.out);
+                std.debug.warn(" += ", .{});
                 printBufferValue(self, x.in);
                 std.debug.warn("\n", .{});
             },
             .float_to_buffer => |x| {
-                std.debug.warn("temp{} = FLOAT_TO_BUFFER ", .{x.out_temp_buffer_index});
+                printBufferDest(self, x.out);
+                std.debug.warn(" = FLOAT_TO_BUFFER ", .{});
                 printFloatValue(self, x.in);
                 std.debug.warn("\n", .{});
             },
@@ -121,11 +131,6 @@ pub fn printBytecode(self: *CodegenState) void {
             .delay_end => |delay_end| {
                 std.debug.warn("temp{} = DELAY_END ", .{delay_end.out_temp_buffer_index});
                 printBufferValue(self, delay_end.inner_value);
-                std.debug.warn("\n", .{});
-            },
-            .output => |x| {
-                std.debug.warn("output0 = ", .{});
-                printBufferValue(self, x.value);
                 std.debug.warn("\n", .{});
             },
         }
