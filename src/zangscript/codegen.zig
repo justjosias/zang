@@ -5,8 +5,10 @@ const fail = @import("common.zig").fail;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ParamType = @import("first_pass.zig").ParamType;
+const CallArg = @import("second_pass.zig").CallArg;
 const BinArithOp = @import("second_pass.zig").BinArithOp;
 const Literal = @import("second_pass.zig").Literal;
+const Field = @import("second_pass.zig").Field;
 const Local = @import("second_pass.zig").Local;
 const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
@@ -14,17 +16,6 @@ const LetAssignment = @import("second_pass.zig").LetAssignment;
 const Scope = @import("second_pass.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
-
-// a goal of this pass is to catch all errors that would cause the zig code to fail.
-// in other words, codegen_zig should never generate zig code that fails to compile
-
-// TODO i'm tending towards the idea of this file not even being involved at all
-// in runtime script mode.
-// so type checking and everything like that should be moved all into second_pass.
-// this file will be very specific for generating zig code, i think.
-// although, i'm not sure. temp floats are not needed for runtime script mode,
-// but temps (temp buffers) are? (although i could just allocate those dynamically
-// as well since i don't have a lot of performance requirements for script mode.)
 
 // expression will return how it stored its result.
 // if it's a temp, the caller needs to make sure to release it (by calling
@@ -136,6 +127,7 @@ pub const CodegenState = struct {
     first_pass_result: FirstPassResult,
     codegen_results: []const CodeGenResult,
     module_index: usize,
+    fields: []const Field,
     locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
@@ -579,8 +571,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
         },
         .call => |call| {
             const module = self.first_pass_result.modules[self.module_index];
-            const params = self.first_pass_result.module_params[module.first_param .. module.first_param + module.num_params];
-            const field = self.first_pass_result.module_fields[module.first_field + call.field_index];
+            const field = self.fields[call.field_index];
 
             // the callee is guaranteed to have had its codegen done already (see second_pass), so its num_temps is known
             const callee_num_temps = self.codegen_results[field.resolved_module_index].num_temps;
@@ -598,13 +589,20 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                 }
             }
             for (callee_params) |param, i| {
-                // find this arg in the call node. (they are not necessarily in the same order)
-                const arg = for (call.args.span()) |a| {
-                    if (a.callee_param_index == i) {
-                        break a;
+                // find this arg in the call node
+                // FIXME when these errors happen there is a temps leak
+                var maybe_arg: ?CallArg = null;
+                for (call.args) |a| {
+                    if (std.mem.eql(u8, a.param_name, param.name)) {
+                        if (maybe_arg != null) {
+                            return fail(self.source, a.param_name_token.source_range, "param `#` provided more than once", .{param.name});
+                        }
+                        maybe_arg = a;
                     }
-                } else unreachable; // we already checked for missing params in second_pass
-
+                }
+                const arg = maybe_arg orelse {
+                    return fail(self.source, sr, "call is missing param `#`", .{param.name});
+                };
                 args[i] = try genExpression(self, arg.value, .{ .param_type = param.param_type }, maybe_feedback_temp_index);
                 args_filled += 1;
             }
@@ -731,6 +729,7 @@ fn genLetAssignment(self: *CodegenState, x: LetAssignment, maybe_feedback_temp_i
 pub const CodeGenResult = struct {
     num_outputs: usize,
     num_temps: usize,
+    fields: []const Field,
     delays: []const DelayDecl, // owned slice
     instructions: []const Instruction, // owned slice (might need to remove `const` to make it free-able?)
 };
@@ -741,6 +740,7 @@ pub fn codegen(
     codegen_results: []const CodeGenResult,
     first_pass_result: FirstPassResult,
     module_index: usize,
+    fields: []const Field,
     locals: []const Local,
     scope: *const Scope,
     allocator: *std.mem.Allocator,
@@ -751,6 +751,7 @@ pub fn codegen(
         .first_pass_result = first_pass_result,
         .codegen_results = codegen_results,
         .module_index = module_index,
+        .fields = fields,
         .locals = locals,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .temp_buffers = TempManager.init(allocator),
@@ -795,6 +796,7 @@ pub fn codegen(
     return CodeGenResult{
         .num_outputs = 1,
         .num_temps = self.temp_buffers.finalCount(),
+        .fields = fields,
         .delays = self.delays.toOwnedSlice(),
         .instructions = self.instructions.toOwnedSlice(),
     };

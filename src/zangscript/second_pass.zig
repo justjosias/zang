@@ -21,13 +21,14 @@ pub const Scope = struct {
 };
 
 pub const CallArg = struct {
-    callee_param_index: usize,
+    param_name: []const u8,
+    param_name_token: Token,
     value: *const Expression,
 };
 
 pub const Call = struct {
     field_index: usize, // index of the field in the "self" module
-    args: std.ArrayList(CallArg),
+    args: []const CallArg,
 };
 
 pub const Delay = struct {
@@ -82,6 +83,11 @@ pub const Statement = union(enum) {
     feedback: *const Expression,
 };
 
+pub const Field = struct {
+    type_token: Token,
+    resolved_module_index: usize,
+};
+
 const SecondPass = struct {
     allocator: *std.mem.Allocator,
     tokens: []const Token,
@@ -89,6 +95,7 @@ const SecondPass = struct {
     first_pass_result: FirstPassResult,
     module: Module,
     module_index: usize,
+    fields: std.ArrayList(Field),
     locals: std.ArrayList(Local),
 };
 
@@ -112,27 +119,18 @@ const ParseError = error{
     OutOfMemory,
 };
 
-// `module_def` is the module we're in (the "self").
-// we also need to know the module type of what we're calling, so we can look up its params
-fn parseCallArg(self: *SecondPass, scope: *const Scope, field_name: []const u8, callee_params: []const ModuleParam, token: Token) ParseError!CallArg {
+fn parseCallArg(self: *SecondPass, scope: *const Scope, token: Token) ParseError!CallArg {
     switch (token.tt) {
         .identifier => {
             const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            const param_index = for (callee_params) |param, i| {
-                if (std.mem.eql(u8, param.name, identifier)) {
-                    break i;
-                }
-            } else {
-                return fail(self.parser.source, token.source_range, "module `#` has no param called `%`", .{ field_name, token.source_range });
-            };
-            const param_type = callee_params[param_index].param_type;
             const colon_token = try self.parser.expect();
             if (colon_token.tt != .sym_colon) {
                 return fail(self.parser.source, colon_token.source_range, "expected `:`, found `%`", .{colon_token.source_range});
             }
             const subexpr = try expectExpression(self, scope);
             return CallArg{
-                .callee_param_index = param_index,
+                .param_name = identifier,
+                .param_name_token = token,
                 .value = subexpr,
             };
         },
@@ -149,18 +147,22 @@ fn parseCall(self: *SecondPass, scope: *const Scope) ParseError!Call {
         .identifier => self.parser.source.contents[field_name_token.source_range.loc0.index..field_name_token.source_range.loc1.index],
         else => return fail(self.parser.source, field_name_token.source_range, "expected field name, found `%`", .{field_name_token.source_range}),
     };
-    const fields = self.first_pass_result.module_fields[self.module.first_field .. self.module.first_field + self.module.num_fields];
-    const field_index = for (fields) |*field, i| {
-        if (std.mem.eql(u8, field.name, field_name)) {
+
+    // resolve module name
+    const callee_module_index = for (self.first_pass_result.modules) |module, i| {
+        if (std.mem.eql(u8, field_name, module.name)) {
             break i;
         }
     } else {
-        return fail(self.parser.source, field_name_token.source_range, "not a field of `#`: `%`", .{ self.module.name, field_name_token.source_range });
+        return fail(self.parser.source, field_name_token.source_range, "no module called `%`", .{field_name_token.source_range});
     };
-    const field = self.first_pass_result.module_fields[self.module.first_field + field_index];
-    // arguments
-    const callee_module = self.first_pass_result.modules[field.resolved_module_index];
-    const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
+    // add the field
+    const field_index = self.fields.len;
+    try self.fields.append(.{
+        .type_token = field_name_token,
+        .resolved_module_index = callee_module_index,
+    });
+
     var token = try self.parser.expect();
     if (token.tt != .sym_left_paren) {
         return fail(self.parser.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
@@ -182,22 +184,12 @@ fn parseCall(self: *SecondPass, scope: *const Scope) ParseError!Call {
                 return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
             }
         }
-        const arg = try parseCallArg(self, scope, field_name, callee_params, token);
+        const arg = try parseCallArg(self, scope, token);
         try args.append(arg);
-    }
-    // make sure all args are accounted for
-    for (callee_params) |param, param_index| {
-        for (args.span()) |arg| {
-            if (arg.callee_param_index == param_index) {
-                break;
-            }
-        } else {
-            return fail(self.parser.source, token.source_range, "call is missing param `#`", .{param.name}); // TODO improve message
-        }
     }
     return Call{
         .field_index = field_index,
-        .args = args, // TODO can i toOwnedSlice here?
+        .args = args.toOwnedSlice(),
     };
 }
 
@@ -388,6 +380,9 @@ pub fn secondPass(
     var module_scopes = try allocator.alloc(*const Scope, first_pass_result.modules.len - builtins.len);
     defer allocator.free(module_scopes);
 
+    var module_fields = try allocator.alloc([]const Field, first_pass_result.modules.len - builtins.len);
+    defer allocator.free(module_fields);
+
     var module_locals = try allocator.alloc([]const Local, first_pass_result.modules.len - builtins.len);
     defer allocator.free(module_locals);
 
@@ -407,16 +402,18 @@ pub fn secondPass(
             .first_pass_result = first_pass_result,
             .module = module,
             .module_index = module_index,
+            .fields = std.ArrayList(Field).init(allocator),
             .locals = std.ArrayList(Local).init(allocator),
         };
 
         const top_scope = try parseStatements(&self, null);
 
         module_scopes[module_index - builtins.len] = top_scope;
+        module_fields[module_index - builtins.len] = self.fields.span(); // TODO toOwnedSlice?
         module_locals[module_index - builtins.len] = self.locals.span(); // TODO toOwnedSlice?
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, self.locals.span(), top_scope, 1);
+        secondPassPrintModule(first_pass_result, module, self.fields.span(), self.locals.span(), top_scope, 1);
     }
 
     // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
@@ -435,13 +432,13 @@ pub fn secondPass(
                 .instructions = undefined, // FIXME - should be null
                 .num_outputs = builtins[i].num_outputs,
                 .num_temps = builtins[i].num_temps,
+                .fields = undefined, // FIXME - should be null?
                 .delays = undefined, // FIXME - should be null?
             };
             codegen_visited[i] = true;
             continue;
         }
-        const locals = module_locals[i - builtins.len];
-        try codegenVisit(source, first_pass_result, module_scopes, codegen_visited, codegen_results, i, i, locals, allocator);
+        try codegenVisit(source, first_pass_result, module_scopes, codegen_visited, codegen_results, i, i, module_fields, module_locals, allocator);
     }
 
     return codegen_results;
@@ -455,7 +452,8 @@ fn codegenVisit(
     results: []CodeGenResult,
     self_module_index: usize,
     module_index: usize,
-    locals: []const Local,
+    module_fields: []const []const Field,
+    module_locals: []const []const Local,
     allocator: *std.mem.Allocator,
 ) GenError!void {
     if (visited[module_index]) {
@@ -465,18 +463,19 @@ fn codegenVisit(
     visited[module_index] = true;
 
     // first, recursively resolve all modules that this one uses as its fields
-    const module = first_pass_result.modules[module_index];
-    const fields = first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields];
+    const fields = module_fields[module_index - builtins.len];
+
     for (fields) |field, field_index| {
         if (field.resolved_module_index == self_module_index) {
             return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
         }
 
-        try codegenVisit(source, first_pass_result, module_scopes, visited, results, self_module_index, field.resolved_module_index, locals, allocator);
+        try codegenVisit(source, first_pass_result, module_scopes, visited, results, self_module_index, field.resolved_module_index, module_fields, module_locals, allocator);
     }
 
     // now resolve this one
     // note: the codegen function reads from the `results` array to look up the num_temps of the fields
     const scope = module_scopes[module_index - builtins.len];
-    results[module_index] = try codegen(source, results, first_pass_result, module_index, locals, scope, allocator);
+    const locals = module_locals[module_index - builtins.len];
+    results[module_index] = try codegen(source, results, first_pass_result, module_index, fields, locals, scope, allocator);
 }

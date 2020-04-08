@@ -107,15 +107,11 @@ pub fn printBytecode(self: *CodegenState) void {
                 std.debug.warn("\n", .{});
             },
             .call => |call| {
-                const field = self.first_pass_result.module_fields[self_module.first_field + call.field_index];
+                const field = self.fields[call.field_index];
                 const callee_module = self.first_pass_result.modules[field.resolved_module_index];
                 const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                 printBufferDest(self, call.out);
-                std.debug.warn(" = CALL #{}({}: {})\n", .{
-                    call.field_index,
-                    field.name,
-                    callee_module.name,
-                });
+                std.debug.warn(" = CALL #{}({})\n", .{ call.field_index, callee_module.name });
                 std.debug.warn("        temps: [", .{});
                 for (call.temps) |temp, i| {
                     if (i > 0) std.debug.warn(", ", .{});

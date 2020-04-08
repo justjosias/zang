@@ -13,21 +13,6 @@ comptime {
     _ = @import("builtins.zig").builtins; // ?
 }
 
-// goal: parse a file and be able to run it at runtime.
-// but design the scripting syntax so that it would also be possible to
-// compile it statically.
-//
-// this should be another module type like "mod_script.zig"
-// the module encapsulates all the runtime stuff but has the same outer API
-// surface (e.g. paint method) as any other module.
-// the tricky bit is that it won't have easily accessible params...?
-// and i guess it will need an allocator for its temps?
-
-// to use a script module from zig code, you must provide a Params type that's
-// compatible with the script.
-// script module will come up with its own number of required temps, and you'll
-// need to provide those, too. it will be known only at runtime, i think.
-
 pub const Script = struct {
     first_pass_result: FirstPassResult,
     code_gen_results: []const CodeGenResult,

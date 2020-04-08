@@ -3,29 +3,25 @@
 // it could even be hardcoded so you don't have to set it as a param at all
 
 def Instrument:
-    param sample_rate constant;
-    param freq waveform;
-    param color constant;
-    param note_on boolean;
-
-    osc PulseOsc;
-    mod SineOsc;
-    dist Distortion;
+    sample_rate constant;
+    freq waveform;
+    color constant;
+    note_on boolean;
 begin
     let freq =
         * $freq
             + 1
-                * 0.02 @mod(sample_rate: $sample_rate, freq: 4, phase: 0)
+                * 0.02 @SineOsc(sample_rate: $sample_rate, freq: 4, phase: 0)
 
     let input =
-        * 0.7 @osc(color: $color, sample_rate: $sample_rate, freq: freq)
+        * 0.7 @PulseOsc(color: $color, sample_rate: $sample_rate, freq: freq)
 
-    out @dist(ingain: 0.25, outgain: 0.5, offset: 0, distortion_type: 'overdrive', input: input)
+    out @Distortion(ingain: 0.25, outgain: 0.5, offset: 0, distortion_type: 'overdrive', input: input)
 end
 
 def Echoes:
-    param input waveform;
-    param echo_volume constant;
+    input waveform;
+    echo_volume constant;
 begin
     out delay 1000 begin
         let x = + $input * $echo_volume feedback
@@ -35,12 +31,9 @@ begin
 end
 
 def OuterInstrument:
-    param sample_rate constant;
-
-    instr Instrument;
-    echoes Echoes;
+    sample_rate constant;
 begin
-    let input = @instr(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
+    let input = @Instrument(sample_rate: $sample_rate, freq: + 220 220, color: 0.7, note_on: true)
 
-    out @echoes(input: input, echo_volume: 0.5)
+    out @Echoes(input: input, echo_volume: 0.5)
 end

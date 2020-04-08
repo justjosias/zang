@@ -23,7 +23,6 @@ pub const TokenType = enum {
     kw_feedback,
     kw_let,
     kw_out,
-    kw_param,
     kw_true,
     identifier,
     enum_value,
@@ -190,8 +189,6 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
             try addToken(tokenizer, start, loc, .kw_let);
         } else if (std.mem.eql(u8, token, "out")) {
             try addToken(tokenizer, start, loc, .kw_out);
-        } else if (std.mem.eql(u8, token, "param")) {
-            try addToken(tokenizer, start, loc, .kw_param);
         } else if (std.mem.eql(u8, token, "true")) {
             try addToken(tokenizer, start, loc, .kw_true);
         } else {

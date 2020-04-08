@@ -94,10 +94,13 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         try indent(out, indentation);
         try out.print("}};\n", .{});
         try out.print("\n", .{});
-        for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
-            const module_name = first_pass_result.modules[field.resolved_module_index].zig_name;
+        for (code_gen_result.fields) |field, j| {
             try indent(out, indentation);
-            try out.print("{}: {},\n", .{ field.name, module_name });
+            try out.print("field{}_{}: {},\n", .{
+                j,
+                first_pass_result.modules[field.resolved_module_index].name,
+                first_pass_result.modules[field.resolved_module_index].zig_name,
+            });
         }
         for (code_gen_result.delays) |delay_decl, j| {
             try indent(out, indentation);
@@ -110,10 +113,13 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         try indent(out, indentation);
         try out.print("return .{{\n", .{});
         indentation += 1;
-        for (first_pass_result.module_fields[module.first_field .. module.first_field + module.num_fields]) |field| {
-            const module_name = first_pass_result.modules[field.resolved_module_index].zig_name;
+        for (code_gen_result.fields) |field, j| {
             try indent(out, indentation);
-            try out.print(".{} = {}.init(),\n", .{ field.name, module_name });
+            try out.print(".field{}_{} = {}.init(),\n", .{
+                j,
+                first_pass_result.modules[field.resolved_module_index].name,
+                first_pass_result.modules[field.resolved_module_index].zig_name,
+            });
         }
         for (code_gen_result.delays) |delay_decl, j| {
             try indent(out, indentation);
@@ -200,7 +206,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     try out.print(");\n", .{});
                 },
                 .call => |call| {
-                    const field = first_pass_result.module_fields[module.first_field + call.field_index];
+                    const field = code_gen_result.fields[call.field_index];
 
                     try indent(out, indentation);
                     try out.print("zang.zero({}, ", .{span});
@@ -208,7 +214,11 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     try out.print(");\n", .{});
 
                     try indent(out, indentation);
-                    try out.print("self.{}.paint({}, .{{", .{ field.name, span });
+                    try out.print("self.field{}_{}.paint({}, .{{", .{
+                        call.field_index,
+                        first_pass_result.modules[field.resolved_module_index].name,
+                        span,
+                    });
                     try printBufferDest(out, call.out);
                     try out.print("}}, .{{", .{});
                     // callee temps
