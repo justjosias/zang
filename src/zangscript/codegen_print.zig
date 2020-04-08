@@ -129,7 +129,7 @@ pub fn printBytecode(self: *CodegenState) void {
                 }
             },
             .delay_begin => |delay_begin| {
-                std.debug.warn("DELAY_BEGIN\n", .{});
+                std.debug.warn("DELAY_BEGIN (feedback provided at temps[{}])\n", .{delay_begin.feedback_temp_buffer_index});
             },
             .delay_end => |delay_end| {
                 printBufferDest(self, delay_end.out);
