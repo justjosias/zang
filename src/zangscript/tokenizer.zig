@@ -5,6 +5,7 @@ const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 
 pub const TokenType = enum {
+    illegal,
     sym_asterisk,
     sym_colon,
     sym_comma,
@@ -145,11 +146,7 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         }
         if (!isStartOfIdentifier(src[loc.index])) {
             loc.index += 1;
-            const source_range: SourceRange = .{
-                .loc0 = start,
-                .loc1 = loc,
-            };
-            return fail(tokenizer.source, source_range, "illegal character: `<`", .{});
+            try addToken(tokenizer, start, loc, .illegal);
         }
         loc.index += 1;
         while (loc.index < src.len and isIdentifierInterior(src[loc.index])) {
