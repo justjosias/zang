@@ -3,10 +3,10 @@
 // it could even be hardcoded so you don't have to set it as a param at all
 
 def Instrument:
-    sample_rate: constant;
-    freq: waveform;
-    color: constant;
-    note_on: boolean;
+    sample_rate: constant,
+    freq: waveform,
+    color: constant,
+    note_on: boolean,
 begin
     let freq =
         * freq
@@ -20,8 +20,8 @@ begin
 end
 
 def Echoes:
-    input: waveform;
-    echo_volume: constant;
+    input: waveform,
+    echo_volume: constant,
 begin
     out delay 1000 begin
         let x = + input * echo_volume feedback
@@ -31,7 +31,7 @@ begin
 end
 
 def OuterInstrument:
-    sample_rate: constant;
+    sample_rate: constant,
 begin
     let input = Instrument(sample_rate, freq=+ 220 220, color=0.7, note_on=true)
 

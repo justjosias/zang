@@ -110,8 +110,8 @@ fn defineModule(self: *FirstPass) !void {
                 }
                 const param_type = try parseParamType(self.parser.source, type_token);
                 token = try self.parser.expect();
-                if (token.tt != .sym_semicolon) {
-                    return fail(self.parser.source, token.source_range, "expected `;`, found `%`", .{token.source_range});
+                if (token.tt != .sym_comma) {
+                    return fail(self.parser.source, token.source_range, "expected `,`, found `%`", .{token.source_range});
                 }
                 try params.append(.{
                     .name = param_name,

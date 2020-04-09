@@ -12,7 +12,6 @@ pub const TokenType = enum {
     sym_left_paren,
     sym_plus,
     sym_right_paren,
-    sym_semicolon,
     kw_begin,
     kw_def,
     kw_delay,
@@ -118,11 +117,6 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == ')') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_right_paren);
-            continue;
-        }
-        if (src[loc.index] == ';') {
-            loc.index += 1;
-            try addToken(tokenizer, start, loc, .sym_semicolon);
             continue;
         }
         if (src[loc.index] == '\'') {
