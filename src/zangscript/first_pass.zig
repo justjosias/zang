@@ -68,7 +68,14 @@ fn parseParamType(source: Source, type_token: Token) !ParamType {
 }
 
 fn defineModule(self: *FirstPass) !void {
-    const module_name = try self.parser.expectIdentifier();
+    const module_name_token = try self.parser.expect();
+    if (module_name_token.tt != .identifier) {
+        return fail(self.parser.source, module_name_token.source_range, "expected identifier, found `%`", .{module_name_token.source_range});
+    }
+    const module_name = self.parser.source.contents[module_name_token.source_range.loc0.index..module_name_token.source_range.loc1.index];
+    if (module_name[0] < 'A' or module_name[0] > 'Z') {
+        return fail(self.parser.source, module_name_token.source_range, "module name must start with a capital letter", .{module_name_token.source_range});
+    }
 
     const ctoken = try self.parser.expect();
     if (ctoken.tt != .sym_colon) {
@@ -85,6 +92,9 @@ fn defineModule(self: *FirstPass) !void {
             .identifier => {
                 // param declaration
                 const param_name = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+                if (param_name[0] < 'a' or param_name[0] > 'z') {
+                    return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{token.source_range});
+                }
                 for (params.span()) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
                         return fail(self.parser.source, token.source_range, "redeclaration of param `%`", .{token.source_range});

@@ -6,7 +6,6 @@ const fail = @import("common.zig").fail;
 
 pub const TokenType = enum {
     sym_asterisk,
-    sym_at,
     sym_colon,
     sym_comma,
     sym_equals,
@@ -38,11 +37,12 @@ inline fn isWhitespace(ch: u8) bool {
 }
 
 inline fn isStartOfIdentifier(ch: u8) bool {
-    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or ch == '_';
+    // note that unlike in C, identifiers cannot start with an underscore
+    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z');
 }
 
 inline fn isIdentifierInterior(ch: u8) bool {
-    return isStartOfIdentifier(ch) or (ch >= '0' and ch <= '9');
+    return isStartOfIdentifier(ch) or (ch >= '0' and ch <= '9') or ch == '_';
 }
 
 pub const Tokenizer = struct {
@@ -88,11 +88,6 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == '*') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_asterisk);
-            continue;
-        }
-        if (src[loc.index] == '@') {
-            loc.index += 1;
-            try addToken(tokenizer, start, loc, .sym_at);
             continue;
         }
         if (src[loc.index] == ':') {

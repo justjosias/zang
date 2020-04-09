@@ -125,14 +125,7 @@ fn parseCallArg(self: *SecondPass, scope: *const Scope, token: Token) ParseError
     }
 }
 
-fn parseCall(self: *SecondPass, scope: *const Scope) ParseError!Call {
-    // referencing one of the fields. like a function call
-    const field_name_token = try self.parser.expect();
-    const field_name = switch (field_name_token.tt) {
-        .identifier => self.parser.source.contents[field_name_token.source_range.loc0.index..field_name_token.source_range.loc1.index],
-        else => return fail(self.parser.source, field_name_token.source_range, "expected field name, found `%`", .{field_name_token.source_range}),
-    };
-
+fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
     // resolve module name
     const callee_module_index = for (self.first_pass_result.modules) |module, i| {
         if (std.mem.eql(u8, field_name, module.name)) {
@@ -220,6 +213,10 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
     switch (token.tt) {
         .identifier => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            if (s[0] >= 'A' and s[0] <= 'Z') {
+                const call = try parseCall(self, scope, token, s);
+                return try createExpr(self, loc0, .{ .call = call });
+            }
             const maybe_local_index = blk: {
                 var maybe_s: ?*const Scope = scope;
                 while (maybe_s) |sc| : (maybe_s = sc.parent) {
@@ -271,10 +268,6 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             return try createExpr(self, loc0, .{ .literal = .{ .enum_value = s } });
         },
-        .sym_at => {
-            const call = try parseCall(self, scope);
-            return try createExpr(self, loc0, .{ .call = call });
-        },
         .sym_plus => {
             const a = try expectExpression(self, scope);
             const b = try expectExpression(self, scope);
@@ -314,6 +307,9 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                     return fail(self.parser.source, name_token.source_range, "expected identifier", .{});
                 }
                 const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
+                if (name[0] < 'a' or name[0] > 'z') {
+                    return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{name_token.source_range});
+                }
                 const equals_token = try self.parser.expect();
                 if (equals_token.tt != .sym_equals) {
                     return fail(self.parser.source, equals_token.source_range, "expect `=`, found `%`", .{equals_token.source_range});
