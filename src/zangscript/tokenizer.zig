@@ -9,7 +9,6 @@ pub const TokenType = enum {
     sym_at,
     sym_colon,
     sym_comma,
-    sym_dollar,
     sym_equals,
     sym_left_paren,
     sym_plus,
@@ -104,11 +103,6 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == ',') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_comma);
-            continue;
-        }
-        if (src[loc.index] == '$') {
-            loc.index += 1;
-            try addToken(tokenizer, start, loc, .sym_dollar);
             continue;
         }
         if (src[loc.index] == '=') {

@@ -99,21 +99,6 @@ const SecondPass = struct {
     locals: std.ArrayList(Local),
 };
 
-fn parseSelfParam(self: *SecondPass) !usize {
-    const name_token = try self.parser.expect();
-    const name = switch (name_token.tt) {
-        .identifier => self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index],
-        else => return fail(self.parser.source, name_token.source_range, "expected param name, found `%`", .{name_token.source_range}),
-    };
-    const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-    const param_index = for (params) |param, i| {
-        if (std.mem.eql(u8, param.name, name)) {
-            break i;
-        }
-    } else return fail(self.parser.source, name_token.source_range, "not a param of self: `%`", .{name_token.source_range});
-    return param_index;
-}
-
 const ParseError = error{
     Failed,
     OutOfMemory,
@@ -235,7 +220,7 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
     switch (token.tt) {
         .identifier => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            const local_index = blk: {
+            const maybe_local_index = blk: {
                 var maybe_s: ?*const Scope = scope;
                 while (maybe_s) |sc| : (maybe_s = sc.parent) {
                     for (sc.statements.span()) |statement| {
@@ -250,9 +235,24 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
                         }
                     }
                 }
-                return fail(self.parser.source, token.source_range, "no local called `%`", .{token.source_range});
+                break :blk null;
             };
-            return try createExpr(self, loc0, .{ .local = local_index });
+            if (maybe_local_index) |local_index| {
+                return try createExpr(self, loc0, .{ .local = local_index });
+            }
+            const maybe_param_index = blk: {
+                const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+                for (params) |param, i| {
+                    if (std.mem.eql(u8, param.name, s)) {
+                        break :blk i;
+                    }
+                }
+                break :blk null;
+            };
+            if (maybe_param_index) |param_index| {
+                return try createExpr(self, loc0, .{ .self_param = param_index });
+            }
+            return fail(self.parser.source, token.source_range, "no local or param called `%`", .{token.source_range});
         },
         .kw_false => {
             return try createExpr(self, loc0, .{ .literal = .{ .boolean = false } });
@@ -270,10 +270,6 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
         .enum_value => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             return try createExpr(self, loc0, .{ .literal = .{ .enum_value = s } });
-        },
-        .sym_dollar => {
-            const self_param = try parseSelfParam(self);
-            return try createExpr(self, loc0, .{ .self_param = self_param });
         },
         .sym_at => {
             const call = try parseCall(self, scope);
@@ -322,6 +318,13 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                 if (equals_token.tt != .sym_equals) {
                     return fail(self.parser.source, equals_token.source_range, "expect `=`, found `%`", .{equals_token.source_range});
                 }
+                // locals are allowed to shadow params
+                //const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+                //for (params) |param| {
+                //    if (std.mem.eql(u8, param.name, name)) {
+                //        return fail(self.parser.source, name_token.source_range, "local `%` shadows param with the same name", .{name_token.source_range});
+                //    }
+                //}
                 var maybe_s: ?*const Scope = scope;
                 while (maybe_s) |s| : (maybe_s = s.parent) {
                     for (s.statements.span()) |statement| {

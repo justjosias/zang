@@ -85,6 +85,11 @@ fn defineModule(self: *FirstPass) !void {
             .identifier => {
                 // param declaration
                 const param_name = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+                for (params.span()) |param| {
+                    if (std.mem.eql(u8, param.name, param_name)) {
+                        return fail(self.parser.source, token.source_range, "redeclaration of param `%`", .{token.source_range});
+                    }
+                }
                 const type_token = try self.parser.expect();
                 if (type_token.tt != .identifier) {
                     return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range});
