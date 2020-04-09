@@ -149,7 +149,7 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
                 .loc0 = start,
                 .loc1 = loc,
             };
-            return fail(tokenizer.source, source_range, "illegal character: `%`", .{source_range});
+            return fail(tokenizer.source, source_range, "illegal character: `<`", .{});
         }
         loc.index += 1;
         while (loc.index < src.len and isIdentifierInterior(src[loc.index])) {

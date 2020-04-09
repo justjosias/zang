@@ -1,7 +1,3 @@
-// TODO: sample_rate should be handled specially:
-// passed implicitly to child modules.
-// it could even be hardcoded so you don't have to set it as a param at all
-
 def Instrument:
     sample_rate: constant,
     freq: waveform,

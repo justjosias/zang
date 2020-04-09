@@ -64,22 +64,22 @@ fn parseParamType(source: Source, type_token: Token) !ParamType {
     }
     // for now, script modules are not allowed to have ConstantOrBuffer params (the codegen of those is going
     // to be tricky, see my comment in the ParamType enum).
-    return fail(source, type_token.source_range, "expected datatype, found `%`", .{type_token.source_range});
+    return fail(source, type_token.source_range, "expected datatype, found `<`", .{});
 }
 
 fn defineModule(self: *FirstPass) !void {
     const module_name_token = try self.parser.expect();
     if (module_name_token.tt != .identifier) {
-        return fail(self.parser.source, module_name_token.source_range, "expected identifier, found `%`", .{module_name_token.source_range});
+        return fail(self.parser.source, module_name_token.source_range, "expected identifier, found `<`", .{});
     }
     const module_name = self.parser.source.contents[module_name_token.source_range.loc0.index..module_name_token.source_range.loc1.index];
     if (module_name[0] < 'A' or module_name[0] > 'Z') {
-        return fail(self.parser.source, module_name_token.source_range, "module name must start with a capital letter", .{module_name_token.source_range});
+        return fail(self.parser.source, module_name_token.source_range, "module name must start with a capital letter", .{});
     }
 
     const ctoken = try self.parser.expect();
     if (ctoken.tt != .sym_colon) {
-        return fail(self.parser.source, ctoken.source_range, "expected `:`, found `%`", .{ctoken.source_range});
+        return fail(self.parser.source, ctoken.source_range, "expected `:`, found `<`", .{});
     }
 
     var params = std.ArrayList(ModuleParam).init(self.allocator);
@@ -93,25 +93,25 @@ fn defineModule(self: *FirstPass) !void {
                 // param declaration
                 const param_name = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
                 if (param_name[0] < 'a' or param_name[0] > 'z') {
-                    return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{token.source_range});
+                    return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{});
                 }
                 for (params.span()) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
-                        return fail(self.parser.source, token.source_range, "redeclaration of param `%`", .{token.source_range});
+                        return fail(self.parser.source, token.source_range, "redeclaration of param `<`", .{});
                     }
                 }
                 const colon_token = try self.parser.expect();
                 if (colon_token.tt != .sym_colon) {
-                    return fail(self.parser.source, colon_token.source_range, "expected `:`, found `%`", .{colon_token.source_range});
+                    return fail(self.parser.source, colon_token.source_range, "expected `:`, found `<`", .{});
                 }
                 const type_token = try self.parser.expect();
                 if (type_token.tt != .identifier) {
-                    return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range});
+                    return fail(self.parser.source, type_token.source_range, "expected param type, found `<`", .{});
                 }
                 const param_type = try parseParamType(self.parser.source, type_token);
                 token = try self.parser.expect();
                 if (token.tt != .sym_comma) {
-                    return fail(self.parser.source, token.source_range, "expected `,`, found `%`", .{token.source_range});
+                    return fail(self.parser.source, token.source_range, "expected `,`, found `<`", .{});
                 }
                 try params.append(.{
                     .name = param_name,
@@ -119,7 +119,7 @@ fn defineModule(self: *FirstPass) !void {
                 });
             },
             else => {
-                return fail(self.parser.source, token.source_range, "expected param declaration or `begin`, found `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "expected param declaration or `begin`, found `<`", .{});
             },
         }
     }
@@ -196,7 +196,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     while (self.parser.next()) |token| {
         switch (token.tt) {
             .kw_def => try defineModule(&self),
-            else => return fail(self.parser.source, token.source_range, "expected `def` or end of file, found `%`", .{token.source_range}),
+            else => return fail(self.parser.source, token.source_range, "expected `def` or end of file, found `<`", .{}),
         }
     }
 

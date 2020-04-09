@@ -27,7 +27,7 @@ fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange
     stderr.write(contents[source_range.loc0.index..source_range.loc1.index]) catch {};
 }
 
-fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: var) void {
+fn failPrint(stderr: var, maybe_source_range: ?SourceRange, contents: []const u8, comptime fmt: []const u8, args: var) void {
     comptime var j: usize = 0;
     inline for (fmt) |ch| {
         // idea: another character which just points to the "subject" token (the one the arrow points to).
@@ -50,6 +50,13 @@ fn failPrint(stderr: var, contents: []const u8, comptime fmt: []const u8, args: 
             // string
             stderr.write(args[j]) catch {};
             j += 1;
+        } else if (ch == '<') {
+            // the maybe_source_range passed in
+            if (maybe_source_range) |source_range| {
+                printSourceRange(stderr, contents, source_range);
+            } else {
+                stderr.writeByte('?') catch {};
+            }
         } else {
             stderr.writeByte(ch) catch {};
         }
@@ -73,7 +80,7 @@ pub fn fail(
         defer held.release();
         const stderr = std.debug.getStderrStream();
         stderr.print(KYEL ++ KBOLD ++ "{}: " ++ KWHITE, .{source.filename}) catch {};
-        failPrint(stderr, source.contents, fmt, args);
+        failPrint(stderr, maybe_source_range, source.contents, fmt, args);
         stderr.print(KNRM ++ "\n\n", .{}) catch {};
         return error.Failed;
     };
@@ -107,7 +114,7 @@ pub fn fail(
         source_range.loc0.line + 1,
         col + 1,
     }) catch {};
-    failPrint(stderr, source.contents, fmt, args);
+    failPrint(stderr, maybe_source_range, source.contents, fmt, args);
     stderr.print(KNRM ++ "\n\n", .{}) catch {};
     // display line
     stderr.print("{}\n", .{source.contents[start..end]}) catch {};

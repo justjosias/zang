@@ -595,7 +595,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                 for (call.args) |a| {
                     if (std.mem.eql(u8, a.param_name, param.name)) {
                         if (maybe_arg != null) {
-                            return fail(self.source, a.param_name_token.source_range, "param `#` provided more than once", .{param.name});
+                            return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
                         }
                         maybe_arg = a;
                     }

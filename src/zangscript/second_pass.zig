@@ -111,7 +111,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
             break i;
         }
     } else {
-        return fail(self.parser.source, field_name_token.source_range, "no module called `%`", .{field_name_token.source_range});
+        return fail(self.parser.source, field_name_token.source_range, "no module called `<`", .{});
     };
     // add the field
     const field_index = self.fields.len;
@@ -122,7 +122,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
 
     var token = try self.parser.expect();
     if (token.tt != .sym_left_paren) {
-        return fail(self.parser.source, token.source_range, "expected `(`, found `%`", .{token.source_range});
+        return fail(self.parser.source, token.source_range, "expected `(`, found `<`", .{});
     }
     var args = std.ArrayList(CallArg).init(self.allocator);
     errdefer args.deinit();
@@ -135,7 +135,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
             if (token.tt == .sym_comma) {
                 token = try self.parser.expect();
             } else {
-                return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `<`", .{});
             }
         }
         switch (token.tt) {
@@ -153,7 +153,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                 } else {
                     // shorthand param passing: `val` expands to `val=val`
                     const inner = parseLocalOrParam(self, scope, identifier) orelse
-                        return fail(self.parser.source, token.source_range, "no param or local called `%`", .{token.source_range});
+                        return fail(self.parser.source, token.source_range, "no param or local called `<`", .{});
                     const loc0 = token.source_range.loc0;
                     const subexpr = try createExpr(self, loc0, inner);
                     try args.append(.{
@@ -165,7 +165,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                 }
             },
             else => {
-                return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `<`", .{});
             },
         }
     }
@@ -188,7 +188,7 @@ fn parseDelay(self: *SecondPass, scope: *const Scope) ParseError!Delay {
     // keyword `begin`
     const begin_token = try self.parser.expect();
     if (begin_token.tt != .kw_begin) {
-        return fail(self.parser.source, begin_token.source_range, "expected `begin`, found `%`", .{begin_token.source_range});
+        return fail(self.parser.source, begin_token.source_range, "expected `begin`, found `<`", .{});
     }
     // inner statements
     const inner_scope = try parseStatements(self, scope);
@@ -258,7 +258,7 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
                 return try createExpr(self, loc0, .{ .call = call });
             }
             const inner = parseLocalOrParam(self, scope, s) orelse
-                return fail(self.parser.source, token.source_range, "no local or param called `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "no local or param called `<`", .{});
             return try createExpr(self, loc0, inner);
         },
         .kw_false => {
@@ -296,7 +296,7 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
             return try createExpr(self, loc0, .feedback);
         },
         else => {
-            return fail(self.parser.source, token.source_range, "expected expression, found `%`", .{token.source_range});
+            return fail(self.parser.source, token.source_range, "expected expression, found `<`", .{});
         },
     }
 }
@@ -318,11 +318,11 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                 }
                 const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
                 if (name[0] < 'a' or name[0] > 'z') {
-                    return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{name_token.source_range});
+                    return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{});
                 }
                 const equals_token = try self.parser.expect();
                 if (equals_token.tt != .sym_equals) {
-                    return fail(self.parser.source, equals_token.source_range, "expect `=`, found `%`", .{equals_token.source_range});
+                    return fail(self.parser.source, equals_token.source_range, "expect `=`, found `<`", .{});
                 }
                 // locals are allowed to shadow params
                 //const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
@@ -338,7 +338,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                             .let_assignment => |x| {
                                 const local = self.locals.span()[x.local_index];
                                 if (std.mem.eql(u8, local.name, name)) {
-                                    return fail(self.parser.source, name_token.source_range, "redeclaration of local `#`", .{name});
+                                    return fail(self.parser.source, name_token.source_range, "redeclaration of local `<`", .{});
                                 }
                             },
                             .output => {},
@@ -371,7 +371,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
                 });
             },
             else => {
-                return fail(self.parser.source, token.source_range, "expected `let`, `out` or `end`, found `%`", .{token.source_range});
+                return fail(self.parser.source, token.source_range, "expected `let`, `out` or `end`, found `<`", .{});
             },
         }
     }
