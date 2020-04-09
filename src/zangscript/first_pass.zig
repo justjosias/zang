@@ -100,6 +100,10 @@ fn defineModule(self: *FirstPass) !void {
                         return fail(self.parser.source, token.source_range, "redeclaration of param `%`", .{token.source_range});
                     }
                 }
+                const colon_token = try self.parser.expect();
+                if (colon_token.tt != .sym_colon) {
+                    return fail(self.parser.source, colon_token.source_range, "expected `:`, found `%`", .{colon_token.source_range});
+                }
                 const type_token = try self.parser.expect();
                 if (type_token.tt != .identifier) {
                     return fail(self.parser.source, type_token.source_range, "expected param type, found `%`", .{type_token.source_range});
