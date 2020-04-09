@@ -108,9 +108,9 @@ fn parseCallArg(self: *SecondPass, scope: *const Scope, token: Token) ParseError
     switch (token.tt) {
         .identifier => {
             const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            const colon_token = try self.parser.expect();
-            if (colon_token.tt != .sym_colon) {
-                return fail(self.parser.source, colon_token.source_range, "expected `:`, found `%`", .{colon_token.source_range});
+            const equals_token = try self.parser.expect();
+            if (equals_token.tt != .sym_equals) {
+                return fail(self.parser.source, equals_token.source_range, "expected `=`, found `%`", .{equals_token.source_range});
             }
             const subexpr = try expectExpression(self, scope);
             return CallArg{
