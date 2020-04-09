@@ -104,27 +104,6 @@ const ParseError = error{
     OutOfMemory,
 };
 
-fn parseCallArg(self: *SecondPass, scope: *const Scope, token: Token) ParseError!CallArg {
-    switch (token.tt) {
-        .identifier => {
-            const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            const equals_token = try self.parser.expect();
-            if (equals_token.tt != .sym_equals) {
-                return fail(self.parser.source, equals_token.source_range, "expected `=`, found `%`", .{equals_token.source_range});
-            }
-            const subexpr = try expectExpression(self, scope);
-            return CallArg{
-                .param_name = identifier,
-                .param_name_token = token,
-                .value = subexpr,
-            };
-        },
-        else => {
-            return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
-        },
-    }
-}
-
 fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
     // resolve module name
     const callee_module_index = for (self.first_pass_result.modules) |module, i| {
@@ -148,11 +127,8 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
     var args = std.ArrayList(CallArg).init(self.allocator);
     errdefer args.deinit();
     var first = true;
-    while (true) {
-        token = try self.parser.expect();
-        if (token.tt == .sym_right_paren) {
-            break;
-        }
+    token = try self.parser.expect();
+    while (token.tt != .sym_right_paren) {
         if (first) {
             first = false;
         } else {
@@ -162,8 +138,36 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                 return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `%`", .{token.source_range});
             }
         }
-        const arg = try parseCallArg(self, scope, token);
-        try args.append(arg);
+        switch (token.tt) {
+            .identifier => {
+                const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+                const equals_token = try self.parser.expect();
+                if (equals_token.tt == .sym_equals) {
+                    const subexpr = try expectExpression(self, scope);
+                    try args.append(.{
+                        .param_name = identifier,
+                        .param_name_token = token,
+                        .value = subexpr,
+                    });
+                    token = try self.parser.expect();
+                } else {
+                    // shorthand param passing: `val` expands to `val=val`
+                    const inner = parseLocalOrParam(self, scope, identifier) orelse
+                        return fail(self.parser.source, token.source_range, "no param or local called `%`", .{token.source_range});
+                    const loc0 = token.source_range.loc0;
+                    const subexpr = try createExpr(self, loc0, inner);
+                    try args.append(.{
+                        .param_name = identifier,
+                        .param_name_token = token,
+                        .value = subexpr,
+                    });
+                    token = equals_token;
+                }
+            },
+            else => {
+                return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `%`", .{token.source_range});
+            },
+        }
     }
     return Call{
         .field_index = field_index,
@@ -206,6 +210,42 @@ fn createExpr(self: *SecondPass, loc0: SourceLocation, inner: ExpressionInner) !
     return expr;
 }
 
+fn parseLocalOrParam(self: *SecondPass, scope: *const Scope, name: []const u8) ?ExpressionInner {
+    const maybe_local_index = blk: {
+        var maybe_s: ?*const Scope = scope;
+        while (maybe_s) |sc| : (maybe_s = sc.parent) {
+            for (sc.statements.span()) |statement| {
+                switch (statement) {
+                    .let_assignment => |x| {
+                        const local = self.locals.span()[x.local_index];
+                        if (std.mem.eql(u8, local.name, name)) {
+                            break :blk x.local_index;
+                        }
+                    },
+                    else => {},
+                }
+            }
+        }
+        break :blk null;
+    };
+    if (maybe_local_index) |local_index| {
+        return ExpressionInner{ .local = local_index };
+    }
+    const maybe_param_index = blk: {
+        const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
+        for (params) |param, i| {
+            if (std.mem.eql(u8, param.name, name)) {
+                break :blk i;
+            }
+        }
+        break :blk null;
+    };
+    if (maybe_param_index) |param_index| {
+        return ExpressionInner{ .self_param = param_index };
+    }
+    return null;
+}
+
 fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {
     const token = try self.parser.expect();
     const loc0 = token.source_range.loc0;
@@ -217,39 +257,9 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
                 const call = try parseCall(self, scope, token, s);
                 return try createExpr(self, loc0, .{ .call = call });
             }
-            const maybe_local_index = blk: {
-                var maybe_s: ?*const Scope = scope;
-                while (maybe_s) |sc| : (maybe_s = sc.parent) {
-                    for (sc.statements.span()) |statement| {
-                        switch (statement) {
-                            .let_assignment => |x| {
-                                const local = self.locals.span()[x.local_index];
-                                if (std.mem.eql(u8, local.name, s)) {
-                                    break :blk x.local_index;
-                                }
-                            },
-                            else => {},
-                        }
-                    }
-                }
-                break :blk null;
-            };
-            if (maybe_local_index) |local_index| {
-                return try createExpr(self, loc0, .{ .local = local_index });
-            }
-            const maybe_param_index = blk: {
-                const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-                for (params) |param, i| {
-                    if (std.mem.eql(u8, param.name, s)) {
-                        break :blk i;
-                    }
-                }
-                break :blk null;
-            };
-            if (maybe_param_index) |param_index| {
-                return try createExpr(self, loc0, .{ .self_param = param_index });
-            }
-            return fail(self.parser.source, token.source_range, "no local or param called `%`", .{token.source_range});
+            const inner = parseLocalOrParam(self, scope, s) orelse
+                return fail(self.parser.source, token.source_range, "no local or param called `%`", .{token.source_range});
+            return try createExpr(self, loc0, inner);
         },
         .kw_false => {
             return try createExpr(self, loc0, .{ .literal = .{ .boolean = false } });
