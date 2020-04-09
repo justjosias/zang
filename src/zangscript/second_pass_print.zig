@@ -93,7 +93,8 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: [
             }
         },
         .self_param => |param_index| {
-            std.debug.warn("${}\n", .{param_index});
+            const params = first_pass_result.module_params[module.first_param .. module.first_param + module.num_params];
+            std.debug.warn("params.{}\n", .{params[param_index].name});
         },
         .bin_arith => |m| {
             switch (m.op) {

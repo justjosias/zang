@@ -157,32 +157,4 @@ pub const Parser = struct {
             return fail(self.source, null, "unexpected end of file", .{});
         };
     }
-
-    pub fn expectIdentifier(self: *Parser) ![]const u8 {
-        const token = try self.expect();
-        switch (token.tt) {
-            .identifier => return self.source.contents[token.source_range.loc0.index..token.source_range.loc1.index],
-            else => return fail(self.source, token.source_range, "expected identifier, found `%`", .{token.source_range}),
-        }
-    }
-
-    // this is not great because we don't have a stringifier, and the function
-    // wouldn't be useful if caller wanted e.g. one of two symbols
-    // (e.g. `,` or `)` in function args)
-    //pub fn expectSymbol(self: *Parser, expected: var) !void {
-    //    const found = try self.expect();
-    //    if (found.tt != expected) {
-    //        return fail(self.source, found, "expected `%`, found `%`", .{
-    //            expected,
-    //            found.tt,
-    //        });
-    //    }
-    //}
-
-    pub fn peekSymbol(self: *Parser, expected: var) bool {
-        if (self.peek()) |found| {
-            return found.tt == expected;
-        }
-        return false;
-    }
 };

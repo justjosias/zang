@@ -5,6 +5,7 @@ const SourceLocation = @import("common.zig").SourceLocation;
 const SourceRange = @import("common.zig").SourceRange;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
+const TokenType = @import("tokenizer.zig").TokenType;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
@@ -246,11 +247,54 @@ fn parseLocalOrParam(self: *SecondPass, scope: *const Scope, name: []const u8) ?
     return null;
 }
 
+const BinaryOperator = struct {
+    symbol: TokenType,
+    priority: usize,
+    op: BinArithOp,
+};
+
+const binary_operators = [_]BinaryOperator{
+    .{ .symbol = .sym_plus, .priority = 1, .op = .add },
+    .{ .symbol = .sym_asterisk, .priority = 2, .op = .mul },
+};
+
 fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {
+    return expectExpression2(self, scope, 0);
+}
+
+fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) ParseError!*const Expression {
+    var a = try expectTerm(self, scope);
+    const loc0 = a.source_range.loc0;
+
+    while (self.parser.peek()) |token| {
+        for (binary_operators) |bo| {
+            if (token.tt == bo.symbol and priority <= bo.priority) {
+                _ = self.parser.next();
+                const b = try expectExpression2(self, scope, bo.priority);
+                a = try createExpr(self, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    return a;
+}
+
+fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {
     const token = try self.parser.expect();
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
+        .sym_left_paren => {
+            const a = try expectExpression(self, scope);
+            const paren_token = try self.parser.expect();
+            if (paren_token.tt != .sym_right_paren) {
+                return fail(self.parser.source, paren_token.source_range, "expected `)`, found `<`", .{});
+            }
+            return a;
+        },
         .identifier => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             if (s[0] >= 'A' and s[0] <= 'Z') {
@@ -278,16 +322,6 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             return try createExpr(self, loc0, .{ .literal = .{ .enum_value = s } });
         },
-        .sym_plus => {
-            const a = try expectExpression(self, scope);
-            const b = try expectExpression(self, scope);
-            return try createExpr(self, loc0, .{ .bin_arith = .{ .op = .add, .a = a, .b = b } });
-        },
-        .sym_asterisk => {
-            const a = try expectExpression(self, scope);
-            const b = try expectExpression(self, scope);
-            return try createExpr(self, loc0, .{ .bin_arith = .{ .op = .mul, .a = a, .b = b } });
-        },
         .kw_delay => {
             const delay = try parseDelay(self, scope);
             return try createExpr(self, loc0, .{ .delay = delay });
@@ -301,6 +335,48 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
     }
 }
 
+fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
+    const name_token = try self.parser.expect();
+    if (name_token.tt != .identifier) {
+        return fail(self.parser.source, name_token.source_range, "expected identifier", .{});
+    }
+    const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
+    if (name[0] < 'a' or name[0] > 'z') {
+        return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{});
+    }
+    const equals_token = try self.parser.expect();
+    if (equals_token.tt != .sym_equals) {
+        return fail(self.parser.source, equals_token.source_range, "expect `=`, found `<`", .{});
+    }
+    // note: locals are allowed to shadow params
+    var maybe_s: ?*const Scope = scope;
+    while (maybe_s) |s| : (maybe_s = s.parent) {
+        for (s.statements.span()) |statement| {
+            switch (statement) {
+                .let_assignment => |x| {
+                    const local = self.locals.span()[x.local_index];
+                    if (std.mem.eql(u8, local.name, name)) {
+                        return fail(self.parser.source, name_token.source_range, "redeclaration of local `<`", .{});
+                    }
+                },
+                .output => {},
+                .feedback => {},
+            }
+        }
+    }
+    const expr = try expectExpression(self, scope);
+    const local_index = self.locals.len;
+    try self.locals.append(.{
+        .name = name,
+    });
+    try scope.statements.append(.{
+        .let_assignment = .{
+            .local_index = local_index,
+            .expression = expr,
+        },
+    });
+}
+
 fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope {
     var scope = try self.allocator.create(Scope);
     scope.* = .{
@@ -312,51 +388,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
         switch (token.tt) {
             .kw_end => break,
             .kw_let => {
-                const name_token = try self.parser.expect();
-                if (name_token.tt != .identifier) {
-                    return fail(self.parser.source, name_token.source_range, "expected identifier", .{});
-                }
-                const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
-                if (name[0] < 'a' or name[0] > 'z') {
-                    return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{});
-                }
-                const equals_token = try self.parser.expect();
-                if (equals_token.tt != .sym_equals) {
-                    return fail(self.parser.source, equals_token.source_range, "expect `=`, found `<`", .{});
-                }
-                // locals are allowed to shadow params
-                //const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-                //for (params) |param| {
-                //    if (std.mem.eql(u8, param.name, name)) {
-                //        return fail(self.parser.source, name_token.source_range, "local `%` shadows param with the same name", .{name_token.source_range});
-                //    }
-                //}
-                var maybe_s: ?*const Scope = scope;
-                while (maybe_s) |s| : (maybe_s = s.parent) {
-                    for (s.statements.span()) |statement| {
-                        switch (statement) {
-                            .let_assignment => |x| {
-                                const local = self.locals.span()[x.local_index];
-                                if (std.mem.eql(u8, local.name, name)) {
-                                    return fail(self.parser.source, name_token.source_range, "redeclaration of local `<`", .{});
-                                }
-                            },
-                            .output => {},
-                            .feedback => {},
-                        }
-                    }
-                }
-                const expr = try expectExpression(self, scope);
-                const local_index = self.locals.len;
-                try self.locals.append(.{
-                    .name = name,
-                });
-                try scope.statements.append(.{
-                    .let_assignment = .{
-                        .local_index = local_index,
-                        .expression = expr,
-                    },
-                });
+                try parseLetAssignment(self, scope);
             },
             .kw_out => {
                 const expr = try expectExpression(self, scope);
