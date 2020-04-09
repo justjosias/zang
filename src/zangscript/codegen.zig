@@ -131,8 +131,9 @@ pub const CodegenState = struct {
     locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
-    temp_floats: TempManager,
-    temp_bools: TempManager,
+    // temp floats and bools are just consts in zig code so they can't be reused
+    num_temp_floats: usize,
+    num_temp_bools: usize,
     local_temps: []?usize,
     delays: std.ArrayList(DelayDecl),
 };
@@ -237,8 +238,8 @@ fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
         .nothing => {},
         .temp_buffer_weak => {},
         .temp_buffer => |i| self.temp_buffers.release(i),
-        .temp_float => |i| self.temp_floats.release(i),
-        .temp_bool => |i| self.temp_bools.release(i),
+        .temp_float => {},
+        .temp_bool => {},
         .literal => {},
         .self_param => {},
     }
@@ -482,7 +483,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
             if (getFloatValue(self, ra)) |a| {
                 if (getFloatValue(self, rb)) |b| {
                     // no result_loc shenanigans here because result_locs can't have float type (only buffer type)
-                    const temp_float_index = try self.temp_floats.claim();
+                    const temp_float_index = self.num_temp_floats;
+                    self.num_temp_floats += 1;
                     try self.instructions.append(.{
                         .arith_float_float = .{
                             .out_temp_float_index = temp_float_index,
@@ -755,16 +757,14 @@ pub fn codegen(
         .locals = locals,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .temp_buffers = TempManager.init(allocator),
-        .temp_floats = TempManager.init(allocator),
-        .temp_bools = TempManager.init(allocator),
+        .num_temp_floats = 0,
+        .num_temp_bools = 0,
         .local_temps = try allocator.alloc(?usize, locals.len),
         .delays = std.ArrayList(DelayDecl).init(allocator),
     };
     errdefer self.instructions.deinit();
     errdefer self.delays.deinit();
     defer self.temp_buffers.deinit();
-    defer self.temp_floats.deinit();
-    defer self.temp_bools.deinit();
     defer allocator.free(self.local_temps);
 
     std.mem.set(?usize, self.local_temps, null);
