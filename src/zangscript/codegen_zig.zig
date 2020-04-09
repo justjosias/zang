@@ -8,77 +8,157 @@ const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
 const builtins = @import("builtins.zig").builtins;
 
-fn printExpressionResult(first_pass_result: FirstPassResult, module: Module, out: var, result: ExpressionResult) !void {
-    switch (result) {
-        .nothing => unreachable,
-        .temp_buffer_weak => |i| try out.print("temps[{}]", .{i}),
-        .temp_buffer => |i| try out.print("temps[{}]", .{i}),
-        .temp_float => |i| try out.print("temp_float{}", .{i}),
-        .temp_bool => |i| try out.print("temp_bool{}", .{i}),
-        .literal => |literal| {
-            switch (literal) {
-                .boolean => |value| try out.print("{}", .{value}),
-                .number => |value| try out.print("{d}", .{value}),
-                .enum_value => |str| try out.print(".{}", .{str}),
+const State = struct {
+    first_pass_result: FirstPassResult,
+    module: ?Module,
+    out: *std.io.OutStream(std.os.WriteError),
+    indentation: usize,
+    indent_next: bool,
+
+    fn print(self: *State, comptime fmt: []const u8, args: var) !void {
+        if (self.indent_next) {
+            self.indent_next = false;
+            if (fmt.len > 0 and fmt[0] == '}') {
+                self.indentation -= 1;
             }
-        },
-        .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
-    }
-}
+            var i: usize = 0;
+            while (i < self.indentation) : (i += 1) {
+                try self.out.print("    ", .{});
+            }
+        }
+        comptime var arg_index: usize = 0;
+        comptime var i: usize = 0;
+        inline while (i < fmt.len) {
+            if (fmt[i] == '}' and i + 1 < fmt.len and fmt[i + 1] == '}') {
+                try self.out.writeByte('}');
+                i += 2;
+                continue;
+            }
+            if (fmt[i] == '{') {
+                i += 1;
 
-fn printBufferValue(first_pass_result: FirstPassResult, module: Module, out: var, value: BufferValue) !void {
-    switch (value) {
-        .temp_buffer_index => |i| try out.print("temps[{}]", .{i}),
-        .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
-    }
-}
+                if (i < fmt.len and fmt[i] == '{') {
+                    try self.out.writeByte('{');
+                    i += 1;
+                    continue;
+                }
 
-fn printBufferDest(out: var, value: BufferDest) !void {
-    switch (value) {
-        .temp_buffer_index => |i| try out.print("temps[{}]", .{i}),
-        .output_index => |i| try out.print("outputs[{}]", .{i}),
-    }
-}
+                // find the closing brace
+                const start = i;
+                inline while (i < fmt.len) : (i += 1) {
+                    if (fmt[i] == '}') break;
+                }
+                if (i == fmt.len) {
+                    @compileError("`{` must be followed by `}`");
+                }
+                const arg_format = fmt[start..i];
+                i += 1;
 
-fn printFloatValue(first_pass_result: FirstPassResult, module: Module, out: var, value: FloatValue) !void {
-    switch (value) {
-        .temp_float_index => |i| try out.print("temp_float{}", .{i}),
-        .self_param => |i| try out.print("params.{}", .{first_pass_result.module_params[module.first_param + i].name}),
-        .literal => |v| try out.print("{d}", .{v}),
-    }
-}
+                const arg = args[arg_index];
+                arg_index += 1;
 
-fn indent(out: var, indentation: usize) !void {
-    var i: usize = 0;
-    while (i < indentation) : (i += 1) {
-        try out.print("    ", .{});
+                if (comptime std.mem.eql(u8, arg_format, "bool")) {
+                    try self.out.print("{}", .{@as(bool, arg)});
+                } else if (comptime std.mem.eql(u8, arg_format, "f32")) {
+                    try self.out.print("{d}", .{@as(f32, arg)});
+                } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
+                    try self.out.print("{}", .{@as(usize, arg)});
+                } else if (comptime std.mem.eql(u8, arg_format, "str")) {
+                    try self.out.write(arg);
+                } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
+                    try self.printBufferValue(arg);
+                } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
+                    try self.printBufferDest(arg);
+                } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
+                    try self.printFloatValue(arg);
+                } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
+                    try self.printExpressionResult(arg);
+                } else {
+                    @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
+                }
+            } else {
+                try self.out.writeByte(fmt[i]);
+                i += 1;
+            }
+        }
+        if (fmt.len >= 1 and fmt[fmt.len - 1] == '\n') {
+            self.indent_next = true;
+            if (fmt.len >= 2 and fmt[fmt.len - 2] == '{') {
+                self.indentation += 1;
+            }
+        }
     }
-}
+
+    fn printExpressionResult(self: *State, result: ExpressionResult) !void {
+        const module = self.module orelse return error.NoModule;
+        switch (result) {
+            .nothing => unreachable,
+            .temp_buffer_weak => |i| try self.print("temps[{usize}]", .{i}),
+            .temp_buffer => |i| try self.print("temps[{usize}]", .{i}),
+            .temp_float => |i| try self.print("temp_float{usize}", .{i}),
+            .temp_bool => |i| try self.print("temp_bool{usize}", .{i}),
+            .literal => |literal| {
+                switch (literal) {
+                    .boolean => |value| try self.print("{bool}", .{value}),
+                    .number => |value| try self.print("{f32}", .{value}),
+                    .enum_value => |str| try self.print(".{str}", .{str}),
+                }
+            },
+            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].name}),
+        }
+    }
+
+    fn printBufferValue(self: *State, value: BufferValue) !void {
+        const module = self.module orelse return error.NoModule;
+        switch (value) {
+            .temp_buffer_index => |i| try self.print("temps[{usize}]", .{i}),
+            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].name}),
+        }
+    }
+
+    fn printBufferDest(self: *State, value: BufferDest) !void {
+        switch (value) {
+            .temp_buffer_index => |i| try self.print("temps[{usize}]", .{i}),
+            .output_index => |i| try self.print("outputs[{usize}]", .{i}),
+        }
+    }
+
+    fn printFloatValue(self: *State, value: FloatValue) !void {
+        const module = self.module orelse return error.NoModule;
+        switch (value) {
+            .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
+            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].name}),
+            .literal => |v| try self.print("{f32}", .{v}),
+        }
+    }
+};
 
 pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const CodeGenResult) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_file_out_stream = stdout_file.outStream();
-    const out = &stdout_file_out_stream.stream;
 
-    var indentation: usize = 0;
+    var self: State = .{
+        .first_pass_result = first_pass_result,
+        .module = null,
+        .out = &stdout_file_out_stream.stream,
+        .indentation = 0,
+        .indent_next = true,
+    };
 
-    try out.print("const zang = @import(\"zang\");\n", .{});
+    try self.print("const zang = @import(\"zang\");\n", .{});
     for (first_pass_result.modules) |module, i| {
         if (i < builtins.len) {
             continue;
         }
 
+        self.module = module;
+
         const code_gen_result = code_gen_results[i];
-        try out.print("\n", .{});
-        try out.print("pub const {} = struct {{\n", .{module.name});
-        indentation += 1;
-        try indent(out, indentation);
-        try out.print("pub const num_outputs = {};\n", .{code_gen_result.num_outputs});
-        try indent(out, indentation);
-        try out.print("pub const num_temps = {};\n", .{code_gen_result.num_temps});
-        try indent(out, indentation);
-        try out.print("pub const Params = struct {{\n", .{});
-        indentation += 1;
+        try self.print("\n", .{});
+        try self.print("pub const {str} = struct {{\n", .{module.name});
+        try self.print("pub const num_outputs = {usize};\n", .{code_gen_result.num_outputs});
+        try self.print("pub const num_temps = {usize};\n", .{code_gen_result.num_temps});
+        try self.print("pub const Params = struct {{\n", .{});
         for (first_pass_result.module_params[module.first_param .. module.first_param + module.num_params]) |param| {
             const type_name = switch (param.param_type) {
                 .boolean => "bool",
@@ -87,168 +167,99 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 .constant_or_buffer => "zang.ConstantOrBuffer",
                 .one_of => |e| e.zig_name,
             };
-            try indent(out, indentation);
-            try out.print("{}: {},\n", .{ param.name, type_name });
+            try self.print("{str}: {str},\n", .{ param.name, type_name });
         }
-        indentation -= 1;
-        try indent(out, indentation);
-        try out.print("}};\n", .{});
-        try out.print("\n", .{});
+        try self.print("}};\n", .{});
+        try self.print("\n", .{});
         for (code_gen_result.fields) |field, j| {
-            try indent(out, indentation);
-            try out.print("field{}_{}: {},\n", .{
-                j,
-                first_pass_result.modules[field.resolved_module_index].name,
-                first_pass_result.modules[field.resolved_module_index].zig_name,
-            });
+            const field_module = first_pass_result.modules[field.resolved_module_index];
+            try self.print("field{usize}_{str}: {str},\n", .{ j, field_module.name, field_module.zig_name });
         }
         for (code_gen_result.delays) |delay_decl, j| {
-            try indent(out, indentation);
-            try out.print("delay{}: zang.Delay({}),\n", .{ j, delay_decl.num_samples });
+            try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
         }
-        try out.print("\n", .{});
-        try indent(out, indentation);
-        try out.print("pub fn init() {} {{\n", .{module.name});
-        indentation += 1;
-        try indent(out, indentation);
-        try out.print("return .{{\n", .{});
-        indentation += 1;
+        try self.print("\n", .{});
+        try self.print("pub fn init() {str} {{\n", .{module.name});
+        try self.print("return .{{\n", .{});
         for (code_gen_result.fields) |field, j| {
-            try indent(out, indentation);
-            try out.print(".field{}_{} = {}.init(),\n", .{
-                j,
-                first_pass_result.modules[field.resolved_module_index].name,
-                first_pass_result.modules[field.resolved_module_index].zig_name,
-            });
+            const field_module = first_pass_result.modules[field.resolved_module_index];
+            try self.print(".field{usize}_{str} = {str}.init(),\n", .{ j, field_module.name, field_module.zig_name });
         }
         for (code_gen_result.delays) |delay_decl, j| {
-            try indent(out, indentation);
-            try out.print(".delay{} = zang.Delay({}).init(),\n", .{ j, delay_decl.num_samples });
+            try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
         }
-        indentation -= 1;
-        try indent(out, indentation);
-        try out.print("}};\n", .{});
-        indentation -= 1;
-        try indent(out, indentation);
-        try out.print("}}\n", .{});
-        try out.print("\n", .{});
-        try indent(out, indentation);
-        try out.print("pub fn paint(self: *{}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module.name});
-        indentation += 1;
+        try self.print("}};\n", .{});
+        try self.print("}}\n", .{});
+        try self.print("\n", .{});
+        try self.print("pub fn paint(self: *{str}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module.name});
         var span: []const u8 = "span";
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
                 .copy_buffer => |x| {
-                    try indent(out, indentation);
-                    try out.print("zang.copy({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(", ", .{});
-                    try printBufferValue(first_pass_result, module, out, x.in);
-                    try out.print(");\n", .{});
+                    try self.print("zang.copy({str}, {buffer_dest}, {buffer_value});\n", .{ span, x.out, x.in });
                 },
                 .float_to_buffer => |x| {
-                    try indent(out, indentation);
-                    try out.print("zang.set({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(", ", .{});
-                    try printFloatValue(first_pass_result, module, out, x.in);
-                    try out.print(");\n", .{});
+                    try self.print("zang.set({str}, {buffer_dest}, {float_value});\n", .{ span, x.out, x.in });
                 },
                 .arith_float_float => |x| {
-                    try indent(out, indentation);
-                    try out.print("const temp_float{}: f32 = ", .{x.out_temp_float_index});
-                    try printFloatValue(first_pass_result, module, out, x.a);
-                    try out.print(" {} ", .{
+                    try self.print("const temp_float{usize}: f32 = {float_value} {str} {float_value};\n", .{
+                        x.out_temp_float_index,
+                        x.a,
                         switch (x.operator) {
                             .add => "+",
                             .mul => "*",
                         },
+                        x.b,
                     });
-                    try printFloatValue(first_pass_result, module, out, x.b);
-                    try out.print(";\n", .{});
                 },
                 .arith_buffer_float => |x| {
-                    try indent(out, indentation);
-                    try out.print("zang.zero({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(");\n", .{});
-
-                    try indent(out, indentation);
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
                     switch (x.operator) {
-                        .add => try out.print("zang.addScalar", .{}),
-                        .mul => try out.print("zang.multiplyScalar", .{}),
+                        .add => try self.print("zang.addScalar", .{}),
+                        .mul => try self.print("zang.multiplyScalar", .{}),
                     }
-                    try out.print("({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(", ", .{});
-                    try printBufferValue(first_pass_result, module, out, x.a);
-                    try out.print(", ", .{});
-                    try printFloatValue(first_pass_result, module, out, x.b);
-                    try out.print(");\n", .{});
+                    try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.a, x.b });
                 },
                 .arith_buffer_buffer => |x| {
-                    try indent(out, indentation);
-                    try out.print("zang.zero({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(");\n", .{});
-
-                    try indent(out, indentation);
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
                     switch (x.operator) {
-                        .add => try out.print("zang.add", .{}),
-                        .mul => try out.print("zang.multiply", .{}),
+                        .add => try self.print("zang.add", .{}),
+                        .mul => try self.print("zang.multiply", .{}),
                     }
-                    try out.print("({}, ", .{span});
-                    try printBufferDest(out, x.out);
-                    try out.print(", ", .{});
-                    try printBufferValue(first_pass_result, module, out, x.a);
-                    try out.print(", ", .{});
-                    try printBufferValue(first_pass_result, module, out, x.b);
-                    try out.print(");\n", .{});
+                    try self.print("({str}, {buffer_dest}, {buffer_value}, {buffer_value});\n", .{ span, x.out, x.a, x.b });
                 },
                 .call => |call| {
                     const field = code_gen_result.fields[call.field_index];
-
-                    try indent(out, indentation);
-                    try out.print("zang.zero({}, ", .{span});
-                    try printBufferDest(out, call.out);
-                    try out.print(");\n", .{});
-
-                    try indent(out, indentation);
-                    try out.print("self.field{}_{}.paint({}, .{{", .{
-                        call.field_index,
-                        first_pass_result.modules[field.resolved_module_index].name,
-                        span,
-                    });
-                    try printBufferDest(out, call.out);
-                    try out.print("}}, .{{", .{});
+                    const field_module = first_pass_result.modules[field.resolved_module_index];
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
+                    try self.print("self.field{usize}_{str}.paint({str}, .{{", .{ call.field_index, field_module.name, span });
+                    try self.print("{buffer_dest}}}, .{{", .{call.out});
                     // callee temps
                     for (call.temps) |n, j| {
                         if (j > 0) {
-                            try out.print(", ", .{});
+                            try self.print(", ", .{});
                         }
-                        try out.print("temps[{}]", .{n});
+                        try self.print("temps[{usize}]", .{n});
                     }
                     // callee params
-                    try out.print("}}, .{{\n", .{});
-                    indentation += 1;
+                    try self.print("}}, .{{\n", .{});
                     const callee_module = first_pass_result.modules[field.resolved_module_index];
                     const callee_params = first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                     for (call.args) |arg, j| {
                         const callee_param = callee_params[j];
-                        try indent(out, indentation);
-                        try out.print(".{} = ", .{callee_param.name});
+                        try self.print(".{str} = ", .{callee_param.name});
                         if (callee_param.param_type == .constant_or_buffer) {
                             // coerce to ConstantOrBuffer?
                             switch (arg) {
                                 .nothing => {},
-                                .temp_buffer_weak => |index| try out.print("zang.buffer(temps[{}])", .{index}),
-                                .temp_buffer => |index| try out.print("zang.buffer(temps[{}])", .{index}),
-                                .temp_float => |index| try out.print("zang.constant(temp_float{})", .{index}),
+                                .temp_buffer_weak => |index| try self.print("zang.buffer(temps[{usize}])", .{index}),
+                                .temp_buffer => |index| try self.print("zang.buffer(temps[{usize}])", .{index}),
+                                .temp_float => |index| try self.print("zang.constant(temp_float{usize})", .{index}),
                                 .temp_bool => unreachable,
                                 .literal => |literal| {
                                     switch (literal) {
                                         .boolean => unreachable,
-                                        .number => |value| try out.print("zang.constant({d})", .{value}),
+                                        .number => |value| try self.print("zang.constant({f32})", .{value}),
                                         .enum_value => unreachable,
                                     }
                                 },
@@ -256,118 +267,81 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                                     const param = first_pass_result.module_params[module.first_param + index];
                                     switch (param.param_type) {
                                         .boolean => unreachable,
-                                        .buffer => try out.print("zang.buffer(params.{})", .{param.name}),
-                                        .constant => try out.print("zang.constant(params.{})", .{param.name}),
-                                        .constant_or_buffer => try out.print("params.{}", .{param.name}),
+                                        .buffer => try self.print("zang.buffer(params.{str})", .{param.name}),
+                                        .constant => try self.print("zang.constant(params.{str})", .{param.name}),
+                                        .constant_or_buffer => try self.print("params.{str}", .{param.name}),
                                         .one_of => unreachable,
                                     }
                                 },
                             }
                         } else {
-                            try printExpressionResult(first_pass_result, module, out, arg);
+                            try self.print("{expression_result}", .{arg});
                         }
-                        try out.print(",\n", .{});
+                        try self.print(",\n", .{});
                     }
-                    indentation -= 1;
-                    try indent(out, indentation);
-                    try out.print("}});\n", .{});
+                    try self.print("}});\n", .{});
                 },
                 .delay_begin => |delay_begin| {
                     // this next line kind of sucks, if the delay loop iterates more than once,
                     // we'll have done some overlapping zeroing.
                     // maybe readDelayBuffer should do the zeroing internally.
-                    try indent(out, indentation);
-                    try out.print("zang.zero({}, ", .{span});
-                    try printBufferDest(out, delay_begin.out);
-                    try out.print(");\n", .{});
-
-                    try indent(out, indentation);
-                    try out.print("{{\n", .{});
-                    indentation += 1;
-
-                    try indent(out, indentation);
-                    try out.print("var start = span.start;\n", .{});
-
-                    try indent(out, indentation);
-                    try out.print("const end = span.end;\n", .{});
-
-                    try indent(out, indentation);
-                    try out.print("while (start < end) {{\n", .{});
-                    indentation += 1;
-
-                    try indent(out, indentation);
-                    try out.print("// temps[{}] will be the destination for writing into the feedback buffer\n", .{
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, delay_begin.out });
+                    try self.print("{{\n", .{});
+                    try self.print("var start = span.start;\n", .{});
+                    try self.print("const end = span.end;\n", .{});
+                    try self.print("while (start < end) {{\n", .{});
+                    try self.print("// temps[{usize}] will be the destination for writing into the feedback buffer\n", .{
                         delay_begin.feedback_out_temp_buffer_index,
                     });
-
-                    try indent(out, indentation);
-                    try out.print("zang.zero(zang.Span.init(start, end), temps[{}]);\n", .{
+                    try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
                         delay_begin.feedback_out_temp_buffer_index,
                     });
-
-                    try indent(out, indentation);
-                    try out.print("// temps[{}] will contain the delay buffer's previous contents\n", .{
+                    try self.print("// temps[{usize}] will contain the delay buffer's previous contents\n", .{
                         delay_begin.feedback_temp_buffer_index,
                     });
-
-                    try indent(out, indentation);
-                    try out.print("zang.zero(zang.Span.init(start, end), temps[{}]);\n", .{
+                    try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
                         delay_begin.feedback_temp_buffer_index,
                     });
-
-                    try indent(out, indentation);
-                    try out.print("const samples_read = self.delay{}.readDelayBuffer(temps[{}][start..end]);\n", .{
+                    try self.print("const samples_read = self.delay{usize}.readDelayBuffer(temps[{usize}][start..end]);\n", .{
                         delay_begin.delay_index,
                         delay_begin.feedback_temp_buffer_index,
                     });
-
-                    try indent(out, indentation);
-                    try out.print("const inner_span = zang.Span.init(start, start + samples_read);\n", .{});
+                    try self.print("const inner_span = zang.Span.init(start, start + samples_read);\n", .{});
                     span = "inner_span";
                     // FIXME script should be able to output separately into the delay buffer, and the final result.
                     // for now, i'm hardcoding it so that delay buffer is copied to final result, and the delay expression
                     // is sent to the delay buffer. i need some new syntax in the language before i can implement
                     // this properly
-                    try out.print("\n", .{});
+                    try self.print("\n", .{});
 
                     //try indent(out, indentation);
                     //try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
 
                     //try indent(out, indentation);
-                    //try out.print("zang.addInto({}, ", .{span});
+                    //try out.print("zang.addInto({str}, ", .{span});
                     //try printBufferDest(out, delay_begin.out);
-                    //try out.print(", temps[{}]);\n", .{delay_begin.feedback_temp_buffer_index});
+                    //try out.print(", temps[{usize}]);\n", .{delay_begin.feedback_temp_buffer_index});
                     //try out.print("\n", .{});
 
-                    try indent(out, indentation);
-                    try out.print("// inner expression\n", .{});
+                    try self.print("// inner expression\n", .{});
                 },
                 .delay_end => |delay_end| {
                     span = "span"; // nested delays aren't allowed so this is fine
-                    try out.print("\n", .{});
-                    try indent(out, indentation);
-                    try out.print("// write expression result into the delay buffer\n", .{});
-                    try indent(out, indentation);
-                    try out.print("self.delay{}.writeDelayBuffer(", .{delay_end.delay_index});
-                    try out.print("temps[{}]", .{delay_end.feedback_out_temp_buffer_index});
-                    //try printBufferValue(first_pass_result, module, out, delay_end.inner_value);
-                    try out.print("[start..start + samples_read]);\n", .{});
-                    try indent(out, indentation);
-                    try out.print("start += samples_read;\n", .{});
-                    indentation -= 1;
-                    try indent(out, indentation);
-                    try out.print("}}\n", .{});
-                    indentation -= 1;
-                    try indent(out, indentation);
-                    try out.print("}}\n", .{});
+                    try self.print("\n", .{});
+                    try self.print("// write expression result into the delay buffer\n", .{});
+                    try self.print("self.delay{usize}.writeDelayBuffer(temps[{usize}][start..start + samples_read]);\n", .{
+                        delay_end.delay_index,
+                        delay_end.feedback_out_temp_buffer_index,
+                    });
+                    try self.print("start += samples_read;\n", .{});
+                    try self.print("}}\n", .{});
+                    try self.print("}}\n", .{});
                 },
             }
         }
-        indentation -= 1;
-        try indent(out, indentation);
-        try out.print("}}\n", .{});
-        indentation -= 1;
-        try indent(out, indentation);
-        try out.print("}};\n", .{});
+        try self.print("}}\n", .{});
+        try self.print("}};\n", .{});
     }
+
+    std.debug.assert(self.indentation == 0);
 }
