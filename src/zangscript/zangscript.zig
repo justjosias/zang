@@ -18,10 +18,12 @@ pub const Script = struct {
     code_gen_results: []const CodeGenResult,
 };
 
-pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) !Script {
+pub fn loadScript(filename: []const u8, allocator: *std.mem.Allocator) !Script {
+    const contents = try std.io.readFileAlloc(allocator, filename);
+
     const source: Source = .{
         .filename = filename,
-        .contents = @embedFile(filename),
+        .contents = contents,
     };
 
     var tokenizer: Tokenizer = .{
@@ -49,7 +51,10 @@ pub fn loadScript(comptime filename: []const u8, allocator: *std.mem.Allocator) 
 
 pub fn main() u8 {
     const allocator = std.heap.page_allocator;
-    const script = loadScript("../../script.txt", allocator) catch return 1;
+    const script = loadScript("script.txt", allocator) catch |err| {
+        std.debug.warn("{}\n", .{err});
+        return 1;
+    };
     // TODO defer script deinit
     generateZig(script.first_pass_result, script.code_gen_results) catch |err| {
         std.debug.warn("{}\n", .{err});
