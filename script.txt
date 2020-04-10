@@ -6,7 +6,7 @@ begin
     let freq =
         freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
 
-    out Filter(input=PulseOsc(color, sample_rate, freq), filter_type='low_pass', cutoff=0.3, resonance=0)
+    out Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0)
 end
 
 def Echoes:
@@ -17,7 +17,7 @@ begin
         let result = input + feedback * echo_volume
 
         out result
-        feedback Filter(input=result, filter_type='low_pass', cutoff=0.8, resonance=0)
+        feedback Filter(input=result, type='low_pass', cutoff=0.8, res=0)
     end
 end
 

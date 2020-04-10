@@ -22,6 +22,7 @@ pub const ParamType = union(enum) {
 
 pub const ModuleParam = struct {
     name: []const u8,
+    zig_name: []const u8,
     param_type: ParamType,
 };
 
@@ -110,6 +111,7 @@ fn defineModule(self: *FirstPass) !void {
                 }
                 try params.append(.{
                     .name = param_name,
+                    .zig_name = param_name, // TODO wrap zig keywords in `@"..."`?
                     .param_type = param_type,
                 });
             },

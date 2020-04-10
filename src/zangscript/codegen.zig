@@ -632,6 +632,13 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                     releaseExpressionResult(self, args[i]);
                 }
             }
+            for (call.args) |a| {
+                for (callee_params) |param| {
+                    if (std.mem.eql(u8, a.param_name, param.name)) break;
+                } else {
+                    return fail(self.source, a.param_name_token.source_range, "invalid param `<`", .{});
+                }
+            }
             for (callee_params) |param, i| {
                 // find this arg in the call node
                 // FIXME when these errors happen there is a temps leak

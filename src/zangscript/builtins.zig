@@ -26,7 +26,14 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
     comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
     inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{
-            .name = field.name,
+            .name =
+                if (std.mem.eql(u8, field.name, "filter_type") or std.mem.eql(u8, field.name, "distortion_type"))
+                    "type"
+                else if (std.mem.eql(u8, field.name, "resonance"))
+                    "res"
+                else
+                    field.name,
+            .zig_name = field.name,
             .param_type = switch (field.field_type) {
                 bool => .boolean,
                 f32 => .constant,
