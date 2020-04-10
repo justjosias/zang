@@ -2,15 +2,11 @@ def Instrument:
     sample_rate: constant,
     freq: waveform,
     color: constant,
-    note_on: boolean,
 begin
     let freq =
         freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
 
-    let input =
-        0.7 * PulseOsc(color, sample_rate, freq)
-
-    out Distortion(ingain=0.25, outgain=0.5, offset=0, distortion_type='overdrive', input)
+    out Filter(input=PulseOsc(color, sample_rate, freq), filter_type='low_pass', cutoff=0.3, resonance=0)
 end
 
 def Echoes:
@@ -18,9 +14,10 @@ def Echoes:
     echo_volume: constant,
 begin
     out delay 11025 begin
-        let x = input + echo_volume * feedback
-        out x
-        feedback x
+        let result = input + feedback * echo_volume
+
+        out result
+        feedback Filter(input=result, filter_type='low_pass', cutoff=0.8, resonance=0)
     end
 end
 
@@ -29,7 +26,7 @@ def OuterInstrument:
     freq: cob,
     note_on: boolean,
 begin
-    let input = Instrument(sample_rate, freq, color=0.7, note_on=true)
+    let input = Instrument(sample_rate, freq=freq*0.5, color=0.7) * Gate(note_on)
 
     out Echoes(input, echo_volume=0.5)
 end

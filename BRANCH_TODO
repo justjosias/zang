@@ -1,5 +1,4 @@
 - zig API where you can pass a pack of custom builtin functions to be available to a script. maybe you access them by a prefix (module name) in the script, maybe they're just all in the global namespace along with the native builtins.
-- proper infix math operators with precedence rules.
 - add an exponentiation operator/function.
 
 later/convenience features:
@@ -7,9 +6,11 @@ later/convenience features:
 
 bugs/notes:
 - the `cob` type is currently flawed: you can't pass it into a float-typed param of another module (because it's immediately converted into a buffer when referenced).
+- script modules zero out their outputs before writing to them.
 
-big eventual goal:
+big eventual goals:
 - unify constant, waveform, and cob into a single "float" type. how it's modelled should be hidden from the scripter
+- let-assignments should be lazily evaluated, so copies can be elided if you use them in only one place.
 
 ---------------
 

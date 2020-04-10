@@ -5,7 +5,7 @@ const c = @import("common/c.zig");
 const Instrument = @import("scriptgen.zig").OuterInstrument;
 
 pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
-pub const AUDIO_SAMPLE_RATE = 48000;
+pub const AUDIO_SAMPLE_RATE = 44100;
 pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
