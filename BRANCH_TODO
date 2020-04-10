@@ -5,6 +5,12 @@
 later/convenience features:
 - codegen_zig: write a reset method, resetting all the fields and delays.
 
+bugs/notes:
+- the `cob` type is currently flawed: you can't pass it into a float-typed param of another module (because it's immediately converted into a buffer when referenced).
+
+big eventual goal:
+- unify constant, waveform, and cob into a single "float" type. how it's modelled should be hidden from the scripter
+
 ---------------
 
 support union(enum), such as Painter.Curve, which is used by a lot of essential builtins:

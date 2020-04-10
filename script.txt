@@ -17,7 +17,7 @@ def Echoes:
     input: waveform,
     echo_volume: constant,
 begin
-    out delay 1000 begin
+    out delay 11025 begin
         let x = input + echo_volume * feedback
         out x
         feedback x
@@ -26,8 +26,10 @@ end
 
 def OuterInstrument:
     sample_rate: constant,
+    freq: cob,
+    note_on: boolean,
 begin
-    let input = Instrument(sample_rate, freq=220+220, color=0.7, note_on=true)
+    let input = Instrument(sample_rate, freq, color=0.7, note_on=true)
 
     out Echoes(input, echo_volume=0.5)
 end

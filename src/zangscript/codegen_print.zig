@@ -79,6 +79,12 @@ pub fn printBytecode(self: *CodegenState) void {
                 printFloatValue(self, x.in);
                 std.debug.warn("\n", .{});
             },
+            .cob_to_buffer => |x| {
+                const module = self.first_pass_result.modules[self.module_index];
+                const param = self.first_pass_result.module_params[module.first_param + x.in_self_param];
+                printBufferDest(self, x.out);
+                std.debug.warn(" = COB_TO_BUFFER params.{}\n", .{param.name});
+            },
             .arith_float_float => |x| {
                 std.debug.warn("temp_float{} = ARITH_FLOAT_FLOAT({}) ", .{ x.out_temp_float_index, x.operator });
                 printFloatValue(self, x.a);

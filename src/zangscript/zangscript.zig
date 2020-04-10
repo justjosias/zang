@@ -14,12 +14,17 @@ comptime {
 }
 
 pub const Script = struct {
+    contents: []const u8, // this must be freed
     first_pass_result: FirstPassResult,
     code_gen_results: []const CodeGenResult,
 };
 
 pub fn loadScript(filename: []const u8, allocator: *std.mem.Allocator) !Script {
-    const contents = try std.io.readFileAlloc(allocator, filename);
+    // FIXME should i make compilation not result in references to `contents`?
+    // things like module names are currently just pointers into contents.
+    // if i made them new allocs then i could free the contents sooner
+    const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16*1024*1024);
+    errdefer allocator.free(contents);
 
     const source: Source = .{
         .filename = filename,
@@ -44,6 +49,7 @@ pub fn loadScript(filename: []const u8, allocator: *std.mem.Allocator) !Script {
     const code_gen_results = try secondPass(source, tokens, result, allocator);
 
     return Script{
+        .contents = contents,
         .first_pass_result = result,
         .code_gen_results = code_gen_results,
     };
@@ -55,6 +61,7 @@ pub fn main() u8 {
         std.debug.warn("{}\n", .{err});
         return 1;
     };
+    defer allocator.free(script.contents);
     // TODO defer script deinit
     generateZig(script.first_pass_result, script.code_gen_results) catch |err| {
         std.debug.warn("{}\n", .{err});

@@ -74,6 +74,11 @@ pub const InstrFloatToBuffer = struct {
     in: FloatValue,
 };
 
+pub const InstrCobToBuffer = struct {
+    out: BufferDest,
+    in_self_param: usize,
+};
+
 pub const InstrArithFloatFloat = struct {
     out_temp_float_index: usize,
     operator: BinArithOp,
@@ -110,6 +115,7 @@ pub const InstrArithBufferBuffer = struct {
 pub const Instruction = union(enum) {
     copy_buffer: InstrCopyBuffer,
     float_to_buffer: InstrFloatToBuffer,
+    cob_to_buffer: InstrCobToBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_buffer_float: InstrArithBufferFloat,
     arith_buffer_buffer: InstrArithBufferBuffer,
@@ -137,6 +143,45 @@ pub const CodegenState = struct {
     num_temp_bools: usize,
     local_temps: []?usize,
     delays: std.ArrayList(DelayDecl),
+};
+
+const TempManager = struct {
+    slot_claimed: std.ArrayList(bool),
+
+    fn init(allocator: *std.mem.Allocator) TempManager {
+        return .{
+            .slot_claimed = std.ArrayList(bool).init(allocator),
+        };
+    }
+
+    fn deinit(self: *TempManager) void {
+        // check for leaks
+        for (self.slot_claimed.span()) |in_use| {
+            std.debug.assert(!in_use);
+        }
+        self.slot_claimed.deinit();
+    }
+
+    fn claim(self: *TempManager) !usize {
+        for (self.slot_claimed.span()) |*in_use, index| {
+            if (!in_use.*) {
+                in_use.* = true;
+                return index;
+            }
+        }
+        const index = self.slot_claimed.len;
+        try self.slot_claimed.append(true);
+        return index;
+    }
+
+    fn release(self: *TempManager, index: usize) void {
+        std.debug.assert(self.slot_claimed.span()[index]);
+        self.slot_claimed.span()[index] = false;
+    }
+
+    fn finalCount(self: *const TempManager) usize {
+        return self.slot_claimed.len;
+    }
 };
 
 pub const GenError = error{
@@ -195,45 +240,6 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
         => return null,
     }
 }
-
-const TempManager = struct {
-    slot_claimed: std.ArrayList(bool),
-
-    fn init(allocator: *std.mem.Allocator) TempManager {
-        return .{
-            .slot_claimed = std.ArrayList(bool).init(allocator),
-        };
-    }
-
-    fn deinit(self: *TempManager) void {
-        // check for leaks
-        for (self.slot_claimed.span()) |in_use| {
-            std.debug.assert(!in_use);
-        }
-        self.slot_claimed.deinit();
-    }
-
-    fn claim(self: *TempManager) !usize {
-        for (self.slot_claimed.span()) |*in_use, index| {
-            if (!in_use.*) {
-                in_use.* = true;
-                return index;
-            }
-        }
-        const index = self.slot_claimed.len;
-        try self.slot_claimed.append(true);
-        return index;
-    }
-
-    fn release(self: *TempManager, index: usize) void {
-        std.debug.assert(self.slot_claimed.span()[index]);
-        self.slot_claimed.span()[index] = false;
-    }
-
-    fn finalCount(self: *const TempManager) usize {
-        return self.slot_claimed.len;
-    }
-};
 
 fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
     switch (result) {
@@ -325,6 +331,8 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
             return result;
         },
         .constant_or_buffer => {
+            // accept both constants and buffers. codegen_zig will take care of wrapping
+            // them in the correct way
             const ok = switch (result) {
                 .nothing => unreachable,
                 .temp_buffer_weak => true,
@@ -338,7 +346,7 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                     .boolean => false,
                     .constant => true,
                     .buffer => true,
-                    .constant_or_buffer => unreachable, // custom modules cannot use this type in their params (for now)
+                    .constant_or_buffer => unreachable, // these became buffers as soon as they came out of a self_param
                     .one_of => unreachable, // ditto
                 },
             };
@@ -424,7 +432,9 @@ fn coerceAssignment(self: *CodegenState, sr: SourceRange, result_loc: BufferDest
             const param_type = params[param_index].param_type;
 
             switch (param_type) {
-                .boolean => return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{}),
+                .boolean => {
+                    return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
+                },
                 .buffer => {
                     try self.instructions.append(.{
                         .copy_buffer = .{
@@ -441,8 +451,8 @@ fn coerceAssignment(self: *CodegenState, sr: SourceRange, result_loc: BufferDest
                         },
                     });
                 },
-                .constant_or_buffer => unreachable,
-                .one_of => unreachable,
+                .constant_or_buffer => unreachable, // these became buffers as soon as they came out of a self_param
+                .one_of => unreachable, // only builtin params are allowed to use this
             }
         },
     }
@@ -487,7 +497,23 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
             return coerce(self, sr, result_info, .{ .temp_buffer_weak = self.local_temps[local_index].? });
         },
         .self_param => |param_index| {
-            return coerce(self, sr, result_info, .{ .self_param = param_index });
+            const module = self.first_pass_result.modules[self.module_index];
+            const param = self.first_pass_result.module_params[module.first_param + param_index];
+            if (param.param_type == .constant_or_buffer) {
+                // immediately turn constant_or_buffer into buffer (most of the rest of codegen
+                // isn't able to work with constant_or_buffer)
+                const temp_buffer_index = try self.temp_buffers.claim();
+                try self.instructions.append(.{
+                    .cob_to_buffer = .{
+                        // TODO look at result_info and use that output
+                        .out = .{ .temp_buffer_index = temp_buffer_index },
+                        .in_self_param = param_index,
+                    },
+                });
+                return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+            } else {
+                return coerce(self, sr, result_info, .{ .self_param = param_index });
+            }
         },
         .bin_arith => |m| {
             const ra = try genExpression(self, m.a, .none, maybe_feedback_temp_index);

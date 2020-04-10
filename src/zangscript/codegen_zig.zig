@@ -197,6 +197,13 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                 .float_to_buffer => |x| {
                     try self.print("zang.set({str}, {buffer_dest}, {float_value});\n", .{ span, x.out, x.in });
                 },
+                .cob_to_buffer => |x| {
+                    const param = self.first_pass_result.module_params[module.first_param + x.in_self_param];
+                    try self.print("switch (params.{str}) {{\n", .{param.name});
+                    try self.print(".constant => |v| zang.set({str}, {buffer_dest}, v),\n", .{ span, x.out });
+                    try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
+                    try self.print("}}\n", {});
+                },
                 .arith_float_float => |x| {
                     try self.print("const temp_float{usize}: f32 = {float_value} ", .{ x.out_temp_float_index, x.a });
                     switch (x.operator) {

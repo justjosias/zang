@@ -14,15 +14,9 @@ pub const ParamType = union(enum) {
     boolean,
     buffer,
     constant,
-
-    // script modules are disallowed from using this one, for now. only builtins can use it.
-    // implementing this would require generating (in zig) a separate copy of the paint method
-    // for every combination of params being constant or buffer (so if there were 3 constant-
-    // or-buffer params, there would be 2^3 = 8 paint methods).
-    // that's going to be a pain, so forget about it for now.
     constant_or_buffer,
 
-    // script modules also cannot use this
+    // script modules cannot use this
     one_of: ParamTypeEnum,
 };
 
@@ -62,8 +56,9 @@ fn parseParamType(source: Source, type_token: Token) !ParamType {
     if (std.mem.eql(u8, type_name, "waveform")) {
         return .buffer;
     }
-    // for now, script modules are not allowed to have ConstantOrBuffer params (the codegen of those is going
-    // to be tricky, see my comment in the ParamType enum).
+    if (std.mem.eql(u8, type_name, "cob")) {
+        return .constant_or_buffer;
+    }
     return fail(source, type_token.source_range, "expected datatype, found `<`", .{});
 }
 
