@@ -12,13 +12,9 @@ fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) vo
         .temp_buffer => |i| std.debug.warn("temp{}", .{i}),
         .temp_float => |i| std.debug.warn("temp_float{}", .{i}),
         .temp_bool => |i| std.debug.warn("temp_bool{}", .{i}),
-        .literal => |literal| {
-            switch (literal) {
-                .boolean => |value| std.debug.warn("{}", .{value}),
-                .number => |value| std.debug.warn("{d}", .{value}),
-                .enum_value => |str| std.debug.warn("'{}'", .{str}),
-            }
-        },
+        .literal_boolean => |value| std.debug.warn("{}", .{value}),
+        .literal_number => |value| std.debug.warn("{d}", .{value}),
+        .literal_enum_value => |str| std.debug.warn("'{}'", .{str}),
         .self_param => |i| {
             const module = self.first_pass_result.modules[self.module_index];
             const param = self.first_pass_result.module_params[module.first_param + i];

@@ -7,7 +7,6 @@ const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ParamType = @import("first_pass.zig").ParamType;
 const CallArg = @import("second_pass.zig").CallArg;
 const BinArithOp = @import("second_pass.zig").BinArithOp;
-const Literal = @import("second_pass.zig").Literal;
 const Field = @import("second_pass.zig").Field;
 const Local = @import("second_pass.zig").Local;
 const Expression = @import("second_pass.zig").Expression;
@@ -26,7 +25,9 @@ pub const ExpressionResult = union(enum) {
     temp_buffer: usize,
     temp_float: usize,
     temp_bool: usize,
-    literal: Literal,
+    literal_boolean: bool,
+    literal_number: f32,
+    literal_enum_value: []const u8,
     self_param: usize,
 };
 
@@ -157,12 +158,11 @@ fn getFloatValue(self: *CodegenState, result: ExpressionResult) ?FloatValue {
             }
             return null;
         },
-        .literal => |literal| {
-            return switch (literal) {
-                .number => |n| FloatValue{ .literal = n },
-                else => null,
-            };
+        .literal_number => |value| {
+            return FloatValue{ .literal = value };
         },
+        .literal_boolean,
+        .literal_enum_value,
         .temp_buffer_weak,
         .temp_buffer,
         .temp_bool,
@@ -189,7 +189,9 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
         },
         .temp_float,
         .temp_bool,
-        .literal,
+        .literal_boolean,
+        .literal_number,
+        .literal_enum_value,
         => return null,
     }
 }
@@ -235,13 +237,16 @@ const TempManager = struct {
 
 fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
     switch (result) {
-        .nothing => {},
-        .temp_buffer_weak => {},
         .temp_buffer => |i| self.temp_buffers.release(i),
-        .temp_float => {},
-        .temp_bool => {},
-        .literal => {},
-        .self_param => {},
+        .nothing,
+        .temp_buffer_weak,
+        .temp_float,
+        .temp_bool,
+        .literal_boolean,
+        .literal_number,
+        .literal_enum_value,
+        .self_param,
+        => {},
     }
 }
 
@@ -259,7 +264,9 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 .temp_buffer => false,
                 .temp_float => false,
                 .temp_bool => true,
-                .literal => |literal| literal == .boolean,
+                .literal_boolean => true,
+                .literal_number => false,
+                .literal_enum_value => false,
                 .self_param => |param_index| params[param_index].param_type == .boolean,
             };
             if (!ok) {
@@ -275,10 +282,9 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 .temp_buffer => .valid,
                 .temp_float => |index| .{ .convert = FloatValue{ .temp_float_index = index } },
                 .temp_bool => .invalid,
-                .literal => |literal| switch (literal) {
-                    .number => |n| Ok{ .convert = FloatValue{ .literal = n } },
-                    else => Ok{ .invalid = {} },
-                },
+                .literal_boolean => .invalid,
+                .literal_number => |value| Ok{ .convert = FloatValue{ .literal = value } },
+                .literal_enum_value => .invalid,
                 .self_param => |param_index| switch (params[param_index].param_type) {
                     .buffer => Ok{ .valid = {} },
                     .constant => Ok{ .convert = FloatValue{ .self_param = param_index } },
@@ -308,7 +314,9 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 .temp_buffer => false,
                 .temp_float => true,
                 .temp_bool => false,
-                .literal => |literal| literal == .number,
+                .literal_boolean => false,
+                .literal_number => true,
+                .literal_enum_value => false,
                 .self_param => |param_index| params[param_index].param_type == .constant,
             };
             if (!ok) {
@@ -323,7 +331,9 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 .temp_buffer => true,
                 .temp_float => true,
                 .temp_bool => false,
-                .literal => |literal| literal == .number,
+                .literal_boolean => false,
+                .literal_number => true,
+                .literal_enum_value => false,
                 .self_param => |param_index| switch (params[param_index].param_type) {
                     .boolean => false,
                     .constant => true,
@@ -340,8 +350,8 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
         .one_of => |e| {
             const ok = switch (result) {
                 // enum values can only exist as literals
-                .literal => |literal| switch (literal) {
-                    .enum_value => |str| for (e.values) |allowed_value| {
+                .literal_enum_value => |str|
+                    for (e.values) |allowed_value| {
                         if (std.mem.eql(u8, allowed_value, str)) {
                             break true;
                         }
@@ -349,8 +359,6 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                         // TODO list the allowed enum values
                         return fail(self.source, sr, "not one of the allowed enum values", .{});
                     },
-                    else => false,
-                },
                 else => false,
             };
             if (!ok) {
@@ -396,17 +404,19 @@ fn coerceAssignment(self: *CodegenState, sr: SourceRange, result_loc: BufferDest
         .temp_bool => {
             return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
         },
-        .literal => |literal| switch (literal) {
-            .boolean => return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{}),
-            .number => |n| {
-                try self.instructions.append(.{
-                    .float_to_buffer = .{
-                        .out = result_loc,
-                        .in = .{ .literal = n },
-                    },
-                });
-            },
-            .enum_value => return fail(self.source, sr, "buffer-typed result loc cannot accept enum value", .{}),
+        .literal_boolean => {
+            return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
+        },
+        .literal_number => |value| {
+            try self.instructions.append(.{
+                .float_to_buffer = .{
+                    .out = result_loc,
+                    .in = .{ .literal = value },
+                },
+            });
+        },
+        .literal_enum_value => {
+            return fail(self.source, sr, "buffer-typed result loc cannot accept enum value", .{});
         },
         .self_param => |param_index| {
             const module = self.first_pass_result.modules[self.module_index];
@@ -464,8 +474,14 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
     const sr = expression.source_range;
 
     switch (expression.inner) {
-        .literal => |literal| {
-            return coerce(self, sr, result_info, .{ .literal = literal });
+        .literal_boolean => |value| {
+            return coerce(self, sr, result_info, .{ .literal_boolean = value });
+        },
+        .literal_number => |value| {
+            return coerce(self, sr, result_info, .{ .literal_number = value });
+        },
+        .literal_enum_value => |value| {
+            return coerce(self, sr, result_info, .{ .literal_enum_value = value });
         },
         .local => |local_index| {
             return coerce(self, sr, result_info, .{ .temp_buffer_weak = self.local_temps[local_index].? });

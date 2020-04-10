@@ -55,7 +55,9 @@ pub const Local = struct {
 pub const ExpressionInner = union(enum) {
     call: Call,
     delay: Delay,
-    literal: Literal,
+    literal_boolean: bool,
+    literal_number: f32,
+    literal_enum_value: []const u8,
     self_param: usize,
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
@@ -65,12 +67,6 @@ pub const ExpressionInner = union(enum) {
 pub const Expression = struct {
     source_range: SourceRange,
     inner: ExpressionInner,
-};
-
-pub const Literal = union(enum) {
-    boolean: bool,
-    number: f32,
-    enum_value: []const u8,
 };
 
 pub const LetAssignment = struct {
@@ -306,21 +302,21 @@ fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expressi
             return try createExpr(self, loc0, inner);
         },
         .kw_false => {
-            return try createExpr(self, loc0, .{ .literal = .{ .boolean = false } });
+            return try createExpr(self, loc0, .{ .literal_boolean = false });
         },
         .kw_true => {
-            return try createExpr(self, loc0, .{ .literal = .{ .boolean = true } });
+            return try createExpr(self, loc0, .{ .literal_boolean = true });
         },
         .number => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             const n = std.fmt.parseFloat(f32, s) catch {
                 return fail(self.parser.source, token.source_range, "malformatted number", .{});
             };
-            return try createExpr(self, loc0, .{ .literal = .{ .number = n } });
+            return try createExpr(self, loc0, .{ .literal_number = n });
         },
         .enum_value => {
             const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-            return try createExpr(self, loc0, .{ .literal = .{ .enum_value = s } });
+            return try createExpr(self, loc0, .{ .literal_enum_value = s });
         },
         .kw_delay => {
             const delay = try parseDelay(self, scope);

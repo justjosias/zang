@@ -97,13 +97,9 @@ const State = struct {
             .temp_buffer => |i| try self.print("temps[{usize}]", .{i}),
             .temp_float => |i| try self.print("temp_float{usize}", .{i}),
             .temp_bool => |i| try self.print("temp_bool{usize}", .{i}),
-            .literal => |literal| {
-                switch (literal) {
-                    .boolean => |value| try self.print("{bool}", .{value}),
-                    .number => |value| try self.print("{f32}", .{value}),
-                    .enum_value => |str| try self.print(".{str}", .{str}),
-                }
-            },
+            .literal_boolean => |value| try self.print("{bool}", .{value}),
+            .literal_number => |value| try self.print("{f32}", .{value}),
+            .literal_enum_value => |str| try self.print(".{str}", .{str}),
             .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].name}),
         }
     }
@@ -253,13 +249,9 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                                 .temp_buffer => |index| try self.print("zang.buffer(temps[{usize}])", .{index}),
                                 .temp_float => |index| try self.print("zang.constant(temp_float{usize})", .{index}),
                                 .temp_bool => unreachable,
-                                .literal => |literal| {
-                                    switch (literal) {
-                                        .boolean => unreachable,
-                                        .number => |value| try self.print("zang.constant({f32})", .{value}),
-                                        .enum_value => unreachable,
-                                    }
-                                },
+                                .literal_boolean => unreachable,
+                                .literal_number => |value| try self.print("zang.constant({f32})", .{value}),
+                                .literal_enum_value => unreachable,
                                 .self_param => |index| {
                                     const param = first_pass_result.module_params[module.first_param + index];
                                     switch (param.param_type) {
