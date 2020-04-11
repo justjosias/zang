@@ -13,7 +13,6 @@ const ParamType = @import("first_pass.zig").ParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const GenError = @import("codegen.zig").GenError;
 const codegen = @import("codegen.zig").codegen;
-const builtins = @import("builtins.zig").builtins;
 const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
 
 pub const Scope = struct {
@@ -429,18 +428,26 @@ pub fn secondPass(
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
 ) ![]const CodeGenResult {
+    const num_builtins = blk: {
+        var n: usize = 0;
+        for (first_pass_result.builtin_packages) |pkg| {
+            n += pkg.builtins.len;
+        }
+        break :blk n;
+    };
+
     // parse paint blocks
-    var module_scopes = try allocator.alloc(*const Scope, first_pass_result.modules.len - builtins.len);
+    var module_scopes = try allocator.alloc(*const Scope, first_pass_result.modules.len - num_builtins);
     defer allocator.free(module_scopes);
 
-    var module_fields = try allocator.alloc([]const Field, first_pass_result.modules.len - builtins.len);
+    var module_fields = try allocator.alloc([]const Field, first_pass_result.modules.len - num_builtins);
     defer allocator.free(module_fields);
 
-    var module_locals = try allocator.alloc([]const Local, first_pass_result.modules.len - builtins.len);
+    var module_locals = try allocator.alloc([]const Local, first_pass_result.modules.len - num_builtins);
     defer allocator.free(module_locals);
 
     for (first_pass_result.modules) |module, module_index| {
-        if (module_index < builtins.len) {
+        if (module_index < num_builtins) {
             continue;
         }
         const body_loc = first_pass_result.module_body_locations[module_index].?; // this is only null for builtin modules
@@ -461,9 +468,9 @@ pub fn secondPass(
 
         const top_scope = try parseStatements(&self, null);
 
-        module_scopes[module_index - builtins.len] = top_scope;
-        module_fields[module_index - builtins.len] = self.fields.span(); // TODO toOwnedSlice?
-        module_locals[module_index - builtins.len] = self.locals.span(); // TODO toOwnedSlice?
+        module_scopes[module_index - num_builtins] = top_scope;
+        module_fields[module_index - num_builtins] = self.fields.span(); // TODO toOwnedSlice?
+        module_locals[module_index - num_builtins] = self.locals.span(); // TODO toOwnedSlice?
 
         // diagnostic print
         secondPassPrintModule(first_pass_result, module, self.fields.span(), self.locals.span(), top_scope, 1);
@@ -479,19 +486,25 @@ pub fn secondPass(
 
     var codegen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
 
-    for (first_pass_result.modules) |module, i| {
-        if (i < builtins.len) {
-            codegen_results[i] = .{
+    var builtin_index: usize = 0;
+    for (first_pass_result.builtin_packages) |pkg| {
+        for (pkg.builtins) |builtin| {
+            codegen_results[builtin_index] = .{
                 .instructions = undefined, // FIXME - should be null
-                .num_outputs = builtins[i].num_outputs,
-                .num_temps = builtins[i].num_temps,
+                .num_outputs = builtin.num_outputs,
+                .num_temps = builtin.num_temps,
                 .fields = undefined, // FIXME - should be null?
                 .delays = undefined, // FIXME - should be null?
             };
-            codegen_visited[i] = true;
+            codegen_visited[builtin_index] = true;
+            builtin_index += 1;
+        }
+    }
+    for (first_pass_result.modules) |module, i| {
+        if (i < num_builtins) {
             continue;
         }
-        try codegenVisit(source, first_pass_result, module_scopes, codegen_visited, codegen_results, i, i, module_fields, module_locals, allocator);
+        try codegenVisit(source, first_pass_result, num_builtins, module_scopes, codegen_visited, codegen_results, i, i, module_fields, module_locals, allocator);
     }
 
     return codegen_results;
@@ -500,6 +513,7 @@ pub fn secondPass(
 fn codegenVisit(
     source: Source,
     first_pass_result: FirstPassResult,
+    num_builtins: usize,
     module_scopes: []const *const Scope,
     visited: []bool,
     results: []CodeGenResult,
@@ -516,19 +530,19 @@ fn codegenVisit(
     visited[module_index] = true;
 
     // first, recursively resolve all modules that this one uses as its fields
-    const fields = module_fields[module_index - builtins.len];
+    const fields = module_fields[module_index - num_builtins];
 
     for (fields) |field, field_index| {
         if (field.resolved_module_index == self_module_index) {
             return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
         }
 
-        try codegenVisit(source, first_pass_result, module_scopes, visited, results, self_module_index, field.resolved_module_index, module_fields, module_locals, allocator);
+        try codegenVisit(source, first_pass_result, num_builtins, module_scopes, visited, results, self_module_index, field.resolved_module_index, module_fields, module_locals, allocator);
     }
 
     // now resolve this one
     // note: the codegen function reads from the `results` array to look up the num_temps of the fields
-    const scope = module_scopes[module_index - builtins.len];
-    const locals = module_locals[module_index - builtins.len];
+    const scope = module_scopes[module_index - num_builtins];
+    const locals = module_locals[module_index - num_builtins];
     results[module_index] = try codegen(source, results, first_pass_result, module_index, fields, locals, scope, allocator);
 }

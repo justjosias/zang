@@ -5,7 +5,6 @@ const ParamTypeEnum = @import("first_pass.zig").ParamTypeEnum;
 
 pub const BuiltinModule = struct {
     name: []const u8,
-    zig_name: []const u8, // prefix with "zang."
     params: []const ModuleParam,
     num_temps: usize,
     num_outputs: usize,
@@ -17,7 +16,7 @@ fn getBuiltinEnum(comptime T: type) ParamTypeEnum {
         values[i] = field.name;
     }
     return .{
-        .zig_name = "zang." ++ @typeName(T),
+        .zig_name = "zang." ++ @typeName(T), // FIXME?
         .values = &values,
     };
 }
@@ -27,13 +26,14 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
     inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{
             .name =
+                // FIXME - remove this.
                 if (std.mem.eql(u8, field.name, "filter_type") or std.mem.eql(u8, field.name, "distortion_type"))
                     "type"
                 else if (std.mem.eql(u8, field.name, "resonance"))
                     "res"
                 else
                     field.name,
-            .zig_name = field.name,
+            .zig_name = field.name, // FIXME remove this too
             .param_type = switch (field.field_type) {
                 bool => .boolean,
                 f32 => .constant,
@@ -46,24 +46,33 @@ fn getBuiltinModule(comptime T: type) BuiltinModule {
     }
     return .{
         .name = @typeName(T),
-        .zig_name = "zang." ++ @typeName(T),
         .params = &params,
         .num_temps = T.num_temps,
         .num_outputs = T.num_outputs,
     };
 }
 
-pub const builtins = [_]BuiltinModule{
-    // zang.Curve
-    getBuiltinModule(zang.Decimator),
-    getBuiltinModule(zang.Distortion),
-    // zang.Envelope
-    getBuiltinModule(zang.Filter),
-    getBuiltinModule(zang.Gate),
-    getBuiltinModule(zang.Noise),
-    // zang.Portamento
-    getBuiltinModule(zang.PulseOsc),
-    // zang.Sampler
-    getBuiltinModule(zang.SineOsc),
-    getBuiltinModule(zang.TriSawOsc),
+pub const BuiltinPackage = struct {
+    zig_package_name: []const u8,
+    zig_import_path: []const u8,
+    builtins: []const BuiltinModule,
+};
+
+pub const zang_builtin_package = BuiltinPackage{
+    .zig_package_name = "zang",
+    .zig_import_path = "zang",
+    .builtins = &[_]BuiltinModule{
+        // zang.Curve
+        getBuiltinModule(zang.Decimator),
+        getBuiltinModule(zang.Distortion),
+        // zang.Envelope
+        getBuiltinModule(zang.Filter),
+        getBuiltinModule(zang.Gate),
+        getBuiltinModule(zang.Noise),
+        // zang.Portamento
+        getBuiltinModule(zang.PulseOsc),
+        // zang.Sampler
+        getBuiltinModule(zang.SineOsc),
+        getBuiltinModule(zang.TriSawOsc),
+    },
 };

@@ -3,7 +3,7 @@ const Parser = @import("common.zig").Parser;
 const Source = @import("common.zig").Source;
 const fail = @import("common.zig").fail;
 const Token = @import("tokenizer.zig").Token;
-const builtins = @import("builtins.zig").builtins;
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 
 pub const ParamTypeEnum = struct {
     zig_name: []const u8,
@@ -28,7 +28,7 @@ pub const ModuleParam = struct {
 
 pub const Module = struct {
     name: []const u8,
-    zig_name: []const u8,
+    zig_package_name: ?[]const u8, // only set for builtin modules
     first_param: usize,
     num_params: usize,
 };
@@ -141,7 +141,7 @@ fn defineModule(self: *FirstPass) !void {
 
     try self.modules.append(.{
         .name = module_name,
-        .zig_name = module_name,
+        .zig_package_name = null,
         .first_param = self.module_params.len,
         .num_params = params.len,
     });
@@ -153,12 +153,13 @@ fn defineModule(self: *FirstPass) !void {
 }
 
 pub const FirstPassResult = struct {
+    builtin_packages: []const BuiltinPackage,
     modules: []const Module,
     module_body_locations: []const ?ModuleBodyLocation,
     module_params: []const ModuleParam,
 };
 
-pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allocator) !FirstPassResult {
+pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []const BuiltinPackage, allocator: *std.mem.Allocator) !FirstPassResult {
     var self: FirstPass = .{
         .allocator = allocator,
         .parser = .{
@@ -172,15 +173,17 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     };
 
     // add builtins
-    for (builtins) |builtin| {
-        try self.modules.append(.{
-            .name = builtin.name,
-            .zig_name = builtin.zig_name,
-            .first_param = self.module_params.len,
-            .num_params = builtin.params.len,
-        });
-        try self.module_body_locations.append(null);
-        try self.module_params.appendSlice(builtin.params);
+    for (builtin_packages) |pkg| {
+        for (pkg.builtins) |builtin| {
+            try self.modules.append(.{
+                .name = builtin.name,
+                .zig_package_name = pkg.zig_package_name,
+                .first_param = self.module_params.len,
+                .num_params = builtin.params.len,
+            });
+            try self.module_body_locations.append(null);
+            try self.module_params.appendSlice(builtin.params);
+        }
     }
 
     // TODO this should be defer, not errdefer, since we are reallocating everything for the FirstPassResult
@@ -198,6 +201,7 @@ pub fn firstPass(source: Source, tokens: []const Token, allocator: *std.mem.Allo
     }
 
     return FirstPassResult{
+        .builtin_packages = builtin_packages,
         .modules = self.modules.toOwnedSlice(),
         .module_body_locations = self.module_body_locations.toOwnedSlice(),
         .module_params = self.module_params.toOwnedSlice(),
