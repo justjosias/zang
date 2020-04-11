@@ -12,6 +12,7 @@ pub const TokenType = enum {
     sym_dbl_asterisk,
     sym_equals,
     sym_left_paren,
+    sym_minus,
     sym_plus,
     sym_right_paren,
     kw_begin,
@@ -114,6 +115,11 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         if (src[loc.index] == '(') {
             loc.index += 1;
             try addToken(tokenizer, start, loc, .sym_left_paren);
+            continue;
+        }
+        if (src[loc.index] == '-') {
+            loc.index += 1;
+            try addToken(tokenizer, start, loc, .sym_minus);
             continue;
         }
         if (src[loc.index] == '+') {

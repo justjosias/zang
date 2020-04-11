@@ -60,6 +60,7 @@ pub const ExpressionInner = union(enum) {
     literal_number: f32,
     literal_enum_value: []const u8,
     self_param: usize,
+    negate: *const Expression,
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
     feedback, // only allowed within `delay` expressions
@@ -264,8 +265,18 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
 }
 
 fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) ParseError!*const Expression {
+    var negate = false;
+    if (if (self.parser.peek()) |token| token.tt == .sym_minus else false) {
+        _ = try self.parser.expect();
+        negate = true;
+    }
+
     var a = try expectTerm(self, scope);
     const loc0 = a.source_range.loc0;
+
+    if (negate) {
+        a = try createExpr(self, loc0, .{ .negate = a });
+    }
 
     while (self.parser.peek()) |token| {
         for (binary_operators) |bo| {

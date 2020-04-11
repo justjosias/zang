@@ -89,6 +89,16 @@ pub const InstrCobToBuffer = struct {
     in_self_param: usize,
 };
 
+pub const InstrNegateFloatToFloat = struct {
+    out_temp_float_index: usize,
+    a: FloatValue,
+};
+
+pub const InstrNegateBufferToBuffer = struct {
+    out: BufferDest,
+    a: BufferValue,
+};
+
 pub const InstrArithFloatFloat = struct {
     out_temp_float_index: usize,
     operator: BinArithOp,
@@ -121,6 +131,8 @@ pub const Instruction = union(enum) {
     copy_buffer: InstrCopyBuffer,
     float_to_buffer: InstrFloatToBuffer,
     cob_to_buffer: InstrCobToBuffer,
+    negate_float_to_float: InstrNegateFloatToFloat,
+    negate_buffer_to_buffer: InstrNegateBufferToBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_float_buffer: InstrArithFloatBuffer,
     arith_buffer_float: InstrArithBufferFloat,
@@ -520,6 +532,33 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
             } else {
                 return coerce(self, sr, result_info, .{ .self_param = param_index });
             }
+        },
+        .negate => |expr| {
+            const ra = try genExpression(self, expr, .none, maybe_feedback_temp_index);
+            defer releaseExpressionResult(self, ra);
+
+            if (getFloatValue(self, ra)) |a| {
+                const temp_float_index = self.num_temp_floats;
+                self.num_temp_floats += 1;
+                try self.instructions.append(.{
+                    .negate_float_to_float = .{
+                        .out_temp_float_index = temp_float_index,
+                        .a = a,
+                    },
+                });
+                return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
+            }
+            if (getBufferValue(self, ra)) |a| {
+                const temp_buffer_index = try self.temp_buffers.claim();
+                try self.instructions.append(.{
+                    .negate_buffer_to_buffer = .{
+                        .out = .{ .temp_buffer_index = temp_buffer_index },
+                        .a = a,
+                    },
+                });
+                return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+            }
+            return fail(self.source, expression.source_range, "invalid operand type", .{});
         },
         .bin_arith => |m| {
             const ra = try genExpression(self, m.a, .none, maybe_feedback_temp_index);

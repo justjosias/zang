@@ -92,6 +92,10 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: [
             const params = first_pass_result.module_params[module.first_param .. module.first_param + module.num_params];
             std.debug.warn("params.{}\n", .{params[param_index].name});
         },
+        .negate => |expr| {
+            std.debug.warn("negate\n", .{});
+            printExpression(first_pass_result, module, fields, locals, expr, indentation + 1);
+        },
         .bin_arith => |m| {
             switch (m.op) {
                 .add => std.debug.warn("add\n", .{}),

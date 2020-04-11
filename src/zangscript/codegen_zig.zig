@@ -205,6 +205,17 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                     try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
                     try self.print("}}\n", {});
                 },
+                .negate_float_to_float => |x| {
+                    try self.print("const temp_float{usize}: f32 = -{float_value};\n", .{ x.out_temp_float_index, x.a });
+                },
+                .negate_buffer_to_buffer => |x| {
+                    try self.print("{{\n", .{});
+                    try self.print("var i = {str}.start;\n", .{span});
+                    try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                    try self.print("{buffer_dest}[i] = -{buffer_value}[i];\n", .{ x.out, x.a });
+                    try self.print("}}\n", .{});
+                    try self.print("}}\n", .{});
+                },
                 .arith_float_float => |x| {
                     try self.print("const temp_float{usize}: f32 = ", .{x.out_temp_float_index});
                     switch (x.operator) {

@@ -85,6 +85,17 @@ pub fn printBytecode(self: *CodegenState) void {
                 printBufferDest(self, x.out);
                 std.debug.warn(" = COB_TO_BUFFER params.{}\n", .{param.name});
             },
+            .negate_float_to_float => |x| {
+                std.debug.warn("temp_float{} = NEGATE_FLOAT_TO_FLOAT ", .{x.out_temp_float_index});
+                printFloatValue(self, x.a);
+                std.debug.warn("\n", .{});
+            },
+            .negate_buffer_to_buffer => |x| {
+                printBufferDest(self, x.out);
+                std.debug.warn(" = NEGATE_BUFFER_TO_BUFFER ", .{});
+                printBufferValue(self, x.a);
+                std.debug.warn("\n", .{});
+            },
             .arith_float_float => |x| {
                 std.debug.warn("temp_float{} = ARITH_FLOAT_FLOAT({}) ", .{ x.out_temp_float_index, x.operator });
                 printFloatValue(self, x.a);
