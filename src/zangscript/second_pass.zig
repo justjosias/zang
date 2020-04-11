@@ -40,6 +40,7 @@ pub const Delay = struct {
 pub const BinArithOp = enum {
     add,
     mul,
+    pow,
 };
 
 pub const BinArith = struct {
@@ -252,6 +253,10 @@ const BinaryOperator = struct {
 const binary_operators = [_]BinaryOperator{
     .{ .symbol = .sym_plus, .priority = 1, .op = .add },
     .{ .symbol = .sym_asterisk, .priority = 2, .op = .mul },
+    // note: exponentiation operator is not associative, unlike add and mul.
+    // maybe i should make it an error to type `x**y**z` without putting one of
+    // the pairs in parentheses.
+    .{ .symbol = .sym_dbl_asterisk, .priority = 3, .op = .pow },
 };
 
 fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {

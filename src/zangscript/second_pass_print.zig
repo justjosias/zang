@@ -96,6 +96,7 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: [
             switch (m.op) {
                 .add => std.debug.warn("add\n", .{}),
                 .mul => std.debug.warn("mul\n", .{}),
+                .pow => std.debug.warn("pow\n", .{}),
             }
             printExpression(first_pass_result, module, fields, locals, m.a, indentation + 1);
             printExpression(first_pass_result, module, fields, locals, m.b, indentation + 1);

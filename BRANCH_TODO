@@ -1,16 +1,15 @@
 - zig API where you can pass a pack of custom builtin functions to be available to a script. maybe you access them by a prefix (module name) in the script, maybe they're just all in the global namespace along with the native builtins.
-- add an exponentiation operator/function.
+- implement unary minus. currently it's not even supported in literals!
 
 later/convenience features:
 - codegen_zig: write a reset method, resetting all the fields and delays.
+- (optimization) let-assignments should be lazily evaluated, so copies can be elided if you use them in only one place.
 
 bugs/notes:
-- the `cob` type is currently flawed: you can't pass it into a float-typed param of another module (because it's immediately converted into a buffer when referenced).
 - script modules zero out their outputs before writing to them.
 
 big eventual goals:
-- unify constant, waveform, and cob into a single "float" type. how it's modelled should be hidden from the scripter
-- let-assignments should be lazily evaluated, so copies can be elided if you use them in only one place.
+- unify constant, waveform, and cob into a single "float" type. how it's modelled should be hidden from the user
 
 ---------------
 

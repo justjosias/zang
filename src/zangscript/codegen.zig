@@ -31,6 +31,22 @@ pub const ExpressionResult = union(enum) {
     self_param: usize,
 };
 
+pub const FloatValue = union(enum) {
+    temp_float_index: usize,
+    self_param: usize, // guaranteed to be of type `constant`
+    literal: f32,
+};
+
+pub const BufferDest = union(enum) {
+    temp_buffer_index: usize,
+    output_index: usize,
+};
+
+pub const BufferValue = union(enum) {
+    temp_buffer_index: usize,
+    self_param: usize, // guaranteed to be of type `buffer`
+};
+
 // call one of self's fields (paint the child module)
 pub const InstrCall = struct {
     // paint always results in a buffer.
@@ -63,12 +79,6 @@ pub const InstrCopyBuffer = struct {
     in: BufferValue,
 };
 
-pub const FloatValue = union(enum) {
-    temp_float_index: usize,
-    self_param: usize, // guaranteed to be of type `constant`
-    literal: f32,
-};
-
 pub const InstrFloatToBuffer = struct {
     out: BufferDest,
     in: FloatValue,
@@ -86,23 +96,18 @@ pub const InstrArithFloatFloat = struct {
     b: FloatValue,
 };
 
-// for these, we don't generate a "float_to_buffer" because some of the builtin
-// arithmetic functions support buffer*float
+pub const InstrArithFloatBuffer = struct {
+    out: BufferDest,
+    operator: BinArithOp,
+    a: FloatValue,
+    b: BufferValue,
+};
+
 pub const InstrArithBufferFloat = struct {
     out: BufferDest,
     operator: BinArithOp,
     a: BufferValue,
     b: FloatValue,
-};
-
-pub const BufferDest = union(enum) {
-    temp_buffer_index: usize,
-    output_index: usize,
-};
-
-pub const BufferValue = union(enum) {
-    temp_buffer_index: usize,
-    self_param: usize, // guaranteed to be of type `buffer`
 };
 
 pub const InstrArithBufferBuffer = struct {
@@ -117,6 +122,7 @@ pub const Instruction = union(enum) {
     float_to_buffer: InstrFloatToBuffer,
     cob_to_buffer: InstrCobToBuffer,
     arith_float_float: InstrArithFloatFloat,
+    arith_float_buffer: InstrArithFloatBuffer,
     arith_buffer_float: InstrArithBufferFloat,
     arith_buffer_buffer: InstrArithBufferBuffer,
     call: InstrCall,
@@ -562,7 +568,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                     return result2;
                 }
             }
-            // float * buffer -> buffer (swap it to buffer * float)
+            // float * buffer -> buffer
             if (getFloatValue(self, ra)) |a| {
                 if (getBufferValue(self, rb)) |b| {
                     var result2: ExpressionResult = .nothing;
@@ -576,11 +582,11 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                         break :blk .{ .temp_buffer_index = temp_buffer_index };
                     };
                     try self.instructions.append(.{
-                        .arith_buffer_float = .{
+                        .arith_float_buffer = .{
                             .out = out,
                             .operator = m.op,
-                            .a = b,
-                            .b = a,
+                            .a = a,
+                            .b = b,
                         },
                     });
                     return result2;

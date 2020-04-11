@@ -9,6 +9,7 @@ pub const TokenType = enum {
     sym_asterisk,
     sym_colon,
     sym_comma,
+    sym_dbl_asterisk,
     sym_equals,
     sym_left_paren,
     sym_plus,
@@ -87,7 +88,12 @@ pub fn tokenize(tokenizer: *Tokenizer) !void {
         const start = loc;
         if (src[loc.index] == '*') {
             loc.index += 1;
-            try addToken(tokenizer, start, loc, .sym_asterisk);
+            if (loc.index < src.len and src[loc.index] == '*') {
+                loc.index += 1;
+                try addToken(tokenizer, start, loc, .sym_dbl_asterisk);
+            } else {
+                try addToken(tokenizer, start, loc, .sym_asterisk);
+            }
             continue;
         }
         if (src[loc.index] == ':') {

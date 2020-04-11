@@ -92,6 +92,14 @@ pub fn printBytecode(self: *CodegenState) void {
                 printFloatValue(self, x.b);
                 std.debug.warn("\n", .{});
             },
+            .arith_float_buffer => |x| {
+                printBufferDest(self, x.out);
+                std.debug.warn(" = ARITH_FLOAT_BUFFER({}) ", .{x.operator});
+                printFloatValue(self, x.a);
+                std.debug.warn(" ", .{});
+                printBufferValue(self, x.b);
+                std.debug.warn("\n", .{});
+            },
             .arith_buffer_float => |x| {
                 printBufferDest(self, x.out);
                 std.debug.warn(" = ARITH_BUFFER_FLOAT({}) ", .{x.operator});
