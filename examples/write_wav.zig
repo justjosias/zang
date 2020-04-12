@@ -72,9 +72,9 @@ pub fn main() !void {
 
     const file = try std.fs.cwd().createFile("out.wav", .{});
     defer file.close();
-    var fos = file.outStream();
-    const Saver = wav.Saver(std.fs.File.WriteError);
-    try Saver.save(&fos.stream, wav.SaveInfo {
+    var stream = file.outStream();
+    const Saver = wav.Saver(@TypeOf(stream));
+    try Saver.save(&stream, .{
         .num_channels = example.MainModule.num_outputs,
         .sample_rate = example.AUDIO_SAMPLE_RATE,
         .format = switch (example.AUDIO_FORMAT) {

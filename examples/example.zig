@@ -99,7 +99,7 @@ fn audioCallback(
             c.plot(
                 min * mul,
                 max * mul,
-                g_fft_real[0..].ptr,
+                &g_fft_real,
                 if (g_fft_log) 1 else 0,
             );
         }
@@ -187,7 +187,7 @@ pub fn main() !void {
                     c.clear(
                         window,
                         screen,
-                        fontdata[0..].ptr,
+                        fontdata,
                         "Press F1 to re-enable drawing",
                     );
                     c.SDL_UnlockAudioDevice(device);
@@ -237,7 +237,7 @@ pub fn main() !void {
             c.draw(
                 window,
                 screen,
-                fontdata[0..].ptr,
+                fontdata,
                 example.DESCRIPTION,
                 if (g_full_fft) 1 else 0,
             );
