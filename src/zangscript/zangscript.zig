@@ -57,7 +57,7 @@ fn loadScript(filename: []const u8, allocator: *std.mem.Allocator) !Script {
     };
     defer tokenizer.tokens.deinit();
     try tokenize(&tokenizer);
-    const tokens = tokenizer.tokens.span();
+    const tokens = tokenizer.tokens.items;
 
     const builtin_packages = [_]BuiltinPackage{
         zang_builtin_package,

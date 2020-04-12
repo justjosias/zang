@@ -55,7 +55,7 @@ fn printBufferValue(self: *const CodegenState, value: BufferValue) void {
 
 pub fn printBytecode(self: *CodegenState) void {
     const self_module = self.first_pass_result.modules[self.module_index];
-    const instructions = self.instructions.span();
+    const instructions = self.instructions.items;
 
     std.debug.warn("module '{}'\n", .{self_module.name});
 

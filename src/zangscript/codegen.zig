@@ -174,14 +174,14 @@ const TempManager = struct {
 
     fn deinit(self: *TempManager) void {
         // check for leaks
-        for (self.slot_claimed.span()) |in_use| {
+        for (self.slot_claimed.items) |in_use| {
             std.debug.assert(!in_use);
         }
         self.slot_claimed.deinit();
     }
 
     fn claim(self: *TempManager) !usize {
-        for (self.slot_claimed.span()) |*in_use, index| {
+        for (self.slot_claimed.items) |*in_use, index| {
             if (!in_use.*) {
                 in_use.* = true;
                 return index;
@@ -193,8 +193,8 @@ const TempManager = struct {
     }
 
     fn release(self: *TempManager, index: usize) void {
-        std.debug.assert(self.slot_claimed.span()[index]);
-        self.slot_claimed.span()[index] = false;
+        std.debug.assert(self.slot_claimed.items[index]);
+        self.slot_claimed.items[index] = false;
     }
 
     fn finalCount(self: *const TempManager) usize {
@@ -772,7 +772,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                 },
             });
 
-            for (delay.scope.statements.span()) |statement| {
+            for (delay.scope.statements.items) |statement| {
                 switch (statement) {
                     .let_assignment => |x| {
                         try genLetAssignment(self, x, feedback_temp_index);
@@ -863,7 +863,7 @@ pub fn codegen(
 
     std.mem.set(?usize, self.local_temps, null);
 
-    for (scope.statements.span()) |statement| {
+    for (scope.statements.items) |statement| {
         switch (statement) {
             .let_assignment => |x| {
                 try genLetAssignment(&self, x, null);

@@ -91,7 +91,7 @@ fn defineModule(self: *FirstPass) !void {
                 if (param_name[0] < 'a' or param_name[0] > 'z') {
                     return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{});
                 }
-                for (params.span()) |param| {
+                for (params.items) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
                         return fail(self.parser.source, token.source_range, "redeclaration of param `<`", .{});
                     }

@@ -15,7 +15,7 @@ pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module,
         std.debug.warn("    field #{}({})\n", .{ i, callee_module.name });
     }
     std.debug.warn("statements:\n", .{});
-    for (scope.statements.span()) |statement| {
+    for (scope.statements.items) |statement| {
         printStatement(first_pass_result, module, fields, locals, statement, 1);
     }
     std.debug.warn("\n", .{});
@@ -73,7 +73,7 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: [
         },
         .delay => |delay| {
             std.debug.warn("delay {} (\n", .{delay.num_samples});
-            for (delay.scope.statements.span()) |statement| {
+            for (delay.scope.statements.items) |statement| {
                 printStatement(first_pass_result, module, fields, locals, statement, indentation + 1);
             }
             i = 0;

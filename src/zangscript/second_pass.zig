@@ -212,10 +212,10 @@ fn parseLocalOrParam(self: *SecondPass, scope: *const Scope, name: []const u8) ?
     const maybe_local_index = blk: {
         var maybe_s: ?*const Scope = scope;
         while (maybe_s) |sc| : (maybe_s = sc.parent) {
-            for (sc.statements.span()) |statement| {
+            for (sc.statements.items) |statement| {
                 switch (statement) {
                     .let_assignment => |x| {
-                        const local = self.locals.span()[x.local_index];
+                        const local = self.locals.items[x.local_index];
                         if (std.mem.eql(u8, local.name, name)) {
                             break :blk x.local_index;
                         }
@@ -362,10 +362,10 @@ fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
     // note: locals are allowed to shadow params
     var maybe_s: ?*const Scope = scope;
     while (maybe_s) |s| : (maybe_s = s.parent) {
-        for (s.statements.span()) |statement| {
+        for (s.statements.items) |statement| {
             switch (statement) {
                 .let_assignment => |x| {
-                    const local = self.locals.span()[x.local_index];
+                    const local = self.locals.items[x.local_index];
                     if (std.mem.eql(u8, local.name, name)) {
                         return fail(self.parser.source, name_token.source_range, "redeclaration of local `<`", .{});
                     }
@@ -469,11 +469,11 @@ pub fn secondPass(
         const top_scope = try parseStatements(&self, null);
 
         module_scopes[module_index - num_builtins] = top_scope;
-        module_fields[module_index - num_builtins] = self.fields.span(); // TODO toOwnedSlice?
-        module_locals[module_index - num_builtins] = self.locals.span(); // TODO toOwnedSlice?
+        module_fields[module_index - num_builtins] = self.fields.items; // TODO toOwnedSlice?
+        module_locals[module_index - num_builtins] = self.locals.items; // TODO toOwnedSlice?
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, self.fields.span(), self.locals.span(), top_scope, 1);
+        secondPassPrintModule(first_pass_result, module, self.fields.items, self.locals.items, top_scope, 1);
     }
 
     // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
