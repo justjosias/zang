@@ -1,5 +1,5 @@
 const std = @import("std");
-const zang = @import("zang");
+const zang = @import("../zang.zig");
 const ModuleParam = @import("first_pass.zig").ModuleParam;
 const ParamTypeEnum = @import("first_pass.zig").ParamTypeEnum;
 
@@ -21,7 +21,7 @@ fn getBuiltinEnum(comptime T: type) ParamTypeEnum {
     };
 }
 
-fn getBuiltinModule(comptime T: type) BuiltinModule {
+pub fn getBuiltinModule(comptime T: type) BuiltinModule {
     comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
     inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
         params[i] = .{

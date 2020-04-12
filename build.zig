@@ -61,10 +61,11 @@ fn writeWav(b: *std.build.Builder) *std.build.LibExeObjStep {
 }
 
 fn zangscript(b: *std.build.Builder) *std.build.LibExeObjStep {
-    var o = b.addExecutable("zangscript", "src/zangscript/zangscript.zig");
+    var o = b.addExecutable("zangscript", "examples/compile_script.zig");
     o.setBuildMode(b.standardReleaseOptions());
     o.setOutputDir("zig-cache");
     o.addPackagePath("zang", "src/zang.zig");
     o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+    o.addPackagePath("zangscript", "src/zangscript.zig");
     return o;
 }
