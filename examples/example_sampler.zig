@@ -24,11 +24,10 @@ pub const DESCRIPTION =
 
 fn readWav(comptime filename: []const u8) !zang.Sample {
     const buf = @embedFile(filename);
-    var sis = std.io.SliceInStream.init(buf);
-    const stream = &sis.stream;
-
-    const Loader = wav.Loader(std.io.SliceInStream.Error, true);
-    const preloaded = try Loader.preload(stream);
+    var fbs = std.io.fixedBufferStream(buf);
+    var stream = fbs.inStream();
+    const Loader = wav.Loader(@TypeOf(stream), true);
+    const preloaded = try Loader.preload(&stream);
 
     // don't call Loader.load because we're working on a slice, so we can just
     // take a subslice of it
@@ -41,7 +40,7 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
             .signed24_lsb => .signed24_lsb,
             .signed32_lsb => .signed32_lsb,
         },
-        .data = buf[sis.pos..sis.pos + preloaded.getNumBytes()],
+        .data = buf[fbs.pos..fbs.pos + preloaded.getNumBytes()],
     };
 }
 
