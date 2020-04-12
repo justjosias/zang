@@ -81,7 +81,7 @@ const LaserPlayer = struct {
             .freq_mul = params.freq_mul * params.modulator_mul,
         });
         zang.zero(span, temps[1]);
-        self.modulator.paint(span, .{temps[1]}, .{}, .{
+        self.modulator.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
@@ -95,7 +95,7 @@ const LaserPlayer = struct {
             .freq_mul = params.freq_mul * params.carrier_mul,
         });
         zang.zero(span, temps[2]);
-        self.carrier.paint(span, .{temps[2]}, .{}, .{
+        self.carrier.paint(span, .{temps[2]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),

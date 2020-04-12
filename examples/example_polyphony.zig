@@ -139,7 +139,7 @@ pub const MainModule = struct {
         }
 
         if (self.dec_mode > 0) {
-            self.dec.paint(span, outputs, .{}, .{
+            self.dec.paint(span, outputs, .{}, false, .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .input = temps[2],
                 .fake_sample_rate = switch (self.dec_mode) {

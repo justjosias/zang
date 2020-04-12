@@ -104,7 +104,7 @@ pub const MainModule = struct {
         zang.multiplyWithScalar(span, temps[0], 2.5);
 
         if (self.distort) {
-            self.distortion.paint(span, .{outputs[0]}, .{}, .{
+            self.distortion.paint(span, .{outputs[0]}, .{}, false, .{
                 .input = temps[0],
                 .distortion_type = .overdrive,
                 .ingain = 0.9,

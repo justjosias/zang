@@ -66,6 +66,7 @@ pub const MainModule = struct {
             span,
             outputs,
             .{temps[1], temps[2], temps[3], temps[4]},
+            false,
             .{
                 .input = temps[0],
                 .feedback_volume = 0.6,

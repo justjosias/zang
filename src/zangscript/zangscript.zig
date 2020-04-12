@@ -29,7 +29,7 @@ const custom_builtin_package = BuiltinPackage{
             .name = "FilteredSawtoothInstrument",
             .params = &[_]ModuleParam{
                 .{ .name = "sample_rate", .zig_name = "sample_rate", .param_type = .constant },
-                .{ .name = "freq", .zig_name = "freq", .param_type = .constant },
+                .{ .name = "freq", .zig_name = "freq", .param_type = .constant_or_buffer },
                 .{ .name = "note_on", .zig_name = "note_on", .param_type = .boolean },
             },
             .num_temps = 3,

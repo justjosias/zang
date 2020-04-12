@@ -64,7 +64,7 @@ pub const Instrument = struct {
         }
         // paint with oscillator into temps[1]
         zang.zero(span, temps[1]);
-        self.osc.paint(span, .{temps[1]}, .{}, .{
+        self.osc.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .color = 0.0,
@@ -84,7 +84,7 @@ pub const Instrument = struct {
         zang.zero(span, temps[2]);
         zang.multiply(span, temps[2], temps[1], temps[0]);
         // add main filter
-        self.main_filter.paint(span, .{outputs[0]}, .{}, .{
+        self.main_filter.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .input = temps[2],
             .filter_type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
@@ -134,9 +134,9 @@ pub const OuterInstrument = struct {
         // (the number is relative to sample rate, so at 96khz it should be at
         // least 8hz)
         zang.zero(span, temps[1]);
-        self.noise.paint(span, .{temps[1]}, .{}, .{});
+        self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{});
         zang.zero(span, temps[0]);
-        self.noise_filter.paint(span, .{temps[0]}, .{}, .{
+        self.noise_filter.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .input = temps[1],
             .filter_type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
@@ -226,6 +226,7 @@ pub const MainModule = struct {
             span,
             outputs,
             .{ temps[1], temps[2], temps[3], temps[4] },
+            false,
             .{
                 .input = temps[0],
                 .feedback_volume = 0.6,

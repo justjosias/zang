@@ -69,7 +69,7 @@ const CurvePlayer = struct {
             .freq_mul = freq_mul,
         });
         zang.zero(span, temps[1]);
-        self.modulator.paint(span, .{temps[1]}, .{}, .{
+        self.modulator.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
@@ -81,7 +81,7 @@ const CurvePlayer = struct {
             .curve = &carrier_curve,
             .freq_mul = freq_mul,
         });
-        self.carrier.paint(span, outputs, .{}, .{
+        self.carrier.paint(span, outputs, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),

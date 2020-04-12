@@ -35,6 +35,7 @@ pub const PhaseModOscillator = struct {
         span: zang.Span,
         outputs: [num_outputs][]f32,
         temps: [num_temps][]f32,
+        note_id_changed: bool,
         params: Params,
     ) void {
         zang.set(span, temps[0], params.freq);
@@ -55,7 +56,7 @@ pub const PhaseModOscillator = struct {
             },
         }
         zang.zero(span, temps[2]);
-        self.modulator.paint(span, .{temps[2]}, .{}, .{
+        self.modulator.paint(span, .{temps[2]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[1]),
             .phase = zang.constant(0.0),
@@ -68,7 +69,7 @@ pub const PhaseModOscillator = struct {
                 zang.multiply(span, temps[1], temps[2], multiplier),
         }
         zang.zero(span, temps[2]);
-        self.carrier.paint(span, .{temps[2]}, .{}, .{
+        self.carrier.paint(span, .{temps[2]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
@@ -108,7 +109,7 @@ pub const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, .{
+        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = true,
@@ -133,7 +134,7 @@ pub const FilteredSawtoothInstrument = struct {
     pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
-        freq: f32,
+        freq: zang.ConstantOrBuffer,
         note_on: bool,
     };
 
@@ -158,9 +159,9 @@ pub const FilteredSawtoothInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{}, .{
+        self.osc.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
-            .freq = zang.constant(params.freq),
+            .freq = params.freq,
             .color = 0.0,
         });
         zang.multiplyWithScalar(span, temps[0], 1.5); // boost sawtooth volume
@@ -175,7 +176,7 @@ pub const FilteredSawtoothInstrument = struct {
         });
         zang.zero(span, temps[2]);
         zang.multiply(span, temps[2], temps[0], temps[1]);
-        self.flt.paint(span, .{outputs[0]}, .{}, .{
+        self.flt.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .input = temps[2],
             .filter_type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
@@ -219,14 +220,14 @@ pub const NiceInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{}, .{
+        self.osc.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.constant(params.freq),
             .color = self.color,
         });
         zang.multiplyWithScalar(span, temps[0], 0.5);
         zang.zero(span, temps[1]);
-        self.flt.paint(span, .{temps[1]}, .{}, .{
+        self.flt.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .input = temps[0],
             .filter_type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
@@ -276,13 +277,13 @@ pub const HardSquareInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{}, .{
+        self.osc.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.constant(params.freq),
             .color = 0.5,
         });
         zang.zero(span, temps[1]);
-        self.gate.paint(span, .{temps[1]}, .{}, .{
+        self.gate.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .note_on = params.note_on,
         });
         zang.multiply(span, outputs[0], temps[0], temps[1]);
@@ -364,6 +365,7 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
             span: zang.Span,
             outputs: [num_outputs][]f32,
             temps: [num_temps][]f32,
+            note_id_changed: bool,
             params: Params,
         ) void {
             var start = span.start;
@@ -412,6 +414,7 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
             span: zang.Span,
             outputs: [num_outputs][]f32,
             temps: [num_temps][]f32,
+            note_id_changed: bool,
             params: Params,
         ) void {
             const output = outputs[0];
@@ -439,7 +442,7 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
 
                 // filter it
                 zang.zero(span1, temp1);
-                self.filter.paint(span1, .{temp1}, .{}, .{
+                self.filter.paint(span1, .{temp1}, .{}, note_id_changed, .{
                     .input = temp0,
                     .filter_type = .low_pass,
                     .cutoff = zang.constant(params.cutoff),
@@ -494,6 +497,7 @@ pub fn StereoEchoes(comptime MAIN_DELAY: usize) type {
             span: zang.Span,
             outputs: [num_outputs][]f32,
             temps: [num_temps][]f32,
+            note_id_changed: bool,
             params: Params,
         ) void {
             // output dry signal to center channel
@@ -502,19 +506,19 @@ pub fn StereoEchoes(comptime MAIN_DELAY: usize) type {
 
             // initial half delay before first echo on the left channel
             zang.zero(span, temps[0]);
-            self.delay0.paint(span, .{temps[0]}, .{}, .{
+            self.delay0.paint(span, .{temps[0]}, .{}, note_id_changed, .{
                 .input = params.input,
             });
             // filtered echoes to the left
             zang.zero(span, temps[1]);
-            self.echoes.paint(span, .{temps[1]}, .{temps[2], temps[3]}, .{
+            self.echoes.paint(span, .{temps[1]}, .{temps[2], temps[3]}, note_id_changed, .{
                 .input = temps[0],
                 .feedback_volume = params.feedback_volume,
                 .cutoff = params.cutoff,
             });
             // use another delay to mirror the left echoes to the right side
             zang.addInto(span, outputs[0], temps[1]);
-            self.delay1.paint(span, .{outputs[1]}, .{}, .{
+            self.delay1.paint(span, .{outputs[1]}, .{}, note_id_changed, .{
                 .input = temps[1],
             });
         }

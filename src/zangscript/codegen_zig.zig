@@ -212,7 +212,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
         try self.print("}};\n", .{});
         try self.print("}}\n", .{});
         try self.print("\n", .{});
-        try self.print("pub fn paint(self: *{str}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, params: Params) void {{\n", .{module.name});
+        try self.print("pub fn paint(self: *{str}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
         var span: []const u8 = "span";
         for (code_gen_result.instructions) |instr| {
             switch (instr) {
@@ -317,7 +317,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
                         try self.print("temps[{usize}]", .{n});
                     }
                     // callee params
-                    try self.print("}}, .{{\n", .{});
+                    try self.print("}}, note_id_changed, .{{\n", .{});
                     const callee_module = first_pass_result.modules[field.resolved_module_index];
                     const callee_params = first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                     for (call.args) |arg, j| {
