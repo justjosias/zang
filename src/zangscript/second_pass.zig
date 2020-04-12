@@ -112,7 +112,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
         return fail(self.parser.source, field_name_token.source_range, "no module called `<`", .{});
     };
     // add the field
-    const field_index = self.fields.len;
+    const field_index = self.fields.items.len;
     try self.fields.append(.{
         .type_token = field_name_token,
         .resolved_module_index = callee_module_index,
@@ -376,7 +376,7 @@ fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
         }
     }
     const expr = try expectExpression(self, scope);
-    const local_index = self.locals.len;
+    const local_index = self.locals.items.len;
     try self.locals.append(.{
         .name = name,
     });

@@ -24,7 +24,7 @@ pub const SourceRange = struct {
 fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange) void {
     // TODO would be nice if it could say "keyword `param`" instead of just "`param`"
     // first i need to move the backquotes into here...
-    stderr.write(contents[source_range.loc0.index..source_range.loc1.index]) catch {};
+    stderr.writeAll(contents[source_range.loc0.index..source_range.loc1.index]) catch {};
 }
 
 fn failPrint(stderr: var, maybe_source_range: ?SourceRange, contents: []const u8, comptime fmt: []const u8, args: var) void {
@@ -46,7 +46,7 @@ fn failPrint(stderr: var, maybe_source_range: ?SourceRange, contents: []const u8
             j += 1;
         } else if (ch == '#') {
             // string
-            stderr.write(args[j]) catch {};
+            stderr.writeAll(args[j]) catch {};
             j += 1;
         } else if (ch == '<') {
             // the maybe_source_range passed in
@@ -121,11 +121,11 @@ pub fn fail(
     while (i < col) : (i += 1) {
         stderr.print(" ", .{}) catch {};
     }
-    stderr.write(KRED ++ KBOLD) catch {};
+    stderr.writeAll(KRED ++ KBOLD) catch {};
     while (i < end - start and i < source_range.loc1.index - start) : (i += 1) {
         stderr.print("^", .{}) catch {};
     }
-    stderr.write(KNRM) catch {};
+    stderr.writeAll(KNRM) catch {};
     stderr.print("\n", .{}) catch {};
     return error.Failed;
 }

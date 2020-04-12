@@ -187,7 +187,7 @@ const TempManager = struct {
                 return index;
             }
         }
-        const index = self.slot_claimed.len;
+        const index = self.slot_claimed.items.len;
         try self.slot_claimed.append(true);
         return index;
     }
@@ -198,7 +198,7 @@ const TempManager = struct {
     }
 
     fn finalCount(self: *const TempManager) usize {
-        return self.slot_claimed.len;
+        return self.slot_claimed.items.len;
     }
 };
 
@@ -743,7 +743,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                 return fail(self.source, expression.source_range, "you cannot nest delay operations", .{});
             }
 
-            const delay_index = self.delays.len;
+            const delay_index = self.delays.items.len;
             try self.delays.append(.{ .num_samples = delay.num_samples });
 
             const feedback_temp_index = try self.temp_buffers.claim();

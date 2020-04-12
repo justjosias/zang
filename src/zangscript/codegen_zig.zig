@@ -10,7 +10,7 @@ const BufferDest = @import("codegen.zig").BufferDest;
 const State = struct {
     first_pass_result: FirstPassResult,
     module: ?Module,
-    out: *std.io.OutStream(std.os.WriteError),
+    out: *std.fs.File.OutStream,
     indentation: usize,
     indent_next: bool,
 
@@ -63,7 +63,7 @@ const State = struct {
                 } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
                     try self.out.print("{}", .{@as(usize, arg)});
                 } else if (comptime std.mem.eql(u8, arg_format, "str")) {
-                    try self.out.write(arg);
+                    try self.out.writeAll(arg);
                 } else if (comptime std.mem.eql(u8, arg_format, "module_name")) {
                     try self.printModuleName(arg);
                 } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
@@ -95,7 +95,7 @@ const State = struct {
         if (module.zig_package_name) |pkg_name| {
             try self.out.print("{}.", .{pkg_name});
         }
-        try self.out.write(module.name);
+        try self.out.writeAll(module.name);
     }
 
     fn printExpressionResult(self: *State, result: ExpressionResult) !void {
@@ -145,7 +145,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
     var self: State = .{
         .first_pass_result = first_pass_result,
         .module = null,
-        .out = &stdout_file_out_stream.stream,
+        .out = &stdout_file_out_stream,
         .indentation = 0,
         .indent_next = true,
     };

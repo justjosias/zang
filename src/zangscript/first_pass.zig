@@ -142,8 +142,8 @@ fn defineModule(self: *FirstPass) !void {
     try self.modules.append(.{
         .name = module_name,
         .zig_package_name = null,
-        .first_param = self.module_params.len,
-        .num_params = params.len,
+        .first_param = self.module_params.items.len,
+        .num_params = params.items.len,
     });
     try self.module_body_locations.append(ModuleBodyLocation{
         .begin_token = begin_token,
@@ -178,7 +178,7 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
             try self.modules.append(.{
                 .name = builtin.name,
                 .zig_package_name = pkg.zig_package_name,
-                .first_param = self.module_params.len,
+                .first_param = self.module_params.items.len,
                 .num_params = builtin.params.len,
             });
             try self.module_body_locations.append(null);
