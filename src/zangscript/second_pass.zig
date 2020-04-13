@@ -16,8 +16,42 @@ const codegen = @import("codegen.zig").codegen;
 const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
 
 pub const Scope = struct {
+    allocator: *std.mem.Allocator,
     parent: ?*const Scope,
     statements: std.ArrayList(Statement),
+
+    pub fn deinit(self: *Scope) void {
+        for (self.statements.items) |*statement| {
+            switch (statement.*) {
+                .let_assignment => |x| self.freeExpression(x.expression),
+                .output => |expression| self.freeExpression(expression),
+                .feedback => |expression| self.freeExpression(expression),
+            }
+        }
+        self.statements.deinit();
+        self.allocator.destroy(self);
+    }
+
+    fn freeExpression(self: *Scope, expression: *const Expression) void {
+        switch (expression.inner) {
+            .call => |x| {
+                for (x.args) |arg| {
+                    self.freeExpression(arg.value);
+                }
+                self.allocator.free(x.args);
+            },
+            .delay => |x| {
+                x.scope.deinit();
+            },
+            .negate => |expr| self.freeExpression(expr),
+            .bin_arith => |x| {
+                self.freeExpression(x.a);
+                self.freeExpression(x.b);
+            },
+            else => {},
+        }
+        self.allocator.destroy(expression);
+    }
 };
 
 pub const CallArg = struct {
@@ -33,7 +67,7 @@ pub const Call = struct {
 
 pub const Delay = struct {
     num_samples: usize,
-    scope: *const Scope,
+    scope: *Scope,
 };
 
 pub const BinArithOp = enum {
@@ -388,12 +422,14 @@ fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
     });
 }
 
-fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope {
+fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
     var scope = try self.allocator.create(Scope);
     scope.* = .{
+        .allocator = self.allocator,
         .parent = parent_scope,
         .statements = std.ArrayList(Statement).init(self.allocator),
     };
+    errdefer scope.deinit();
 
     while (self.parser.next()) |token| {
         switch (token.tt) {
@@ -422,35 +458,50 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*const Scope
     return scope;
 }
 
+pub const SecondPassModuleInfo = struct {
+    scope: *Scope,
+    fields: []const Field,
+    locals: []const Local,
+
+    pub fn deinit(self: *SecondPassModuleInfo, allocator: *std.mem.Allocator) void {
+        self.scope.deinit();
+        allocator.free(self.fields);
+        allocator.free(self.locals);
+    }
+};
+
+pub const SecondPassResult = struct {
+    allocator: *std.mem.Allocator,
+    module_infos: []?SecondPassModuleInfo, // null for builtins. FIXME why i can't i make it const? it says 'invalid token: const'
+
+    pub fn deinit(self: *SecondPassResult) void {
+        for (self.module_infos) |*maybe_module_info| {
+            if (maybe_module_info.*) |*module_info| {
+                module_info.deinit(self.allocator);
+            }
+        }
+        self.allocator.free(self.module_infos);
+    }
+};
+
 pub fn secondPass(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
     allocator: *std.mem.Allocator,
-) ![]const CodeGenResult {
-    const num_builtins = blk: {
-        var n: usize = 0;
-        for (first_pass_result.builtin_packages) |pkg| {
-            n += pkg.builtins.len;
-        }
-        break :blk n;
-    };
-
+) !SecondPassResult {
     // parse paint blocks
-    var module_scopes = try allocator.alloc(*const Scope, first_pass_result.modules.len - num_builtins);
-    defer allocator.free(module_scopes);
-
-    var module_fields = try allocator.alloc([]const Field, first_pass_result.modules.len - num_builtins);
-    defer allocator.free(module_fields);
-
-    var module_locals = try allocator.alloc([]const Local, first_pass_result.modules.len - num_builtins);
-    defer allocator.free(module_locals);
+    var result: SecondPassResult = .{
+        .allocator = allocator,
+        .module_infos = try allocator.alloc(?SecondPassModuleInfo, first_pass_result.modules.len),
+    };
+    std.mem.set(?SecondPassModuleInfo, result.module_infos, null);
+    errdefer result.deinit();
 
     for (first_pass_result.modules) |module, module_index| {
-        if (module_index < num_builtins) {
-            continue;
-        }
-        const body_loc = first_pass_result.module_body_locations[module_index].?; // this is only null for builtin modules
+        // body_loc is null if it's a builtin
+        const body_loc = first_pass_result.module_body_locations[module_index] orelse continue;
+
         var self: SecondPass = .{
             .allocator = allocator,
             .tokens = tokens,
@@ -466,83 +517,21 @@ pub fn secondPass(
             .locals = std.ArrayList(Local).init(allocator),
         };
 
-        const top_scope = try parseStatements(&self, null);
+        const top_scope = parseStatements(&self, null) catch |err| {
+            self.fields.deinit();
+            self.locals.deinit();
+            return err;
+        };
 
-        module_scopes[module_index - num_builtins] = top_scope;
-        module_fields[module_index - num_builtins] = self.fields.items; // TODO toOwnedSlice?
-        module_locals[module_index - num_builtins] = self.locals.items; // TODO toOwnedSlice?
+        result.module_infos[module_index] = SecondPassModuleInfo{
+            .scope = top_scope,
+            .fields = self.fields.toOwnedSlice(),
+            .locals = self.locals.toOwnedSlice(),
+        };
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, self.fields.items, self.locals.items, top_scope, 1);
+        secondPassPrintModule(first_pass_result, module, result.module_infos[module_index].?, 1);
     }
 
-    // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
-    // this has to be done in "dependency order", since a module needs to know the num_temps of its fields
-    // before it can figure out its own num_temps.
-    // codegen_visited tracks which modules we have visited so far.
-    var codegen_visited = try allocator.alloc(bool, first_pass_result.modules.len);
-    defer allocator.free(codegen_visited);
-    std.mem.set(bool, codegen_visited, false);
-
-    var codegen_results = try allocator.alloc(CodeGenResult, first_pass_result.modules.len);
-
-    var builtin_index: usize = 0;
-    for (first_pass_result.builtin_packages) |pkg| {
-        for (pkg.builtins) |builtin| {
-            codegen_results[builtin_index] = .{
-                .instructions = undefined, // FIXME - should be null
-                .num_outputs = builtin.num_outputs,
-                .num_temps = builtin.num_temps,
-                .fields = undefined, // FIXME - should be null?
-                .delays = undefined, // FIXME - should be null?
-            };
-            codegen_visited[builtin_index] = true;
-            builtin_index += 1;
-        }
-    }
-    for (first_pass_result.modules) |module, i| {
-        if (i < num_builtins) {
-            continue;
-        }
-        try codegenVisit(source, first_pass_result, num_builtins, module_scopes, codegen_visited, codegen_results, i, i, module_fields, module_locals, allocator);
-    }
-
-    return codegen_results;
-}
-
-fn codegenVisit(
-    source: Source,
-    first_pass_result: FirstPassResult,
-    num_builtins: usize,
-    module_scopes: []const *const Scope,
-    visited: []bool,
-    results: []CodeGenResult,
-    self_module_index: usize,
-    module_index: usize,
-    module_fields: []const []const Field,
-    module_locals: []const []const Local,
-    allocator: *std.mem.Allocator,
-) GenError!void {
-    if (visited[module_index]) {
-        return;
-    }
-
-    visited[module_index] = true;
-
-    // first, recursively resolve all modules that this one uses as its fields
-    const fields = module_fields[module_index - num_builtins];
-
-    for (fields) |field, field_index| {
-        if (field.resolved_module_index == self_module_index) {
-            return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
-        }
-
-        try codegenVisit(source, first_pass_result, num_builtins, module_scopes, visited, results, self_module_index, field.resolved_module_index, module_fields, module_locals, allocator);
-    }
-
-    // now resolve this one
-    // note: the codegen function reads from the `results` array to look up the num_temps of the fields
-    const scope = module_scopes[module_index - num_builtins];
-    const locals = module_locals[module_index - num_builtins];
-    results[module_index] = try codegen(source, results, first_pass_result, module_index, fields, locals, scope, allocator);
+    return result;
 }

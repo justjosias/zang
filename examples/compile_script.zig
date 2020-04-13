@@ -16,16 +16,21 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
 };
 
 pub fn main() u8 {
-    const allocator = std.heap.page_allocator;
-    const script = zangscript.loadScript("examples/script.txt", &builtin_packages, allocator) catch |err| {
-        std.debug.warn("{}\n", .{err});
+    var leak_count_allocator = std.testing.LeakCountAllocator.init(std.heap.page_allocator);
+    defer leak_count_allocator.validate() catch {};
+
+    var allocator = &leak_count_allocator.allocator;
+
+    var script = zangscript.loadScript("examples/script.txt", &builtin_packages, allocator) catch |err| {
+        std.debug.warn("loadScript failed: {}\n", .{err});
         return 1;
     };
-    defer allocator.free(script.contents);
-    // TODO defer script deinit
-    zangscript.generateZig(script.first_pass_result, script.code_gen_results) catch |err| {
-        std.debug.warn("{}\n", .{err});
+    defer script.deinit();
+
+    zangscript.generateZig(script.first_pass_result, script.codegen_result) catch |err| {
+        std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };
+
     return 0;
 }

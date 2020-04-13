@@ -2,21 +2,22 @@ const std = @import("std");
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleField = @import("first_pass.zig").ModuleField;
+const SecondPassModuleInfo = @import("second_pass.zig").SecondPassModuleInfo;
 const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
 const Field = @import("second_pass.zig").Field;
 const Local = @import("second_pass.zig").Local;
 const Scope = @import("second_pass.zig").Scope;
 
-pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, fields: []const Field, locals: []const Local, scope: *const Scope, indentation: usize) void {
+pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, module_info: SecondPassModuleInfo, indentation: usize) void {
     std.debug.warn("module '{}'\n", .{module.name});
-    for (fields) |field, i| {
+    for (module_info.fields) |field, i| {
         const callee_module = first_pass_result.modules[field.resolved_module_index];
         std.debug.warn("    field #{}({})\n", .{ i, callee_module.name });
     }
     std.debug.warn("statements:\n", .{});
-    for (scope.statements.items) |statement| {
-        printStatement(first_pass_result, module, fields, locals, statement, 1);
+    for (module_info.scope.statements.items) |statement| {
+        printStatement(first_pass_result, module, module_info.fields, module_info.locals, statement, 1);
     }
     std.debug.warn("\n", .{});
 }

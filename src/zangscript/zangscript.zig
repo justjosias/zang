@@ -1,18 +1,27 @@
 const std = @import("std");
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const Source = @import("common.zig").Source;
-const Token = @import("tokenizer.zig").Token;
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const tokenize = @import("tokenizer.zig").tokenize;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const firstPass = @import("first_pass.zig").firstPass;
+const SecondPassResult = @import("second_pass.zig").SecondPassResult;
 const secondPass = @import("second_pass.zig").secondPass;
+const startCodegen = @import("codegen.zig").startCodegen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 
 pub const Script = struct {
-    contents: []const u8, // this must be freed
+    allocator: *std.mem.Allocator,
+    contents: []const u8,
     first_pass_result: FirstPassResult,
-    code_gen_results: []const CodeGenResult,
+    second_pass_result: SecondPassResult,
+    codegen_result: CodeGenResult,
+
+    pub fn deinit(self: *Script) void {
+        self.allocator.free(self.contents);
+        self.first_pass_result.deinit();
+        self.second_pass_result.deinit();
+        self.codegen_result.deinit();
+    }
 };
 
 pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage, allocator: *std.mem.Allocator) !Script {
@@ -27,26 +36,23 @@ pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage
         .contents = contents,
     };
 
-    var tokenizer: Tokenizer = .{
-        .source = source,
-        .error_message = null,
-        .tokens = std.ArrayList(Token).init(allocator),
-    };
-    defer tokenizer.tokens.deinit();
-    try tokenize(&tokenizer);
-    const tokens = tokenizer.tokens.items;
+    const tokens = try tokenize(source, allocator);
+    defer allocator.free(tokens);
 
-    var result = try firstPass(source, tokens, builtin_packages, allocator);
-    defer {
-        // FIXME deinit fields
-        //result.module_defs.deinit();
-    }
+    var first_pass_result = try firstPass(source, tokens, builtin_packages, allocator);
+    errdefer first_pass_result.deinit();
 
-    const code_gen_results = try secondPass(source, tokens, result, allocator);
+    var second_pass_result = try secondPass(source, tokens, first_pass_result, allocator);
+    errdefer second_pass_result.deinit();
+
+    const codegen_result = try startCodegen(source, first_pass_result, second_pass_result, allocator);
+    errdefer codegen_result.deinit();
 
     return Script{
+        .allocator = allocator,
         .contents = contents,
-        .first_pass_result = result,
-        .code_gen_results = code_gen_results,
+        .first_pass_result = first_pass_result,
+        .second_pass_result = second_pass_result,
+        .codegen_result = codegen_result,
     };
 }

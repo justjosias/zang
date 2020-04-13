@@ -13,6 +13,8 @@ const Expression = @import("second_pass.zig").Expression;
 const Statement = @import("second_pass.zig").Statement;
 const LetAssignment = @import("second_pass.zig").LetAssignment;
 const Scope = @import("second_pass.zig").Scope;
+const SecondPassResult = @import("second_pass.zig").SecondPassResult;
+const SecondPassModuleInfo = @import("second_pass.zig").SecondPassModuleInfo;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
@@ -150,7 +152,7 @@ pub const CodegenState = struct {
     allocator: *std.mem.Allocator,
     source: Source,
     first_pass_result: FirstPassResult,
-    codegen_results: []const CodeGenResult,
+    codegen_results: []const ModuleCodeGen,
     module_index: usize,
     fields: []const Field,
     locals: []const Local,
@@ -822,38 +824,131 @@ fn genLetAssignment(self: *CodegenState, x: LetAssignment, maybe_feedback_temp_i
     defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
 }
 
-pub const CodeGenResult = struct {
+pub const ModuleCodeGen = struct {
+    is_builtin: bool,
     num_outputs: usize,
     num_temps: usize,
-    fields: []const Field,
+    // if is_builtin is true, the following are undefined
+    fields: []const Field, // this is owned by SecondPassResult.
     delays: []const DelayDecl, // owned slice
     instructions: []const Instruction, // owned slice (might need to remove `const` to make it free-able?)
+
+    pub fn deinit(self: *ModuleCodeGen, allocator: *std.mem.Allocator) void {
+        if (self.is_builtin) {
+            return;
+        }
+        allocator.free(self.delays);
+        allocator.free(self.instructions);
+    }
 };
 
-// codegen_results is just there so we can read the num_temps of modules being called.
-pub fn codegen(
+pub const CodeGenResult = struct {
+    allocator: *std.mem.Allocator,
+    module_codegen: []ModuleCodeGen,
+
+    pub fn deinit(self: *CodeGenResult) void {
+        for (self.module_codegen) |*mcg| {
+            mcg.deinit(self.allocator);
+        }
+        self.allocator.free(self.module_codegen);
+    }
+};
+
+pub fn startCodegen(
     source: Source,
-    codegen_results: []const CodeGenResult,
     first_pass_result: FirstPassResult,
-    module_index: usize,
-    fields: []const Field,
-    locals: []const Local,
-    scope: *const Scope,
+    second_pass_result: SecondPassResult,
     allocator: *std.mem.Allocator,
 ) !CodeGenResult {
+    // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
+    // this has to be done in "dependency order", since a module needs to know the num_temps of its fields
+    // before it can figure out its own num_temps.
+    // codegen_visited tracks which modules we have visited so far.
+    var codegen_visited = try allocator.alloc(bool, first_pass_result.modules.len);
+    defer allocator.free(codegen_visited);
+    std.mem.set(bool, codegen_visited, false);
+
+    var codegen_results = try allocator.alloc(ModuleCodeGen, first_pass_result.modules.len);
+
+    var builtin_index: usize = 0;
+    for (first_pass_result.builtin_packages) |pkg| {
+        for (pkg.builtins) |builtin| {
+            codegen_results[builtin_index] = .{
+                .is_builtin = true,
+                .instructions = undefined, // FIXME - should be null
+                .num_outputs = builtin.num_outputs,
+                .num_temps = builtin.num_temps,
+                .fields = undefined, // FIXME - should be null?
+                .delays = undefined, // FIXME - should be null?
+            };
+            codegen_visited[builtin_index] = true;
+            builtin_index += 1;
+        }
+    }
+    for (first_pass_result.modules) |module, i| {
+        try codegenVisit(source, first_pass_result, second_pass_result, codegen_results, codegen_visited, i, i, allocator);
+    }
+
+    return CodeGenResult{
+        .allocator = allocator,
+        .module_codegen = codegen_results,
+    };
+}
+
+fn codegenVisit(
+    source: Source,
+    first_pass_result: FirstPassResult,
+    second_pass_result: SecondPassResult,
+    results: []ModuleCodeGen,
+    visited: []bool,
+    self_module_index: usize,
+    module_index: usize,
+    allocator: *std.mem.Allocator,
+) GenError!void {
+    if (visited[module_index]) {
+        return;
+    }
+
+    visited[module_index] = true;
+
+    const module_info = second_pass_result.module_infos[module_index].?;
+
+    // first, recursively resolve all modules that this one uses as its fields
+    for (module_info.fields) |field, field_index| {
+        if (field.resolved_module_index == self_module_index) {
+            return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
+        }
+
+        try codegenVisit(source, first_pass_result, second_pass_result, results, visited, self_module_index, field.resolved_module_index, allocator);
+    }
+
+    // now resolve this one
+    // note: the codegen function reads from the `results` array to look up the num_temps of the fields
+    results[module_index] = try codegen(source, results, first_pass_result, module_index, module_info, allocator);
+}
+
+// codegen_results is just there so we can read the num_temps of modules being called.
+fn codegen(
+    source: Source,
+    codegen_results: []const ModuleCodeGen,
+    first_pass_result: FirstPassResult,
+    module_index: usize,
+    module_info: SecondPassModuleInfo,
+    allocator: *std.mem.Allocator,
+) !ModuleCodeGen {
     var self: CodegenState = .{
         .allocator = allocator,
         .source = source,
         .first_pass_result = first_pass_result,
         .codegen_results = codegen_results,
         .module_index = module_index,
-        .fields = fields,
-        .locals = locals,
+        .fields = module_info.fields,
+        .locals = module_info.locals,
         .instructions = std.ArrayList(Instruction).init(allocator),
         .temp_buffers = TempManager.init(allocator),
         .num_temp_floats = 0,
         .num_temp_bools = 0,
-        .local_temps = try allocator.alloc(?usize, locals.len),
+        .local_temps = try allocator.alloc(?usize, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(allocator),
     };
     errdefer self.instructions.deinit();
@@ -863,7 +958,7 @@ pub fn codegen(
 
     std.mem.set(?usize, self.local_temps, null);
 
-    for (scope.statements.items) |statement| {
+    for (module_info.scope.statements.items) |statement| {
         switch (statement) {
             .let_assignment => |x| {
                 try genLetAssignment(&self, x, null);
@@ -887,10 +982,11 @@ pub fn codegen(
     // diagnostic print
     printBytecode(&self);
 
-    return CodeGenResult{
+    return ModuleCodeGen{
+        .is_builtin = false,
         .num_outputs = 1,
         .num_temps = self.temp_buffers.finalCount(),
-        .fields = fields,
+        .fields = module_info.fields,
         .delays = self.delays.toOwnedSlice(),
         .instructions = self.instructions.toOwnedSlice(),
     };

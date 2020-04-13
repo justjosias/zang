@@ -1,6 +1,7 @@
 const std = @import("std");
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
+const ModuleCodeGen = @import("codegen.zig").ModuleCodeGen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
@@ -138,7 +139,7 @@ const State = struct {
     }
 };
 
-pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const CodeGenResult) !void {
+pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenResult) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_file_out_stream = stdout_file.outStream();
 
@@ -174,7 +175,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, code_gen_results: []const
 
         self.module = module;
 
-        const code_gen_result = code_gen_results[i];
+        const code_gen_result = codegen_result.module_codegen[i];
         try self.print("\n", .{});
         try self.print("pub const {str} = struct {{\n", .{module.name});
         try self.print("pub const num_outputs = {usize};\n", .{code_gen_result.num_outputs});

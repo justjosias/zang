@@ -39,7 +39,6 @@ pub const ModuleBodyLocation = struct {
 };
 
 const FirstPass = struct {
-    allocator: *std.mem.Allocator,
     parser: Parser,
     modules: std.ArrayList(Module),
     module_body_locations: std.ArrayList(?ModuleBodyLocation),
@@ -78,8 +77,7 @@ fn defineModule(self: *FirstPass) !void {
         return fail(self.parser.source, ctoken.source_range, "expected `:`, found `<`", .{});
     }
 
-    var params = std.ArrayList(ModuleParam).init(self.allocator);
-    errdefer params.deinit();
+    const first_param_index = self.module_params.items.len;
 
     while (true) {
         var token = try self.parser.expect();
@@ -91,7 +89,7 @@ fn defineModule(self: *FirstPass) !void {
                 if (param_name[0] < 'a' or param_name[0] > 'z') {
                     return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{});
                 }
-                for (params.items) |param| {
+                for (self.module_params.items[first_param_index..]) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
                         return fail(self.parser.source, token.source_range, "redeclaration of param `<`", .{});
                     }
@@ -109,7 +107,7 @@ fn defineModule(self: *FirstPass) !void {
                 if (token.tt != .sym_comma) {
                     return fail(self.parser.source, token.source_range, "expected `,`, found `<`", .{});
                 }
-                try params.append(.{
+                try self.module_params.append(.{
                     .name = param_name,
                     .zig_name = param_name, // TODO wrap zig keywords in `@"..."`?
                     .param_type = param_type,
@@ -142,26 +140,31 @@ fn defineModule(self: *FirstPass) !void {
     try self.modules.append(.{
         .name = module_name,
         .zig_package_name = null,
-        .first_param = self.module_params.items.len,
-        .num_params = params.items.len,
+        .first_param = first_param_index,
+        .num_params = self.module_params.items.len - first_param_index,
     });
     try self.module_body_locations.append(ModuleBodyLocation{
         .begin_token = begin_token,
         .end_token = end_token,
     });
-    try self.module_params.appendSlice(params.toOwnedSlice());
 }
 
 pub const FirstPassResult = struct {
+    allocator: *std.mem.Allocator,
     builtin_packages: []const BuiltinPackage,
     modules: []const Module,
     module_body_locations: []const ?ModuleBodyLocation,
     module_params: []const ModuleParam,
+
+    pub fn deinit(self: *FirstPassResult) void {
+        self.allocator.free(self.modules);
+        self.allocator.free(self.module_body_locations);
+        self.allocator.free(self.module_params);
+    }
 };
 
 pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []const BuiltinPackage, allocator: *std.mem.Allocator) !FirstPassResult {
     var self: FirstPass = .{
-        .allocator = allocator,
         .parser = .{
             .source = source,
             .tokens = tokens,
@@ -171,6 +174,11 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
         .module_body_locations = std.ArrayList(?ModuleBodyLocation).init(allocator),
         .module_params = std.ArrayList(ModuleParam).init(allocator),
     };
+    errdefer {
+        self.modules.deinit();
+        self.module_body_locations.deinit();
+        self.module_params.deinit();
+    }
 
     // add builtins
     for (builtin_packages) |pkg| {
@@ -186,12 +194,6 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
         }
     }
 
-    // TODO this should be defer, not errdefer, since we are reallocating everything for the FirstPassResult
-    //errdefer {
-    //    // FIXME deinit fields
-    //    self.module_defs.deinit();
-    //}
-
     // parse module declarations, including param and field declarations, but skipping over the painting functions
     while (self.parser.next()) |token| {
         switch (token.tt) {
@@ -201,6 +203,7 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
     }
 
     return FirstPassResult{
+        .allocator = allocator,
         .builtin_packages = builtin_packages,
         .modules = self.modules.toOwnedSlice(),
         .module_body_locations = self.module_body_locations.toOwnedSlice(),
