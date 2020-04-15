@@ -49,99 +49,75 @@ pub const BufferValue = union(enum) {
     self_param: usize, // guaranteed to be of type `buffer`
 };
 
-// call one of self's fields (paint the child module)
-pub const InstrCall = struct {
-    // paint always results in a buffer.
-    out: BufferDest,
-    // which field of the "self" module we are calling
-    field_index: usize,
-    // list of temp buffers passed along for the callee's internal use, dependency injection style
-    temps: []const usize,
-    // list of argument param values (in the order of the callee module's params)
-    args: []const ExpressionResult,
-};
-
-// i might consider replacing this begin/end pair with a single InstrDelay
-// which actually contains a sublist of Instructions?
-pub const InstrDelayBegin = struct {
-    delay_index: usize,
-    out: BufferDest,
-    feedback_out_temp_buffer_index: usize,
-    feedback_temp_buffer_index: usize,
-};
-
-pub const InstrDelayEnd = struct {
-    delay_index: usize,
-    out: BufferDest,
-    feedback_out_temp_buffer_index: usize,
-};
-
-pub const InstrCopyBuffer = struct {
-    out: BufferDest,
-    in: BufferValue,
-};
-
-pub const InstrFloatToBuffer = struct {
-    out: BufferDest,
-    in: FloatValue,
-};
-
-pub const InstrCobToBuffer = struct {
-    out: BufferDest,
-    in_self_param: usize,
-};
-
-pub const InstrNegateFloatToFloat = struct {
-    out_temp_float_index: usize,
-    a: FloatValue,
-};
-
-pub const InstrNegateBufferToBuffer = struct {
-    out: BufferDest,
-    a: BufferValue,
-};
-
-pub const InstrArithFloatFloat = struct {
-    out_temp_float_index: usize,
-    operator: BinArithOp,
-    a: FloatValue,
-    b: FloatValue,
-};
-
-pub const InstrArithFloatBuffer = struct {
-    out: BufferDest,
-    operator: BinArithOp,
-    a: FloatValue,
-    b: BufferValue,
-};
-
-pub const InstrArithBufferFloat = struct {
-    out: BufferDest,
-    operator: BinArithOp,
-    a: BufferValue,
-    b: FloatValue,
-};
-
-pub const InstrArithBufferBuffer = struct {
-    out: BufferDest,
-    operator: BinArithOp,
-    a: BufferValue,
-    b: BufferValue,
-};
-
 pub const Instruction = union(enum) {
-    copy_buffer: InstrCopyBuffer,
-    float_to_buffer: InstrFloatToBuffer,
-    cob_to_buffer: InstrCobToBuffer,
-    negate_float_to_float: InstrNegateFloatToFloat,
-    negate_buffer_to_buffer: InstrNegateBufferToBuffer,
-    arith_float_float: InstrArithFloatFloat,
-    arith_float_buffer: InstrArithFloatBuffer,
-    arith_buffer_float: InstrArithBufferFloat,
-    arith_buffer_buffer: InstrArithBufferBuffer,
-    call: InstrCall,
-    delay_begin: InstrDelayBegin,
-    delay_end: InstrDelayEnd,
+    copy_buffer: struct {
+        out: BufferDest,
+        in: BufferValue,
+    },
+    float_to_buffer: struct {
+        out: BufferDest,
+        in: FloatValue,
+    },
+    cob_to_buffer: struct {
+        out: BufferDest,
+        in_self_param: usize,
+    },
+    negate_float_to_float: struct {
+        out_temp_float_index: usize,
+        a: FloatValue,
+    },
+    negate_buffer_to_buffer: struct {
+        out: BufferDest,
+        a: BufferValue,
+    },
+    arith_float_float: struct {
+        out_temp_float_index: usize,
+        operator: BinArithOp,
+        a: FloatValue,
+        b: FloatValue,
+    },
+    arith_float_buffer: struct {
+        out: BufferDest,
+        operator: BinArithOp,
+        a: FloatValue,
+        b: BufferValue,
+    },
+    arith_buffer_float: struct {
+        out: BufferDest,
+        operator: BinArithOp,
+        a: BufferValue,
+        b: FloatValue,
+    },
+    arith_buffer_buffer: struct {
+        out: BufferDest,
+        operator: BinArithOp,
+        a: BufferValue,
+        b: BufferValue,
+    },
+    // call one of self's fields (paint the child module)
+    call: struct {
+        // paint always results in a buffer.
+        out: BufferDest,
+        // which field of the "self" module we are calling
+        field_index: usize,
+        // list of temp buffers passed along for the callee's internal use, dependency injection style
+        temps: []const usize,
+        // list of argument param values (in the order of the callee module's params)
+        args: []const ExpressionResult,
+    },
+    // i might consider replacing this begin/end pair with a single InstrDelay
+    // which actually contains a sublist of Instructions?
+    delay_begin: struct {
+        delay_index: usize,
+        out: BufferDest,
+        feedback_out_temp_buffer_index: usize,
+        feedback_temp_buffer_index: usize,
+    },
+    delay_end: struct {
+        delay_index: usize,
+        out: BufferDest,
+        feedback_out_temp_buffer_index: usize,
+    },
 };
 
 pub const DelayDecl = struct {
