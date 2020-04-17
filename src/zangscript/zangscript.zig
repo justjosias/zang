@@ -28,7 +28,7 @@ pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage
     // FIXME should i make compilation not result in references to `contents`?
     // things like module names are currently just pointers into contents.
     // if i made them new allocs then i could free the contents sooner
-    const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16*1024*1024);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024);
     errdefer allocator.free(contents);
 
     const source: Source = .{

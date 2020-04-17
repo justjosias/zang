@@ -150,10 +150,20 @@ const TempManager = struct {
         };
     }
 
-    fn deinit(self: *TempManager) void {
-        // check for leaks
-        for (self.slot_claimed.items) |in_use| {
-            std.debug.assert(!in_use);
+    fn deinit(self: *TempManager, failed: bool) void {
+        if (!failed) {
+            // if we're cleaning up because an error occurred, don't complain
+            // about leaks. i don't care about releasing every temp in an
+            // error situation.
+            var num_leaked: usize = 0;
+            for (self.slot_claimed.items) |in_use| {
+                if (in_use) {
+                    num_leaked += 1;
+                }
+            }
+            if (num_leaked > 0) {
+                std.debug.warn("error - {} temp(s) leaked in codegen\n", .{num_leaked});
+            }
         }
         self.slot_claimed.deinit();
     }
@@ -322,7 +332,7 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 .self_param => |param_index| params[param_index].param_type == .constant,
             };
             if (!ok) {
-                return fail(self.source, sr, "expected constant value", .{});
+                return fail(self.source, sr, "expected constant numerical value", .{});
             }
             return result;
         },
@@ -347,22 +357,21 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
                 },
             };
             if (!ok) {
-                return fail(self.source, sr, "expected constant or waveform value", .{});
+                return fail(self.source, sr, "expected constant numerical or waveform value", .{});
             }
             return result;
         },
         .one_of => |e| {
             const ok = switch (result) {
                 // enum values can only exist as literals
-                .literal_enum_value => |str|
-                    for (e.values) |allowed_value| {
-                        if (std.mem.eql(u8, allowed_value, str)) {
-                            break true;
-                        }
-                    } else {
-                        // TODO list the allowed enum values
-                        return fail(self.source, sr, "not one of the allowed enum values", .{});
-                    },
+                .literal_enum_value => |str| for (e.values) |allowed_value| {
+                    if (std.mem.eql(u8, allowed_value, str)) {
+                        break true;
+                    }
+                } else {
+                    // TODO list the allowed enum values
+                    return fail(self.source, sr, "not one of the allowed enum values", .{});
+                },
                 else => false,
             };
             if (!ok) {
@@ -647,14 +656,6 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
             const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
 
             // pass params
-            var args = try self.allocator.alloc(ExpressionResult, callee_params.len); // TODO free this somewhere
-            var args_filled: usize = 0;
-            errdefer {
-                var i: usize = 0;
-                while (i < args_filled) : (i += 1) {
-                    releaseExpressionResult(self, args[i]);
-                }
-            }
             for (call.args) |a| {
                 for (callee_params) |param| {
                     if (std.mem.eql(u8, a.param_name, param.name)) break;
@@ -662,6 +663,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                     return fail(self.source, a.param_name_token.source_range, "invalid param `<`", .{});
                 }
             }
+            var args = try self.allocator.alloc(ExpressionResult, callee_params.len); // TODO free this somewhere
             for (callee_params) |param, i| {
                 // find this arg in the call node
                 // FIXME when these errors happen there is a temps leak
@@ -674,11 +676,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
                         maybe_arg = a;
                     }
                 }
-                const arg = maybe_arg orelse {
-                    return fail(self.source, sr, "call is missing param `#`", .{param.name});
-                };
+                const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
                 args[i] = try genExpression(self, arg.value, .{ .param_type = param.param_type }, maybe_feedback_temp_index);
-                args_filled += 1;
             }
 
             // the callee needs temps for its own internal use
@@ -929,7 +928,9 @@ fn codegen(
     };
     errdefer self.instructions.deinit();
     errdefer self.delays.deinit();
-    defer self.temp_buffers.deinit();
+    var failed = false;
+    defer self.temp_buffers.deinit(failed);
+    errdefer failed = true; // this will execute before the above defer
     defer allocator.free(self.local_temps);
 
     std.mem.set(?usize, self.local_temps, null);
