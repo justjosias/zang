@@ -1,4 +1,5 @@
 const std = @import("std");
+const PrintHelper = @import("print_helper.zig").PrintHelper;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleCodeGen = @import("codegen.zig").ModuleCodeGen;
@@ -11,92 +12,34 @@ const BufferDest = @import("codegen.zig").BufferDest;
 const State = struct {
     first_pass_result: FirstPassResult,
     module: ?Module,
-    out: *std.fs.File.OutStream,
-    indentation: usize,
-    indent_next: bool,
+    helper: PrintHelper,
 
-    fn print(self: *State, comptime fmt: []const u8, args: var) !void {
-        if (self.indent_next) {
-            self.indent_next = false;
-            if (fmt.len > 0 and fmt[0] == '}') {
-                self.indentation -= 1;
-            }
-            var i: usize = 0;
-            while (i < self.indentation) : (i += 1) {
-                try self.out.print("    ", .{});
-            }
-        }
-        comptime var arg_index: usize = 0;
-        comptime var i: usize = 0;
-        inline while (i < fmt.len) {
-            if (fmt[i] == '}' and i + 1 < fmt.len and fmt[i + 1] == '}') {
-                try self.out.writeByte('}');
-                i += 2;
-                continue;
-            }
-            if (fmt[i] == '{') {
-                i += 1;
+    pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
+        try self.helper.print(self, fmt, args);
+    }
 
-                if (i < fmt.len and fmt[i] == '{') {
-                    try self.out.writeByte('{');
-                    i += 1;
-                    continue;
-                }
-
-                // find the closing brace
-                const start = i;
-                inline while (i < fmt.len) : (i += 1) {
-                    if (fmt[i] == '}') break;
-                }
-                if (i == fmt.len) {
-                    @compileError("`{` must be followed by `}`");
-                }
-                const arg_format = fmt[start..i];
-                i += 1;
-
-                const arg = args[arg_index];
-                arg_index += 1;
-
-                if (comptime std.mem.eql(u8, arg_format, "bool")) {
-                    try self.out.print("{}", .{@as(bool, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "f32")) {
-                    try self.out.print("{d}", .{@as(f32, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
-                    try self.out.print("{}", .{@as(usize, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "str")) {
-                    try self.out.writeAll(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "module_name")) {
-                    try self.printModuleName(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
-                    try self.printBufferValue(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
-                    try self.printBufferDest(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
-                    try self.printFloatValue(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
-                    try self.printExpressionResult(arg);
-                } else {
-                    @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
-                }
-            } else {
-                try self.out.writeByte(fmt[i]);
-                i += 1;
-            }
-        }
-        if (fmt.len >= 1 and fmt[fmt.len - 1] == '\n') {
-            self.indent_next = true;
-            if (fmt.len >= 2 and fmt[fmt.len - 2] == '{') {
-                self.indentation += 1;
-            }
+    pub fn printArgValue(self: *State, comptime arg_format: []const u8, arg: var) !void {
+        if (comptime std.mem.eql(u8, arg_format, "module_name")) {
+            try self.printModuleName(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
+            try self.printBufferValue(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
+            try self.printBufferDest(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
+            try self.printFloatValue(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
+            try self.printExpressionResult(arg);
+        } else {
+            @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
         }
     }
 
     fn printModuleName(self: *State, module_index: usize) !void {
         const module = self.first_pass_result.modules[module_index];
         if (module.zig_package_name) |pkg_name| {
-            try self.out.print("{}.", .{pkg_name});
+            try self.print("{str}.", .{pkg_name});
         }
-        try self.out.writeAll(module.name);
+        try self.print("{str}", .{module.name});
     }
 
     fn printExpressionResult(self: *State, result: ExpressionResult) !void {
@@ -146,10 +89,9 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
     var self: State = .{
         .first_pass_result = first_pass_result,
         .module = null,
-        .out = &stdout_file_out_stream,
-        .indentation = 0,
-        .indent_next = true,
+        .helper = PrintHelper.init(&stdout_file_out_stream),
     };
+    defer self.helper.deinit();
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
@@ -412,6 +354,4 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         try self.print("}}\n", .{});
         try self.print("}};\n", .{});
     }
-
-    std.debug.assert(self.indentation == 0);
 }

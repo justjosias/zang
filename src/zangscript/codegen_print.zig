@@ -1,4 +1,5 @@
 const std = @import("std");
+const PrintHelper = @import("print_helper.zig").PrintHelper;
 const CodegenState = @import("codegen.zig").CodegenState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
@@ -7,65 +8,23 @@ const BufferDest = @import("codegen.zig").BufferDest;
 
 const State = struct {
     codegen_state: *const CodegenState,
-    out: *std.fs.File.OutStream,
+    helper: PrintHelper,
 
-    fn print(self: *State, comptime fmt: []const u8, args: var) !void {
-        comptime var arg_index: usize = 0;
-        comptime var i: usize = 0;
-        inline while (i < fmt.len) {
-            if (fmt[i] == '}' and i + 1 < fmt.len and fmt[i + 1] == '}') {
-                try self.out.writeByte('}');
-                i += 2;
-                continue;
-            }
-            if (fmt[i] == '{') {
-                i += 1;
+    pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
+        try self.helper.print(self, fmt, args);
+    }
 
-                if (i < fmt.len and fmt[i] == '{') {
-                    try self.out.writeByte('{');
-                    i += 1;
-                    continue;
-                }
-
-                // find the closing brace
-                const start = i;
-                inline while (i < fmt.len) : (i += 1) {
-                    if (fmt[i] == '}') break;
-                }
-                if (i == fmt.len) {
-                    @compileError("`{` must be followed by `}`");
-                }
-                const arg_format = fmt[start..i];
-                i += 1;
-
-                const arg = args[arg_index];
-                arg_index += 1;
-
-                if (comptime std.mem.eql(u8, arg_format, "auto")) {
-                    try self.out.print("{}", .{arg});
-                } else if (comptime std.mem.eql(u8, arg_format, "bool")) {
-                    try self.out.print("{}", .{@as(bool, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "f32")) {
-                    try self.out.print("{d}", .{@as(f32, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
-                    try self.out.print("{}", .{@as(usize, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "str")) {
-                    try self.out.writeAll(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
-                    try self.printBufferValue(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
-                    try self.printBufferDest(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
-                    try self.printFloatValue(arg);
-                } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
-                    try self.printExpressionResult(arg);
-                } else {
-                    @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
-                }
-            } else {
-                try self.out.writeByte(fmt[i]);
-                i += 1;
-            }
+    pub fn printArgValue(self: *State, comptime arg_format: []const u8, arg: var) !void {
+        if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
+            try self.printBufferValue(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
+            try self.printBufferDest(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
+            try self.printFloatValue(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
+            try self.printExpressionResult(arg);
+        } else {
+            @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
         }
     }
 
@@ -121,8 +80,9 @@ pub fn printBytecode(codegen_state: *const CodegenState) !void {
 
     var self: State = .{
         .codegen_state = codegen_state,
-        .out = &stderr_file_out_stream,
+        .helper = PrintHelper.init(&stderr_file_out_stream),
     };
+    defer self.helper.deinit();
 
     const self_module = codegen_state.first_pass_result.modules[codegen_state.module_index];
 
