@@ -1,4 +1,5 @@
 const std = @import("std");
+const PrintHelper = @import("print_helper.zig").PrintHelper;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleField = @import("first_pass.zig").ModuleField;
@@ -9,99 +10,107 @@ const Field = @import("second_pass.zig").Field;
 const Local = @import("second_pass.zig").Local;
 const Scope = @import("second_pass.zig").Scope;
 
-pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, module_info: SecondPassModuleInfo, indentation: usize) void {
-    std.debug.warn("module '{}'\n", .{module.name});
+const State = struct {
+    first_pass_result: FirstPassResult,
+    module: Module,
+    module_info: SecondPassModuleInfo,
+    helper: PrintHelper,
+
+    pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
+        try self.helper.print(self, fmt, args);
+    }
+
+    pub fn printArgValue(self: *State, comptime arg_format: []const u8, arg: var) !void {
+        @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
+    }
+
+    fn indent(self: *State, indentation: usize) !void {
+        var i: usize = 0;
+        while (i < indentation) : (i += 1) {
+            try self.print("    ", .{});
+        }
+    }
+
+    fn printStatement(self: *State, statement: Statement, indentation: usize) !void {
+        try self.indent(indentation);
+        switch (statement) {
+            .let_assignment => |x| {
+                try self.print("LET {str} =\n", .{self.module_info.locals[x.local_index].name});
+                try self.printExpression(x.expression, indentation + 1);
+            },
+            .output => |expression| {
+                try self.print("OUT\n", .{});
+                try self.printExpression(expression, indentation + 1);
+            },
+            .feedback => |expression| {
+                try self.print("FEEDBACK\n", .{});
+                try self.printExpression(expression, indentation + 1);
+            },
+        }
+    }
+
+    fn printExpression(self: *State, expression: *const Expression, indentation: usize) std.os.WriteError!void {
+        try self.indent(indentation);
+        switch (expression.inner) {
+            .call => |call| {
+                const field = self.module_info.fields[call.field_index];
+                const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+                try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, callee_module.name });
+                for (call.args) |arg| {
+                    try self.indent(indentation + 1);
+                    try self.print("{str}:\n", .{arg.param_name});
+                    try self.printExpression(arg.value, indentation + 2);
+                }
+                try self.indent(indentation);
+                try self.print(")\n", .{});
+            },
+            .local => |local_index| try self.print("{str}\n", .{self.module_info.locals[local_index].name}),
+            .delay => |delay| {
+                try self.print("delay {usize} (\n", .{delay.num_samples});
+                for (delay.scope.statements.items) |statement| {
+                    try self.printStatement(statement, indentation + 1);
+                }
+                try self.indent(indentation);
+                try self.print(")\n", .{});
+            },
+            .feedback => try self.print("feedback\n", .{}),
+            .literal_boolean => |v| try self.print("{bool}\n", .{v}),
+            .literal_number => |v| try self.print("{f32}\n", .{v}),
+            .literal_enum_value => |str| try self.print("'{str}'\n", .{str}),
+            .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
+            .negate => |expr| {
+                try self.print("negate\n", .{});
+                try self.printExpression(expr, indentation + 1);
+            },
+            .bin_arith => |m| {
+                try self.print("{auto}\n", .{m.op});
+                try self.printExpression(m.a, indentation + 1);
+                try self.printExpression(m.b, indentation + 1);
+            },
+        }
+    }
+};
+
+pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, module_info: SecondPassModuleInfo) !void {
+    const stderr_file = std.io.getStdErr();
+    var stderr_file_out_stream = stderr_file.outStream();
+
+    var self: State = .{
+        .first_pass_result = first_pass_result,
+        .module = module,
+        .module_info = module_info,
+        .helper = PrintHelper.init(&stderr_file_out_stream),
+    };
+    defer self.helper.deinit();
+
+    try self.print("module '{str}'\n", .{module.name});
     for (module_info.fields) |field, i| {
         const callee_module = first_pass_result.modules[field.resolved_module_index];
-        std.debug.warn("    field #{}({})\n", .{ i, callee_module.name });
+        try self.print("    field #{usize}({str})\n", .{ i, callee_module.name });
     }
-    std.debug.warn("statements:\n", .{});
+    try self.print("statements:\n", .{});
     for (module_info.scope.statements.items) |statement| {
-        printStatement(first_pass_result, module, module_info.fields, module_info.locals, statement, 1);
+        try self.printStatement(statement, 1);
     }
-    std.debug.warn("\n", .{});
-}
-
-fn printStatement(first_pass_result: FirstPassResult, module: Module, fields: []const Field, locals: []const Local, statement: Statement, indentation: usize) void {
-    var i: usize = 0;
-    while (i < indentation) : (i += 1) {
-        std.debug.warn("    ", .{});
-    }
-    switch (statement) {
-        .let_assignment => |x| {
-            const local = locals[x.local_index];
-            std.debug.warn("LET {} =\n", .{local.name});
-            printExpression(first_pass_result, module, fields, locals, x.expression, indentation + 1);
-        },
-        .output => |expression| {
-            std.debug.warn("OUT\n", .{});
-            printExpression(first_pass_result, module, fields, locals, expression, indentation + 1);
-        },
-        .feedback => |expression| {
-            std.debug.warn("FEEDBACK\n", .{});
-            printExpression(first_pass_result, module, fields, locals, expression, indentation + 1);
-        },
-    }
-}
-
-fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: []const Field, locals: []const Local, expression: *const Expression, indentation: usize) void {
-    var i: usize = 0;
-    while (i < indentation) : (i += 1) {
-        std.debug.warn("    ", .{});
-    }
-    switch (expression.inner) {
-        .call => |call| {
-            const field = fields[call.field_index];
-            const callee_module = first_pass_result.modules[field.resolved_module_index];
-            std.debug.warn("call self.#{}({}) (\n", .{ call.field_index, callee_module.name });
-            for (call.args) |arg| {
-                i = 0;
-                while (i < indentation + 1) : (i += 1) {
-                    std.debug.warn("    ", .{});
-                }
-                std.debug.warn("{}:\n", .{arg.param_name});
-                printExpression(first_pass_result, module, fields, locals, arg.value, indentation + 2);
-            }
-            i = 0;
-            while (i < indentation) : (i += 1) {
-                std.debug.warn("    ", .{});
-            }
-            std.debug.warn(")\n", .{});
-        },
-        .local => |local_index| {
-            const local = locals[local_index];
-            std.debug.warn("{}\n", .{local.name});
-        },
-        .delay => |delay| {
-            std.debug.warn("delay {} (\n", .{delay.num_samples});
-            for (delay.scope.statements.items) |statement| {
-                printStatement(first_pass_result, module, fields, locals, statement, indentation + 1);
-            }
-            i = 0;
-            while (i < indentation) : (i += 1) {
-                std.debug.warn("    ", .{});
-            }
-            std.debug.warn(")\n", .{});
-        },
-        .feedback => {
-            std.debug.warn("feedback\n", .{});
-        },
-        .literal_boolean => |v| std.debug.warn("{}\n", .{v}),
-        .literal_number => |v| std.debug.warn("{d}\n", .{v}),
-        .literal_enum_value => |str| std.debug.warn("'{}'\n", .{str}),
-        .self_param => |param_index| std.debug.warn("params.{}\n", .{module.params[param_index].name}),
-        .negate => |expr| {
-            std.debug.warn("negate\n", .{});
-            printExpression(first_pass_result, module, fields, locals, expr, indentation + 1);
-        },
-        .bin_arith => |m| {
-            switch (m.op) {
-                .add => std.debug.warn("add\n", .{}),
-                .mul => std.debug.warn("mul\n", .{}),
-                .pow => std.debug.warn("pow\n", .{}),
-            }
-            printExpression(first_pass_result, module, fields, locals, m.a, indentation + 1);
-            printExpression(first_pass_result, module, fields, locals, m.b, indentation + 1);
-        },
-    }
+    try self.print("\n", .{});
 }

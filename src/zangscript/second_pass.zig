@@ -472,7 +472,7 @@ pub fn secondPass(
         module_infos[module_index] = module_info;
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, module_info, 1);
+        secondPassPrintModule(first_pass_result, module, module_info) catch |err| std.debug.warn("secondPassPrintModule failed: {}\n", .{err});
     }
 
     return SecondPassResult{
