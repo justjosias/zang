@@ -6,7 +6,7 @@ const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const firstPass = @import("first_pass.zig").firstPass;
 const SecondPassResult = @import("second_pass.zig").SecondPassResult;
 const secondPass = @import("second_pass.zig").secondPass;
-const startCodegen = @import("codegen.zig").startCodegen;
+const codegen = @import("codegen.zig").codegen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 
 pub const Script = struct {
@@ -45,7 +45,7 @@ pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage
     var second_pass_result = try secondPass(source, tokens, first_pass_result, allocator);
     errdefer second_pass_result.deinit();
 
-    const codegen_result = try startCodegen(source, first_pass_result, second_pass_result, allocator);
+    const codegen_result = try codegen(source, first_pass_result, second_pass_result, allocator);
     errdefer codegen_result.deinit();
 
     return Script{

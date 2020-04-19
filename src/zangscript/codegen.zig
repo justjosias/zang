@@ -124,11 +124,11 @@ pub const DelayDecl = struct {
     num_samples: usize,
 };
 
-pub const CodegenState = struct {
+pub const CodegenModuleState = struct {
     arena_allocator: *std.mem.Allocator,
     source: Source,
     first_pass_result: FirstPassResult,
-    codegen_results: []const ModuleCodeGen,
+    module_results: []const CodeGenModuleResult,
     module_index: usize,
     fields: []const Field,
     locals: []const Local,
@@ -196,7 +196,7 @@ pub const GenError = error{
     OutOfMemory,
 };
 
-fn getFloatValue(self: *CodegenState, result: ExpressionResult) ?FloatValue {
+fn getFloatValue(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
     switch (result) {
         .nothing => unreachable,
         .temp_float => |i| {
@@ -221,7 +221,7 @@ fn getFloatValue(self: *CodegenState, result: ExpressionResult) ?FloatValue {
     }
 }
 
-fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
+fn getBufferValue(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
     switch (result) {
         .nothing => unreachable,
         .temp_buffer_weak => |i| {
@@ -246,7 +246,7 @@ fn getBufferValue(self: *CodegenState, result: ExpressionResult) ?BufferValue {
     }
 }
 
-fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
+fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) void {
     switch (result) {
         .temp_buffer => |i| self.temp_buffers.release(i),
         .nothing,
@@ -263,7 +263,7 @@ fn releaseExpressionResult(self: *CodegenState, result: ExpressionResult) void {
 
 // return something that can be used as a call arg.
 // generate a temp if necessary, but literals and self_params can be returned as is (avoid redundant copy)
-fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
+fn coerceParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
     const module = self.first_pass_result.modules[self.module_index];
 
     switch (param_type) {
@@ -383,7 +383,7 @@ fn coerceParam(self: *CodegenState, sr: SourceRange, param_type: ParamType, resu
 
 // like the above, but destination is always of buffer type, and we always write to it.
 // (so if the value is a self_param, we copy it)
-fn coerceAssignment(self: *CodegenState, sr: SourceRange, result_loc: BufferDest, result: ExpressionResult) GenError!void {
+fn coerceAssignment(self: *CodegenModuleState, sr: SourceRange, result_loc: BufferDest, result: ExpressionResult) GenError!void {
     defer releaseExpressionResult(self, result);
 
     switch (result) {
@@ -466,7 +466,7 @@ const ResultInfo = union(enum) {
     result_loc: BufferDest,
 };
 
-fn coerce(self: *CodegenState, sr: SourceRange, result_info: ResultInfo, result: ExpressionResult) GenError!ExpressionResult {
+fn coerce(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, result: ExpressionResult) GenError!ExpressionResult {
     switch (result_info) {
         .none => {
             return result;
@@ -482,7 +482,7 @@ fn coerce(self: *CodegenState, sr: SourceRange, result_info: ResultInfo, result:
 }
 
 // generate bytecode instructions for an expression.
-fn genExpression(self: *CodegenState, expression: *const Expression, result_info: ResultInfo, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
+fn genExpression(self: *CodegenModuleState, expression: *const Expression, result_info: ResultInfo, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
     const sr = expression.source_range;
 
     switch (expression.inner) {
@@ -645,8 +645,8 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
             const module = self.first_pass_result.modules[self.module_index];
             const field = self.fields[call.field_index];
 
-            // the callee is guaranteed to have had its codegen done already (see second_pass), so its num_temps is known
-            const callee_num_temps = self.codegen_results[field.resolved_module_index].num_temps;
+            // the callee is guaranteed to have had its codegen done already, so its num_temps is known
+            const callee_num_temps = self.module_results[field.resolved_module_index].num_temps;
 
             const callee_module = self.first_pass_result.modules[field.resolved_module_index];
 
@@ -778,7 +778,7 @@ fn genExpression(self: *CodegenState, expression: *const Expression, result_info
     }
 }
 
-fn genLetAssignment(self: *CodegenState, x: LetAssignment, maybe_feedback_temp_index: ?usize) GenError!void {
+fn genLetAssignment(self: *CodegenModuleState, x: LetAssignment, maybe_feedback_temp_index: ?usize) GenError!void {
     // for now, only buffer type is supported for let-assignments
     // create a "temp" to hold the value
     const temp_buffer_index = try self.temp_buffers.claim();
@@ -793,48 +793,53 @@ fn genLetAssignment(self: *CodegenState, x: LetAssignment, maybe_feedback_temp_i
     defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
 }
 
-pub const ModuleCodeGen = struct {
+pub const CodeGenModuleResult = struct {
     is_builtin: bool,
     num_outputs: usize,
     num_temps: usize,
     // if is_builtin is true, the following are undefined
-    fields: []const Field, // this is owned by SecondPassResult.
+    fields: []const Field, // this is owned by SecondPassResult
     delays: []const DelayDecl, // owned slice
-    instructions: []const Instruction, // owned slice (might need to remove `const` to make it free-able?)
+    instructions: []const Instruction, // owned slice
 };
 
 pub const CodeGenResult = struct {
     arena: std.heap.ArenaAllocator,
-    module_codegen: []const ModuleCodeGen,
+    module_results: []const CodeGenModuleResult,
 
     pub fn deinit(self: *CodeGenResult) void {
         self.arena.deinit();
     }
 };
 
-pub fn startCodegen(
+// visit codegen modules in dependency order (modules need to know the
+// `num_temps` of their fields, which is resolved during codegen)
+const CodeGenVisitor = struct {
+    arena_allocator: *std.mem.Allocator, // for persistent allocations (used in result)
+    inner_allocator: *std.mem.Allocator, // for temporary allocations
     source: Source,
     first_pass_result: FirstPassResult,
     second_pass_result: SecondPassResult,
-    inner_allocator: *std.mem.Allocator,
-) !CodeGenResult {
+    module_results: []CodeGenModuleResult, // filled in as we go
+    module_visited: []bool, // ditto
+};
+
+// codegen entry point
+pub fn codegen(source: Source, first_pass_result: FirstPassResult, second_pass_result: SecondPassResult, inner_allocator: *std.mem.Allocator) !CodeGenResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
-    // do codegen (turning expressions into instructions and figuring out the num_temps for each module).
-    // this has to be done in "dependency order", since a module needs to know the num_temps of its fields
-    // before it can figure out its own num_temps.
-    // codegen_visited tracks which modules we have visited so far.
-    var codegen_visited = try inner_allocator.alloc(bool, first_pass_result.modules.len);
-    defer inner_allocator.free(codegen_visited);
-    std.mem.set(bool, codegen_visited, false);
+    var module_visited = try inner_allocator.alloc(bool, first_pass_result.modules.len);
+    defer inner_allocator.free(module_visited);
 
-    var codegen_results = try arena.allocator.alloc(ModuleCodeGen, first_pass_result.modules.len);
+    std.mem.set(bool, module_visited, false);
+
+    var module_results = try arena.allocator.alloc(CodeGenModuleResult, first_pass_result.modules.len);
 
     var builtin_index: usize = 0;
     for (first_pass_result.builtin_packages) |pkg| {
         for (pkg.builtins) |builtin| {
-            codegen_results[builtin_index] = .{
+            module_results[builtin_index] = .{
                 .is_builtin = true,
                 .instructions = undefined, // FIXME - should be null
                 .num_outputs = builtin.num_outputs,
@@ -842,114 +847,103 @@ pub fn startCodegen(
                 .fields = undefined, // FIXME - should be null?
                 .delays = undefined, // FIXME - should be null?
             };
-            codegen_visited[builtin_index] = true;
+            module_visited[builtin_index] = true;
             builtin_index += 1;
         }
     }
+
+    var self: CodeGenVisitor = .{
+        .arena_allocator = &arena.allocator,
+        .inner_allocator = inner_allocator,
+        .source = source,
+        .first_pass_result = first_pass_result,
+        .second_pass_result = second_pass_result,
+        .module_results = module_results,
+        .module_visited = module_visited,
+    };
+
     for (first_pass_result.modules) |module, i| {
-        try codegenVisit(source, first_pass_result, second_pass_result, codegen_results, codegen_visited, i, i, &arena.allocator, inner_allocator);
+        try visitModule(&self, i, i);
     }
 
     return CodeGenResult{
         .arena = arena,
-        .module_codegen = codegen_results,
+        .module_results = module_results,
     };
 }
 
-fn codegenVisit(
-    source: Source,
-    first_pass_result: FirstPassResult,
-    second_pass_result: SecondPassResult,
-    results: []ModuleCodeGen,
-    visited: []bool,
-    self_module_index: usize,
-    module_index: usize,
-    arena_allocator: *std.mem.Allocator,
-    inner_allocator: *std.mem.Allocator,
-) GenError!void {
-    if (visited[module_index]) {
+fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: usize) GenError!void {
+    if (self.module_visited[module_index]) {
         return;
     }
+    self.module_visited[module_index] = true;
 
-    visited[module_index] = true;
-
-    const module_info = second_pass_result.module_infos[module_index].?;
+    const module_info = self.second_pass_result.module_infos[module_index].?;
 
     // first, recursively resolve all modules that this one uses as its fields
     for (module_info.fields) |field, field_index| {
         if (field.resolved_module_index == self_module_index) {
-            return fail(source, field.type_token.source_range, "circular dependency in module fields", .{});
+            return fail(self.source, field.type_token.source_range, "circular dependency in module fields", .{});
         }
-
-        try codegenVisit(source, first_pass_result, second_pass_result, results, visited, self_module_index, field.resolved_module_index, arena_allocator, inner_allocator);
+        try visitModule(self, self_module_index, field.resolved_module_index);
     }
 
     // now resolve this one
-    // note: the codegen function reads from the `results` array to look up the num_temps of the fields
-    results[module_index] = try codegen(source, results, first_pass_result, module_index, module_info, arena_allocator, inner_allocator);
+    self.module_results[module_index] = try codegenModule(self, module_index, module_info);
 }
 
-// codegen_results is just there so we can read the num_temps of modules being called.
-fn codegen(
-    source: Source,
-    codegen_results: []const ModuleCodeGen,
-    first_pass_result: FirstPassResult,
-    module_index: usize,
-    module_info: SecondPassModuleInfo,
-    arena_allocator: *std.mem.Allocator, // for persistent allocations (used in result)
-    inner_allocator: *std.mem.Allocator, // for temporary allocations
-) !ModuleCodeGen {
-    var self: CodegenState = .{
-        .arena_allocator = arena_allocator,
-        .source = source,
-        .first_pass_result = first_pass_result,
-        .codegen_results = codegen_results,
+fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: SecondPassModuleInfo) !CodeGenModuleResult {
+    var state: CodegenModuleState = .{
+        .arena_allocator = self.arena_allocator,
+        .source = self.source,
+        .first_pass_result = self.first_pass_result,
+        .module_results = self.module_results,
         .module_index = module_index,
         .fields = module_info.fields,
         .locals = module_info.locals,
-        .instructions = std.ArrayList(Instruction).init(arena_allocator),
-        .temp_buffers = TempManager.init(inner_allocator), // frees its own memory in deinit
+        .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
+        .temp_buffers = TempManager.init(self.inner_allocator), // frees its own memory in deinit
         .num_temp_floats = 0,
         .num_temp_bools = 0,
-        .local_temps = try arena_allocator.alloc(?usize, module_info.locals.len),
-        .delays = std.ArrayList(DelayDecl).init(arena_allocator),
+        .local_temps = try self.arena_allocator.alloc(?usize, module_info.locals.len),
+        .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
     };
-    defer self.temp_buffers.deinit();
+    defer state.temp_buffers.deinit();
 
-    std.mem.set(?usize, self.local_temps, null);
+    std.mem.set(?usize, state.local_temps, null);
 
     for (module_info.scope.statements.items) |statement| {
         switch (statement) {
             .let_assignment => |x| {
-                try genLetAssignment(&self, x, null);
+                try genLetAssignment(&state, x, null);
             },
             .output => |expression| {
                 const result_info: ResultInfo = .{ .result_loc = .{ .output_index = 0 } };
-                const result = try genExpression(&self, expression, result_info, null);
-                defer releaseExpressionResult(&self, result); // this should do nothing (because we passed a result loc)
+                const result = try genExpression(&state, expression, result_info, null);
+                defer releaseExpressionResult(&state, result); // this should do nothing (because we passed a result loc)
             },
             .feedback => |expression| {
-                return fail(source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+                return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
             },
         }
     }
 
-    for (self.local_temps) |maybe_temp_buffer_index| {
+    for (state.local_temps) |maybe_temp_buffer_index| {
         const temp_buffer_index = maybe_temp_buffer_index orelse continue;
-        self.temp_buffers.release(temp_buffer_index);
+        state.temp_buffers.release(temp_buffer_index);
     }
 
-    self.temp_buffers.reportLeaks();
+    state.temp_buffers.reportLeaks();
 
     // diagnostic print
-    printBytecode(&self) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
+    printBytecode(&state) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
 
-    return ModuleCodeGen{
+    return CodeGenModuleResult{
         .is_builtin = false,
         .num_outputs = 1,
-        .num_temps = self.temp_buffers.finalCount(),
+        .num_temps = state.temp_buffers.finalCount(),
         .fields = module_info.fields,
-        .delays = self.delays.toOwnedSlice(),
-        .instructions = self.instructions.toOwnedSlice(),
+        .delays = state.delays.toOwnedSlice(),
+        .instructions = state.instructions.toOwnedSlice(),
     };
 }

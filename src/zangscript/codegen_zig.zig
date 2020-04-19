@@ -117,11 +117,11 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
 
         self.module = module;
 
-        const code_gen_result = codegen_result.module_codegen[i];
+        const module_result = codegen_result.module_results[i];
         try self.print("\n", .{});
         try self.print("pub const {str} = struct {{\n", .{module.name});
-        try self.print("pub const num_outputs = {usize};\n", .{code_gen_result.num_outputs});
-        try self.print("pub const num_temps = {usize};\n", .{code_gen_result.num_temps});
+        try self.print("pub const num_outputs = {usize};\n", .{module_result.num_outputs});
+        try self.print("pub const num_temps = {usize};\n", .{module_result.num_temps});
         try self.print("pub const Params = struct {{\n", .{});
         for (module.params) |param| {
             const type_name = switch (param.param_type) {
@@ -135,21 +135,21 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         }
         try self.print("}};\n", .{});
         try self.print("\n", .{});
-        for (code_gen_result.fields) |field, j| {
+        for (module_result.fields) |field, j| {
             const field_module = first_pass_result.modules[field.resolved_module_index];
             try self.print("field{usize}_{str}: {module_name},\n", .{ j, field_module.name, field.resolved_module_index });
         }
-        for (code_gen_result.delays) |delay_decl, j| {
+        for (module_result.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
         }
         try self.print("\n", .{});
         try self.print("pub fn init() {str} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
-        for (code_gen_result.fields) |field, j| {
+        for (module_result.fields) |field, j| {
             const field_module = first_pass_result.modules[field.resolved_module_index];
             try self.print(".field{usize}_{str} = {module_name}.init(),\n", .{ j, field_module.name, field.resolved_module_index });
         }
-        for (code_gen_result.delays) |delay_decl, j| {
+        for (module_result.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
         }
         try self.print("}};\n", .{});
@@ -157,7 +157,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         try self.print("\n", .{});
         try self.print("pub fn paint(self: *{str}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
         var span: []const u8 = "span";
-        for (code_gen_result.instructions) |instr| {
+        for (module_result.instructions) |instr| {
             switch (instr) {
                 .copy_buffer => |x| {
                     try self.print("zang.copy({str}, {buffer_dest}, {buffer_value});\n", .{ span, x.out, x.in });
@@ -246,7 +246,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                     }
                 },
                 .call => |call| {
-                    const field = code_gen_result.fields[call.field_index];
+                    const field = module_result.fields[call.field_index];
                     const field_module = first_pass_result.modules[field.resolved_module_index];
                     try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
                     try self.print("self.field{usize}_{str}.paint({str}, .{{", .{ call.field_index, field_module.name, span });

@@ -1,13 +1,13 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
-const CodegenState = @import("codegen.zig").CodegenState;
+const CodegenModuleState = @import("codegen.zig").CodegenModuleState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
 
 const State = struct {
-    codegen_state: *const CodegenState,
+    codegen_state: *const CodegenModuleState,
     helper: PrintHelper,
 
     pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
@@ -74,7 +74,7 @@ const State = struct {
     }
 };
 
-pub fn printBytecode(codegen_state: *const CodegenState) !void {
+pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
     const stderr_file = std.io.getStdErr();
     var stderr_file_out_stream = stderr_file.outStream();
 
