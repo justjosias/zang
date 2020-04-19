@@ -942,7 +942,7 @@ fn codegen(
     self.temp_buffers.reportLeaks();
 
     // diagnostic print
-    printBytecode(&self);
+    printBytecode(&self) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
 
     return ModuleCodeGen{
         .is_builtin = false,

@@ -30,7 +30,7 @@ pub const Module = struct {
     name: []const u8,
     zig_package_name: ?[]const u8, // only set for builtin modules
     params: []const ModuleParam,
-    // FIXME - i wanted body_loc should be an optional struct value, but a zig
+    // FIXME - i wanted body_loc to be an optional struct value, but a zig
     // compiler bug prevents that. (if i make it optional, the fields will read
     // out as all 0's in the second pass)
     has_body_loc: bool,
