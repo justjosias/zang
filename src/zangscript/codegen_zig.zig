@@ -110,7 +110,7 @@ const State = struct {
             .literal_boolean => |value| try self.print("{bool}", .{value}),
             .literal_number => |value| try self.print("{f32}", .{value}),
             .literal_enum_value => |str| try self.print(".{str}", .{str}),
-            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].zig_name}),
+            .self_param => |i| try self.print("params.{str}", .{module.params[i].zig_name}),
         }
     }
 
@@ -118,7 +118,7 @@ const State = struct {
         const module = self.module orelse return error.NoModule;
         switch (value) {
             .temp_buffer_index => |i| try self.print("temps[{usize}]", .{i}),
-            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].zig_name}),
+            .self_param => |i| try self.print("params.{str}", .{module.params[i].zig_name}),
         }
     }
 
@@ -133,7 +133,7 @@ const State = struct {
         const module = self.module orelse return error.NoModule;
         switch (value) {
             .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
-            .self_param => |i| try self.print("params.{str}", .{self.first_pass_result.module_params[module.first_param + i].zig_name}),
+            .self_param => |i| try self.print("params.{str}", .{module.params[i].zig_name}),
             .literal => |v| try self.print("{f32}", .{v}),
         }
     }
@@ -181,13 +181,13 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         try self.print("pub const num_outputs = {usize};\n", .{code_gen_result.num_outputs});
         try self.print("pub const num_temps = {usize};\n", .{code_gen_result.num_temps});
         try self.print("pub const Params = struct {{\n", .{});
-        for (first_pass_result.module_params[module.first_param .. module.first_param + module.num_params]) |param| {
+        for (module.params) |param| {
             const type_name = switch (param.param_type) {
                 .boolean => "bool",
                 .buffer => "[]const f32",
                 .constant => "f32",
                 .constant_or_buffer => "zang.ConstantOrBuffer",
-               .one_of => |e| e.zig_name,
+                .one_of => |e| e.zig_name,
             };
             try self.print("{str}: {str},\n", .{ param.zig_name, type_name });
         }
@@ -224,8 +224,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                     try self.print("zang.set({str}, {buffer_dest}, {float_value});\n", .{ span, x.out, x.in });
                 },
                 .cob_to_buffer => |x| {
-                    const param = self.first_pass_result.module_params[module.first_param + x.in_self_param];
-                    try self.print("switch (params.{str}) {{\n", .{param.zig_name});
+                    try self.print("switch (params.{str}) {{\n", .{module.params[x.in_self_param].zig_name});
                     try self.print(".constant => |v| zang.set({str}, {buffer_dest}, v),\n", .{ span, x.out });
                     try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
                     try self.print("}}\n", {});
@@ -320,9 +319,8 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                     // callee params
                     try self.print("}}, note_id_changed, .{{\n", .{});
                     const callee_module = first_pass_result.modules[field.resolved_module_index];
-                    const callee_params = first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                     for (call.args) |arg, j| {
-                        const callee_param = callee_params[j];
+                        const callee_param = callee_module.params[j];
                         try self.print(".{str} = ", .{callee_param.zig_name});
                         if (callee_param.param_type == .constant_or_buffer) {
                             // coerce to ConstantOrBuffer?
@@ -336,7 +334,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                                 .literal_number => |value| try self.print("zang.constant({f32})", .{value}),
                                 .literal_enum_value => unreachable,
                                 .self_param => |index| {
-                                    const param = first_pass_result.module_params[module.first_param + index];
+                                    const param = module.params[index];
                                     switch (param.param_type) {
                                         .boolean => unreachable,
                                         .buffer => try self.print("zang.buffer(params.{str})", .{param.zig_name}),

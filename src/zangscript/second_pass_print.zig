@@ -89,10 +89,7 @@ fn printExpression(first_pass_result: FirstPassResult, module: Module, fields: [
         .literal_boolean => |v| std.debug.warn("{}\n", .{v}),
         .literal_number => |v| std.debug.warn("{d}\n", .{v}),
         .literal_enum_value => |str| std.debug.warn("'{}'\n", .{str}),
-        .self_param => |param_index| {
-            const params = first_pass_result.module_params[module.first_param .. module.first_param + module.num_params];
-            std.debug.warn("params.{}\n", .{params[param_index].name});
-        },
+        .self_param => |param_index| std.debug.warn("params.{}\n", .{module.params[param_index].name}),
         .negate => |expr| {
             std.debug.warn("negate\n", .{});
             printExpression(first_pass_result, module, fields, locals, expr, indentation + 1);

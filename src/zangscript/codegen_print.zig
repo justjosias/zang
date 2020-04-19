@@ -17,8 +17,7 @@ fn printExpressionResult(self: *const CodegenState, result: ExpressionResult) vo
         .literal_enum_value => |str| std.debug.warn("'{}'", .{str}),
         .self_param => |i| {
             const module = self.first_pass_result.modules[self.module_index];
-            const param = self.first_pass_result.module_params[module.first_param + i];
-            std.debug.warn("params.{}", .{param.name});
+            std.debug.warn("params.{}", .{module.params[i].name});
         },
     }
 }
@@ -28,8 +27,7 @@ fn printFloatValue(self: *const CodegenState, value: FloatValue) void {
         .temp_float_index => |i| std.debug.warn("temp_float{}", .{i}),
         .self_param => |i| { // guaranteed to be of type `constant`
             const module = self.first_pass_result.modules[self.module_index];
-            const param = self.first_pass_result.module_params[module.first_param + i];
-            std.debug.warn("params.{}", .{param.name});
+            std.debug.warn("params.{}", .{module.params[i].name});
         },
         .literal => |v| std.debug.warn("{d}", .{v}),
     }
@@ -47,8 +45,7 @@ fn printBufferValue(self: *const CodegenState, value: BufferValue) void {
         .temp_buffer_index => |i| std.debug.warn("temp{}", .{i}),
         .self_param => |i| { // guaranteed to be of type `buffer`
             const module = self.first_pass_result.modules[self.module_index];
-            const param = self.first_pass_result.module_params[module.first_param + i];
-            std.debug.warn("params.{}", .{param.name});
+            std.debug.warn("params.{}", .{module.params[i].name});
         },
     }
 }
@@ -81,9 +78,8 @@ pub fn printBytecode(self: *CodegenState) void {
             },
             .cob_to_buffer => |x| {
                 const module = self.first_pass_result.modules[self.module_index];
-                const param = self.first_pass_result.module_params[module.first_param + x.in_self_param];
                 printBufferDest(self, x.out);
-                std.debug.warn(" = COB_TO_BUFFER params.{}\n", .{param.name});
+                std.debug.warn(" = COB_TO_BUFFER params.{}\n", .{module.params[x.in_self_param].name});
             },
             .negate_float_to_float => |x| {
                 std.debug.warn("temp_float{} = NEGATE_FLOAT_TO_FLOAT ", .{x.out_temp_float_index});
@@ -130,7 +126,6 @@ pub fn printBytecode(self: *CodegenState) void {
             .call => |call| {
                 const field = self.fields[call.field_index];
                 const callee_module = self.first_pass_result.modules[field.resolved_module_index];
-                const callee_params = self.first_pass_result.module_params[callee_module.first_param .. callee_module.first_param + callee_module.num_params];
                 printBufferDest(self, call.out);
                 std.debug.warn(" = CALL #{}({})\n", .{ call.field_index, callee_module.name });
                 std.debug.warn("        temps: [", .{});
@@ -140,7 +135,7 @@ pub fn printBytecode(self: *CodegenState) void {
                 }
                 std.debug.warn("]\n", .{});
                 for (call.args) |arg, i| {
-                    std.debug.warn("        {} = ", .{callee_params[i].name});
+                    std.debug.warn("        {} = ", .{callee_module.params[i].name});
                     printExpressionResult(self, arg);
                     std.debug.warn("\n", .{});
                 }

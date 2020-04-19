@@ -16,7 +16,7 @@ pub const ParamType = union(enum) {
     constant,
     constant_or_buffer,
 
-    // script modules cannot use this
+    // currently only builtin modules can define enum params
     one_of: ParamTypeEnum,
 };
 
@@ -29,20 +29,21 @@ pub const ModuleParam = struct {
 pub const Module = struct {
     name: []const u8,
     zig_package_name: ?[]const u8, // only set for builtin modules
-    first_param: usize,
-    num_params: usize,
-};
-
-pub const ModuleBodyLocation = struct {
+    params: []const ModuleParam,
+    // FIXME - i wanted body_loc should be an optional struct value, but a zig
+    // compiler bug prevents that. (if i make it optional, the fields will read
+    // out as all 0's in the second pass)
+    has_body_loc: bool,
+    // the following will both be zero for builtin modules (has_body_loc is
+    // false)
     begin_token: usize,
     end_token: usize,
 };
 
 const FirstPass = struct {
+    arena_allocator: *std.mem.Allocator,
     parser: Parser,
     modules: std.ArrayList(Module),
-    module_body_locations: std.ArrayList(?ModuleBodyLocation),
-    module_params: std.ArrayList(ModuleParam),
 };
 
 fn parseParamType(source: Source, type_token: Token) !ParamType {
@@ -77,7 +78,7 @@ fn defineModule(self: *FirstPass) !void {
         return fail(self.parser.source, ctoken.source_range, "expected `:`, found `<`", .{});
     }
 
-    const first_param_index = self.module_params.items.len;
+    var params = std.ArrayList(ModuleParam).init(self.arena_allocator);
 
     while (true) {
         var token = try self.parser.expect();
@@ -89,7 +90,7 @@ fn defineModule(self: *FirstPass) !void {
                 if (param_name[0] < 'a' or param_name[0] > 'z') {
                     return fail(self.parser.source, token.source_range, "param name must start with a lowercase letter", .{});
                 }
-                for (self.module_params.items[first_param_index..]) |param| {
+                for (params.items) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
                         return fail(self.parser.source, token.source_range, "redeclaration of param `<`", .{});
                     }
@@ -107,7 +108,7 @@ fn defineModule(self: *FirstPass) !void {
                 if (token.tt != .sym_comma) {
                     return fail(self.parser.source, token.source_range, "expected `,`, found `<`", .{});
                 }
-                try self.module_params.append(.{
+                try params.append(.{
                     .name = param_name,
                     .zig_name = param_name, // TODO wrap zig keywords in `@"..."`?
                     .param_type = param_type,
@@ -140,45 +141,36 @@ fn defineModule(self: *FirstPass) !void {
     try self.modules.append(.{
         .name = module_name,
         .zig_package_name = null,
-        .first_param = first_param_index,
-        .num_params = self.module_params.items.len - first_param_index,
-    });
-    try self.module_body_locations.append(ModuleBodyLocation{
+        .params = params.toOwnedSlice(),
+        .has_body_loc = true,
         .begin_token = begin_token,
         .end_token = end_token,
     });
 }
 
 pub const FirstPassResult = struct {
-    allocator: *std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     builtin_packages: []const BuiltinPackage,
     modules: []const Module,
-    module_body_locations: []const ?ModuleBodyLocation,
-    module_params: []const ModuleParam,
 
     pub fn deinit(self: *FirstPassResult) void {
-        self.allocator.free(self.modules);
-        self.allocator.free(self.module_body_locations);
-        self.allocator.free(self.module_params);
+        self.arena.deinit();
     }
 };
 
-pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []const BuiltinPackage, allocator: *std.mem.Allocator) !FirstPassResult {
+pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []const BuiltinPackage, inner_allocator: *std.mem.Allocator) !FirstPassResult {
+    var arena = std.heap.ArenaAllocator.init(inner_allocator);
+    errdefer arena.deinit();
+
     var self: FirstPass = .{
+        .arena_allocator = &arena.allocator,
         .parser = .{
             .source = source,
             .tokens = tokens,
             .i = 0,
         },
-        .modules = std.ArrayList(Module).init(allocator),
-        .module_body_locations = std.ArrayList(?ModuleBodyLocation).init(allocator),
-        .module_params = std.ArrayList(ModuleParam).init(allocator),
+        .modules = std.ArrayList(Module).init(&arena.allocator),
     };
-    errdefer {
-        self.modules.deinit();
-        self.module_body_locations.deinit();
-        self.module_params.deinit();
-    }
 
     // add builtins
     for (builtin_packages) |pkg| {
@@ -186,11 +178,11 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
             try self.modules.append(.{
                 .name = builtin.name,
                 .zig_package_name = pkg.zig_package_name,
-                .first_param = self.module_params.items.len,
-                .num_params = builtin.params.len,
+                .params = builtin.params,
+                .has_body_loc = false,
+                .begin_token = 0,
+                .end_token = 0,
             });
-            try self.module_body_locations.append(null);
-            try self.module_params.appendSlice(builtin.params);
         }
     }
 
@@ -203,10 +195,8 @@ pub fn firstPass(source: Source, tokens: []const Token, builtin_packages: []cons
     }
 
     return FirstPassResult{
-        .allocator = allocator,
+        .arena = arena,
         .builtin_packages = builtin_packages,
         .modules = self.modules.toOwnedSlice(),
-        .module_body_locations = self.module_body_locations.toOwnedSlice(),
-        .module_params = self.module_params.toOwnedSlice(),
     };
 }

@@ -16,42 +16,8 @@ const codegen = @import("codegen.zig").codegen;
 const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
 
 pub const Scope = struct {
-    allocator: *std.mem.Allocator,
     parent: ?*const Scope,
     statements: std.ArrayList(Statement),
-
-    pub fn deinit(self: *Scope) void {
-        for (self.statements.items) |*statement| {
-            switch (statement.*) {
-                .let_assignment => |x| self.freeExpression(x.expression),
-                .output => |expression| self.freeExpression(expression),
-                .feedback => |expression| self.freeExpression(expression),
-            }
-        }
-        self.statements.deinit();
-        self.allocator.destroy(self);
-    }
-
-    fn freeExpression(self: *Scope, expression: *const Expression) void {
-        switch (expression.inner) {
-            .call => |x| {
-                for (x.args) |arg| {
-                    self.freeExpression(arg.value);
-                }
-                self.allocator.free(x.args);
-            },
-            .delay => |x| {
-                x.scope.deinit();
-            },
-            .negate => |expr| self.freeExpression(expr),
-            .bin_arith => |x| {
-                self.freeExpression(x.a);
-                self.freeExpression(x.b);
-            },
-            else => {},
-        }
-        self.allocator.destroy(expression);
-    }
 };
 
 pub const CallArg = struct {
@@ -121,7 +87,7 @@ pub const Field = struct {
 };
 
 const SecondPass = struct {
-    allocator: *std.mem.Allocator,
+    arena_allocator: *std.mem.Allocator,
     tokens: []const Token,
     parser: Parser,
     first_pass_result: FirstPassResult,
@@ -156,8 +122,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
     if (token.tt != .sym_left_paren) {
         return fail(self.parser.source, token.source_range, "expected `(`, found `<`", .{});
     }
-    var args = std.ArrayList(CallArg).init(self.allocator);
-    errdefer args.deinit();
+    var args = std.ArrayList(CallArg).init(self.arena_allocator);
     var first = true;
     token = try self.parser.expect();
     while (token.tt != .sym_right_paren) {
@@ -234,7 +199,7 @@ fn createExpr(self: *SecondPass, loc0: SourceLocation, inner: ExpressionInner) !
     // you pass the location of the start of the expression. this function will use the parser's
     // current location to set the expression's end location
     const loc1 = if (self.parser.i == 0) loc0 else self.parser.tokens[self.parser.i - 1].source_range.loc1;
-    const expr = try self.allocator.create(Expression);
+    const expr = try self.arena_allocator.create(Expression);
     expr.* = .{
         .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
         .inner = inner,
@@ -263,15 +228,11 @@ fn parseLocalOrParam(self: *SecondPass, scope: *const Scope, name: []const u8) ?
     if (maybe_local_index) |local_index| {
         return ExpressionInner{ .local = local_index };
     }
-    const maybe_param_index = blk: {
-        const params = self.first_pass_result.module_params[self.module.first_param .. self.module.first_param + self.module.num_params];
-        for (params) |param, i| {
-            if (std.mem.eql(u8, param.name, name)) {
-                break :blk i;
-            }
+    const maybe_param_index = for (self.module.params) |param, i| {
+        if (std.mem.eql(u8, param.name, name)) {
+            break i;
         }
-        break :blk null;
-    };
+    } else null;
     if (maybe_param_index) |param_index| {
         return ExpressionInner{ .self_param = param_index };
     }
@@ -423,13 +384,11 @@ fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
 }
 
 fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
-    var scope = try self.allocator.create(Scope);
+    var scope = try self.arena_allocator.create(Scope);
     scope.* = .{
-        .allocator = self.allocator,
         .parent = parent_scope,
-        .statements = std.ArrayList(Statement).init(self.allocator),
+        .statements = std.ArrayList(Statement).init(self.arena_allocator),
     };
-    errdefer scope.deinit();
 
     while (self.parser.next()) |token| {
         switch (token.tt) {
@@ -439,15 +398,11 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
             },
             .kw_out => {
                 const expr = try expectExpression(self, scope);
-                try scope.statements.append(.{
-                    .output = expr,
-                });
+                try scope.statements.append(.{ .output = expr });
             },
             .kw_feedback => {
                 const expr = try expectExpression(self, scope);
-                try scope.statements.append(.{
-                    .feedback = expr,
-                });
+                try scope.statements.append(.{ .feedback = expr });
             },
             else => {
                 return fail(self.parser.source, token.source_range, "expected `let`, `out` or `end`, found `<`", .{});
@@ -462,25 +417,14 @@ pub const SecondPassModuleInfo = struct {
     scope: *Scope,
     fields: []const Field,
     locals: []const Local,
-
-    pub fn deinit(self: *SecondPassModuleInfo, allocator: *std.mem.Allocator) void {
-        self.scope.deinit();
-        allocator.free(self.fields);
-        allocator.free(self.locals);
-    }
 };
 
 pub const SecondPassResult = struct {
-    allocator: *std.mem.Allocator,
-    module_infos: []?SecondPassModuleInfo, // null for builtins. FIXME why i can't i make it const? it says 'invalid token: const'
+    arena: std.heap.ArenaAllocator,
+    module_infos: []const ?SecondPassModuleInfo, // null for builtins
 
     pub fn deinit(self: *SecondPassResult) void {
-        for (self.module_infos) |*maybe_module_info| {
-            if (maybe_module_info.*) |*module_info| {
-                module_info.deinit(self.allocator);
-            }
-        }
-        self.allocator.free(self.module_infos);
+        self.arena.deinit();
     }
 };
 
@@ -488,50 +432,51 @@ pub fn secondPass(
     source: Source,
     tokens: []const Token,
     first_pass_result: FirstPassResult,
-    allocator: *std.mem.Allocator,
+    inner_allocator: *std.mem.Allocator,
 ) !SecondPassResult {
-    // parse paint blocks
-    var result: SecondPassResult = .{
-        .allocator = allocator,
-        .module_infos = try allocator.alloc(?SecondPassModuleInfo, first_pass_result.modules.len),
-    };
-    std.mem.set(?SecondPassModuleInfo, result.module_infos, null);
-    errdefer result.deinit();
+    var arena = std.heap.ArenaAllocator.init(inner_allocator);
+    errdefer arena.deinit();
+
+    var module_infos = try arena.allocator.alloc(?SecondPassModuleInfo, first_pass_result.modules.len);
 
     for (first_pass_result.modules) |module, module_index| {
-        // body_loc is null if it's a builtin
-        const body_loc = first_pass_result.module_body_locations[module_index] orelse continue;
+        if (!module.has_body_loc) {
+            // it's a builtin
+            module_infos[module_index] = null;
+            continue;
+        }
 
         var self: SecondPass = .{
-            .allocator = allocator,
+            .arena_allocator = &arena.allocator,
             .tokens = tokens,
             .parser = .{
                 .source = source,
-                .tokens = tokens[body_loc.begin_token..body_loc.end_token],
+                .tokens = tokens[module.begin_token..module.end_token],
                 .i = 0,
             },
             .first_pass_result = first_pass_result,
             .module = module,
             .module_index = module_index,
-            .fields = std.ArrayList(Field).init(allocator),
-            .locals = std.ArrayList(Local).init(allocator),
+            .fields = std.ArrayList(Field).init(&arena.allocator),
+            .locals = std.ArrayList(Local).init(&arena.allocator),
         };
 
-        const top_scope = parseStatements(&self, null) catch |err| {
-            self.fields.deinit();
-            self.locals.deinit();
-            return err;
-        };
+        const top_scope = try parseStatements(&self, null);
 
-        result.module_infos[module_index] = SecondPassModuleInfo{
+        const module_info: SecondPassModuleInfo = .{
             .scope = top_scope,
             .fields = self.fields.toOwnedSlice(),
             .locals = self.locals.toOwnedSlice(),
         };
 
+        module_infos[module_index] = module_info;
+
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, result.module_infos[module_index].?, 1);
+        secondPassPrintModule(first_pass_result, module, module_info, 1);
     }
 
-    return result;
+    return SecondPassResult{
+        .arena = arena,
+        .module_infos = module_infos,
+    };
 }
