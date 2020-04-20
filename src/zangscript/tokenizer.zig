@@ -181,7 +181,6 @@ fn getSymbol(string: []const u8) ?GetSymbolResult {
         .{ .string = "**", .tt = .sym_dbl_asterisk },
         .{ .string = "*", .tt = .sym_asterisk },
         .{ .string = ":", .tt = .sym_colon },
-        .{ .string = ":", .tt = .sym_colon },
         .{ .string = ",", .tt = .sym_comma },
         .{ .string = "=", .tt = .sym_equals },
         .{ .string = "(", .tt = .sym_left_paren },
@@ -217,6 +216,33 @@ fn getKeyword(string: []const u8) ?TokenType {
     return null;
 }
 
+fn describeTokenType(tt: TokenType) []const u8 {
+    return switch (tt) {
+        .illegal => "(illegal)",
+        .sym_asterisk => "`*`",
+        .sym_colon => "`:`",
+        .sym_comma => "`,`",
+        .sym_dbl_asterisk => "`**`",
+        .sym_equals => "`=`",
+        .sym_left_paren => "`(`",
+        .sym_minus => "`-`",
+        .sym_plus => "`+`",
+        .sym_right_paren => "`)`",
+        .kw_begin => "`begin`",
+        .kw_def => "`def`",
+        .kw_delay => "`delay`",
+        .kw_end => "`end`",
+        .kw_false => "`false`",
+        .kw_feedback => "`feedback`",
+        .kw_let => "`let`",
+        .kw_out => "`out`",
+        .kw_true => "`true`",
+        .identifier => "identifier",
+        .enum_value => "enum value",
+        .number => "number",
+    };
+}
+
 pub const TokenIterator = struct {
     source: Source,
     tokens: []const Token,
@@ -245,9 +271,38 @@ pub const TokenIterator = struct {
         return null;
     }
 
-    pub fn expect(self: *TokenIterator) !Token {
-        // FIXME can i have it print what it was looking for?
-        // or maybe make EOF a kind of token?
-        return self.next() orelse return fail(self.source, null, "unexpected end of file", .{});
+    pub fn getSourceString(self: *const TokenIterator, source_range: SourceRange) []const u8 {
+        return self.source.contents[source_range.loc0.index..source_range.loc1.index];
+    }
+
+    pub fn failExpected(self: *TokenIterator, desc: []const u8, found: SourceRange) error{Failed} {
+        return fail(self.source, found, "expected #, found `<`", .{desc});
+    }
+
+    pub fn expect(self: *TokenIterator, desc: []const u8) !Token {
+        return self.next() orelse return fail(self.source, null, "expected #, found end of file", .{desc});
+    }
+
+    pub fn expectIdentifier(self: *TokenIterator, desc: []const u8) !Token {
+        const token = try self.expect(desc);
+        if (token.tt != .identifier) {
+            return self.failExpected(desc, token.source_range);
+        }
+        return token;
+    }
+
+    pub fn expectOneOf(self: *TokenIterator, comptime tts: []const TokenType) !Token {
+        comptime var desc: []const u8 = "";
+        inline for (tts) |tt, i| {
+            if (i > 0) desc = desc ++ ", ";
+            desc = desc ++ describeTokenType(tt);
+        }
+        const token = try self.expect(desc);
+        for (tts) |tt| {
+            if (token.tt == tt) {
+                return token;
+            }
+        }
+        return self.failExpected(desc, token.source_range);
     }
 };

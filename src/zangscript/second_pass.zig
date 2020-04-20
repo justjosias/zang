@@ -118,27 +118,24 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
         .resolved_module_index = callee_module_index,
     });
 
-    var token = try self.token_it.expect();
-    if (token.tt != .sym_left_paren) {
-        return fail(self.token_it.source, token.source_range, "expected `(`, found `<`", .{});
-    }
+    _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_left_paren});
     var args = std.ArrayList(CallArg).init(self.arena_allocator);
     var first = true;
-    token = try self.token_it.expect();
+    var token = try self.token_it.expect("`)` or arg name");
     while (token.tt != .sym_right_paren) {
         if (first) {
             first = false;
         } else {
             if (token.tt == .sym_comma) {
-                token = try self.token_it.expect();
+                token = try self.token_it.expect("`)` or arg name");
             } else {
-                return fail(self.token_it.source, token.source_range, "expected `,` or `)`, found `<`", .{});
+                return self.token_it.failExpected("`,` or `)`", token.source_range);
             }
         }
         switch (token.tt) {
             .identifier => {
-                const identifier = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-                const equals_token = try self.token_it.expect();
+                const identifier = self.token_it.getSourceString(token.source_range);
+                const equals_token = try self.token_it.expect("`=`, `,` or `)`");
                 if (equals_token.tt == .sym_equals) {
                     const subexpr = try expectExpression(self, scope);
                     try args.append(.{
@@ -146,7 +143,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                         .param_name_token = token,
                         .value = subexpr,
                     });
-                    token = try self.token_it.expect();
+                    token = try self.token_it.expect("`)` or arg name");
                 } else {
                     // shorthand param passing: `val` expands to `val=val`
                     const inner = parseLocalOrParam(self, scope, identifier) orelse
@@ -162,7 +159,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                 }
             },
             else => {
-                return fail(self.token_it.source, token.source_range, "expected `)` or arg name, found `<`", .{});
+                return self.token_it.failExpected("`)` or arg name", token.source_range);
             },
         }
     }
@@ -175,18 +172,15 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
 fn parseDelay(self: *SecondPass, scope: *const Scope) ParseError!Delay {
     // constant number for the number of delay samples (this is a limitation of my current delay implementation)
     const num_samples = blk: {
-        const token = try self.token_it.expect();
-        const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+        const token = try self.token_it.expectOneOf(&[_]TokenType{.number});
+        const s = self.token_it.getSourceString(token.source_range);
         const n = std.fmt.parseInt(usize, s, 10) catch {
             return fail(self.token_it.source, token.source_range, "malformatted integer", .{});
         };
         break :blk n;
     };
     // keyword `begin`
-    const begin_token = try self.token_it.expect();
-    if (begin_token.tt != .kw_begin) {
-        return fail(self.token_it.source, begin_token.source_range, "expected `begin`, found `<`", .{});
-    }
+    _ = try self.token_it.expectOneOf(&[_]TokenType{.kw_begin});
     // inner statements
     const inner_scope = try parseStatements(self, scope);
     return Delay{
@@ -261,7 +255,7 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
 fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) ParseError!*const Expression {
     var negate = false;
     if (if (self.token_it.peek()) |token| token.tt == .sym_minus else false) {
-        _ = try self.token_it.expect();
+        _ = self.token_it.next();
         negate = true;
     }
 
@@ -289,20 +283,17 @@ fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) Pa
 }
 
 fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {
-    const token = try self.token_it.expect();
+    const token = try self.token_it.expect("expression");
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
         .sym_left_paren => {
             const a = try expectExpression(self, scope);
-            const paren_token = try self.token_it.expect();
-            if (paren_token.tt != .sym_right_paren) {
-                return fail(self.token_it.source, paren_token.source_range, "expected `)`, found `<`", .{});
-            }
+            _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_right_paren});
             return a;
         },
         .identifier => {
-            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.getSourceString(token.source_range);
             if (s[0] >= 'A' and s[0] <= 'Z') {
                 const call = try parseCall(self, scope, token, s);
                 return try createExpr(self, loc0, .{ .call = call });
@@ -318,14 +309,14 @@ fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expressi
             return try createExpr(self, loc0, .{ .literal_boolean = true });
         },
         .number => {
-            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.getSourceString(token.source_range);
             const n = std.fmt.parseFloat(f32, s) catch {
                 return fail(self.token_it.source, token.source_range, "malformatted number", .{});
             };
             return try createExpr(self, loc0, .{ .literal_number = n });
         },
         .enum_value => {
-            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.getSourceString(token.source_range);
             return try createExpr(self, loc0, .{ .literal_enum_value = s });
         },
         .kw_delay => {
@@ -336,24 +327,18 @@ fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expressi
             return try createExpr(self, loc0, .feedback);
         },
         else => {
-            return fail(self.token_it.source, token.source_range, "expected expression, found `<`", .{});
+            return self.token_it.failExpected("expression", token.source_range);
         },
     }
 }
 
 fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
-    const name_token = try self.token_it.expect();
-    if (name_token.tt != .identifier) {
-        return fail(self.token_it.source, name_token.source_range, "expected identifier", .{});
-    }
-    const name = self.token_it.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
+    const name_token = try self.token_it.expectOneOf(&[_]TokenType{.identifier});
+    const name = self.token_it.getSourceString(name_token.source_range);
     if (name[0] < 'a' or name[0] > 'z') {
         return fail(self.token_it.source, name_token.source_range, "local name must start with a lowercase letter", .{});
     }
-    const equals_token = try self.token_it.expect();
-    if (equals_token.tt != .sym_equals) {
-        return fail(self.token_it.source, equals_token.source_range, "expect `=`, found `<`", .{});
-    }
+    _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_equals});
     // note: locals are allowed to shadow params
     var maybe_s: ?*const Scope = scope;
     while (maybe_s) |s| : (maybe_s = s.parent) {
@@ -405,7 +390,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
                 try scope.statements.append(.{ .feedback = expr });
             },
             else => {
-                return fail(self.token_it.source, token.source_range, "expected `let`, `out` or `end`, found `<`", .{});
+                return self.token_it.failExpected("`let`, `out` or `end`", token.source_range);
             },
         }
     }
