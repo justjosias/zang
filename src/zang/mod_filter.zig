@@ -31,9 +31,9 @@ pub const Filter = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         input: []const f32,
-        filter_type: FilterType,
+        type: FilterType,
         cutoff: ConstantOrBuffer, // 0-1
-        resonance: f32, // 0-1
+        res: f32, // 0-1
     };
 
     l: f32,

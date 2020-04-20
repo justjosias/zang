@@ -15,7 +15,7 @@ pub const Distortion = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         input: []const f32,
-        distortion_type: DistortionType,
+        type: DistortionType,
         ingain: f32, // 0 to 1. 0.25 is even, anything above is amplification
         outgain: f32, // 0 to 1
         offset: f32, // -1 to +1
@@ -42,7 +42,8 @@ pub const Distortion = struct {
                 const gain2 = params.outgain / std.math.atan(gain1);
                 const offs = gain1 * params.offset;
 
-                var i = span.start; while (i < span.end) : (i += 1) {
+                var i = span.start;
+                while (i < span.end) : (i += 1) {
                     const a = std.math.atan(params.input[i] * gain1 + offs);
                     output[i] += gain2 * a;
                 }
@@ -51,7 +52,8 @@ pub const Distortion = struct {
                 const gain2 = params.outgain;
                 const offs = gain1 * params.offset;
 
-                var i = span.start; while (i < span.end) : (i += 1) {
+                var i = span.start;
+                while (i < span.end) : (i += 1) {
                     const a = params.input[i] * gain1 + offs;
                     const b = if (a < -1.0) -1.0 else if (a > 1.0) 1.0 else a;
                     output[i] += gain2 * b;

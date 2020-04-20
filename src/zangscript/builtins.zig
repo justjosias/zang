@@ -1,7 +1,7 @@
 const std = @import("std");
 const zang = @import("../zang.zig");
 const ModuleParam = @import("first_pass.zig").ModuleParam;
-const ParamTypeEnum = @import("first_pass.zig").ParamTypeEnum;
+const ParamType = @import("first_pass.zig").ParamType;
 
 pub const BuiltinModule = struct {
     name: []const u8,
@@ -10,38 +10,38 @@ pub const BuiltinModule = struct {
     num_outputs: usize,
 };
 
-fn getBuiltinEnum(comptime T: type) ParamTypeEnum {
-    comptime var values: [@typeInfo(T).Enum.fields.len][]const u8 = undefined;
-    inline for (@typeInfo(T).Enum.fields) |field, i| {
-        values[i] = field.name;
+fn getBuiltinParamType(comptime T: type) ParamType {
+    switch (@typeInfo(T)) {
+        .Enum => |enum_info| {
+            comptime var values: [enum_info.fields.len][]const u8 = undefined;
+            inline for (enum_info.fields) |field, i| {
+                values[i] = field.name;
+            }
+            return .{
+                .one_of = .{
+                    // assume it's one of the public enums (e.g. zang.FilterType)
+                    .zig_name = "zang." ++ @typeName(T),
+                    .values = &values,
+                },
+            };
+        },
+        else => return switch (T) {
+            bool => .boolean,
+            f32 => .constant,
+            []const f32 => .buffer,
+            zang.ConstantOrBuffer => .constant_or_buffer,
+            else => @compileError("unsupported builtin field type: " ++ @typeName(T)),
+        },
     }
-    return .{
-        .zig_name = "zang." ++ @typeName(T), // FIXME?
-        .values = &values,
-    };
 }
 
 pub fn getBuiltinModule(comptime T: type) BuiltinModule {
-    comptime var params: [@typeInfo(T.Params).Struct.fields.len]ModuleParam = undefined;
-    inline for (@typeInfo(T.Params).Struct.fields) |field, i| {
+    const struct_fields = @typeInfo(T.Params).Struct.fields;
+    comptime var params: [struct_fields.len]ModuleParam = undefined;
+    inline for (struct_fields) |field, i| {
         params[i] = .{
-            .name =
-                // FIXME - remove this.
-                if (std.mem.eql(u8, field.name, "filter_type") or std.mem.eql(u8, field.name, "distortion_type"))
-                    "type"
-                else if (std.mem.eql(u8, field.name, "resonance"))
-                    "res"
-                else
-                    field.name,
-            .zig_name = field.name, // FIXME remove this too
-            .param_type = switch (field.field_type) {
-                bool => .boolean,
-                f32 => .constant,
-                []const f32 => .buffer,
-                zang.ConstantOrBuffer => .constant_or_buffer,
-                zang.DistortionType, zang.FilterType => .{ .one_of = getBuiltinEnum(field.field_type) },
-                else => @compileError("unsupported builtin field type: " ++ @typeName(field.field_type)),
-            },
+            .name = field.name,
+            .param_type = getBuiltinParamType(field.field_type),
         };
     }
     return .{
