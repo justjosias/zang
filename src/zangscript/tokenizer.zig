@@ -1,8 +1,23 @@
 const std = @import("std");
-const Source = @import("common.zig").Source;
-const SourceLocation = @import("common.zig").SourceLocation;
-const SourceRange = @import("common.zig").SourceRange;
-const fail = @import("common.zig").fail;
+const fail = @import("fail.zig").fail;
+
+pub const Source = struct {
+    filename: []const u8,
+    contents: []const u8,
+};
+
+pub const SourceLocation = struct {
+    // which line in the source file (starts at 0)
+    line: usize,
+    // byte offset into source file.
+    // the column can be found by searching backward for a newline
+    index: usize,
+};
+
+pub const SourceRange = struct {
+    loc0: SourceLocation,
+    loc1: SourceLocation,
+};
 
 pub const TokenType = enum {
     illegal,
@@ -201,3 +216,38 @@ fn getKeyword(string: []const u8) ?TokenType {
     }
     return null;
 }
+
+pub const TokenIterator = struct {
+    source: Source,
+    tokens: []const Token,
+    i: usize,
+
+    pub fn init(source: Source, tokens: []const Token) TokenIterator {
+        return .{
+            .source = source,
+            .tokens = tokens,
+            .i = 0,
+        };
+    }
+
+    pub fn next(self: *TokenIterator) ?Token {
+        if (self.i < self.tokens.len) {
+            defer self.i += 1;
+            return self.tokens[self.i];
+        }
+        return null;
+    }
+
+    pub fn peek(self: *TokenIterator) ?Token {
+        if (self.i < self.tokens.len) {
+            return self.tokens[self.i];
+        }
+        return null;
+    }
+
+    pub fn expect(self: *TokenIterator) !Token {
+        // FIXME can i have it print what it was looking for?
+        // or maybe make EOF a kind of token?
+        return self.next() orelse return fail(self.source, null, "unexpected end of file", .{});
+    }
+};

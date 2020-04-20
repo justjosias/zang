@@ -1,11 +1,11 @@
 const std = @import("std");
-const Parser = @import("common.zig").Parser;
-const Source = @import("common.zig").Source;
-const SourceLocation = @import("common.zig").SourceLocation;
-const SourceRange = @import("common.zig").SourceRange;
-const fail = @import("common.zig").fail;
+const Source = @import("tokenizer.zig").Source;
+const SourceLocation = @import("tokenizer.zig").SourceLocation;
+const SourceRange = @import("tokenizer.zig").SourceRange;
 const Token = @import("tokenizer.zig").Token;
 const TokenType = @import("tokenizer.zig").TokenType;
+const TokenIterator = @import("tokenizer.zig").TokenIterator;
+const fail = @import("fail.zig").fail;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const Module = @import("first_pass.zig").Module;
 const ModuleParam = @import("first_pass.zig").ModuleParam;
@@ -89,7 +89,7 @@ pub const Field = struct {
 const SecondPass = struct {
     arena_allocator: *std.mem.Allocator,
     tokens: []const Token,
-    parser: Parser,
+    token_it: TokenIterator,
     first_pass_result: FirstPassResult,
     module: Module,
     module_index: usize,
@@ -109,7 +109,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
             break i;
         }
     } else {
-        return fail(self.parser.source, field_name_token.source_range, "no module called `<`", .{});
+        return fail(self.token_it.source, field_name_token.source_range, "no module called `<`", .{});
     };
     // add the field
     const field_index = self.fields.items.len;
@@ -118,27 +118,27 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
         .resolved_module_index = callee_module_index,
     });
 
-    var token = try self.parser.expect();
+    var token = try self.token_it.expect();
     if (token.tt != .sym_left_paren) {
-        return fail(self.parser.source, token.source_range, "expected `(`, found `<`", .{});
+        return fail(self.token_it.source, token.source_range, "expected `(`, found `<`", .{});
     }
     var args = std.ArrayList(CallArg).init(self.arena_allocator);
     var first = true;
-    token = try self.parser.expect();
+    token = try self.token_it.expect();
     while (token.tt != .sym_right_paren) {
         if (first) {
             first = false;
         } else {
             if (token.tt == .sym_comma) {
-                token = try self.parser.expect();
+                token = try self.token_it.expect();
             } else {
-                return fail(self.parser.source, token.source_range, "expected `,` or `)`, found `<`", .{});
+                return fail(self.token_it.source, token.source_range, "expected `,` or `)`, found `<`", .{});
             }
         }
         switch (token.tt) {
             .identifier => {
-                const identifier = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
-                const equals_token = try self.parser.expect();
+                const identifier = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+                const equals_token = try self.token_it.expect();
                 if (equals_token.tt == .sym_equals) {
                     const subexpr = try expectExpression(self, scope);
                     try args.append(.{
@@ -146,11 +146,11 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                         .param_name_token = token,
                         .value = subexpr,
                     });
-                    token = try self.parser.expect();
+                    token = try self.token_it.expect();
                 } else {
                     // shorthand param passing: `val` expands to `val=val`
                     const inner = parseLocalOrParam(self, scope, identifier) orelse
-                        return fail(self.parser.source, token.source_range, "no param or local called `<`", .{});
+                        return fail(self.token_it.source, token.source_range, "no param or local called `<`", .{});
                     const loc0 = token.source_range.loc0;
                     const subexpr = try createExpr(self, loc0, inner);
                     try args.append(.{
@@ -162,7 +162,7 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
                 }
             },
             else => {
-                return fail(self.parser.source, token.source_range, "expected `)` or arg name, found `<`", .{});
+                return fail(self.token_it.source, token.source_range, "expected `)` or arg name, found `<`", .{});
             },
         }
     }
@@ -175,17 +175,17 @@ fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, fi
 fn parseDelay(self: *SecondPass, scope: *const Scope) ParseError!Delay {
     // constant number for the number of delay samples (this is a limitation of my current delay implementation)
     const num_samples = blk: {
-        const token = try self.parser.expect();
-        const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+        const token = try self.token_it.expect();
+        const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
         const n = std.fmt.parseInt(usize, s, 10) catch {
-            return fail(self.parser.source, token.source_range, "malformatted integer", .{});
+            return fail(self.token_it.source, token.source_range, "malformatted integer", .{});
         };
         break :blk n;
     };
     // keyword `begin`
-    const begin_token = try self.parser.expect();
+    const begin_token = try self.token_it.expect();
     if (begin_token.tt != .kw_begin) {
-        return fail(self.parser.source, begin_token.source_range, "expected `begin`, found `<`", .{});
+        return fail(self.token_it.source, begin_token.source_range, "expected `begin`, found `<`", .{});
     }
     // inner statements
     const inner_scope = try parseStatements(self, scope);
@@ -196,9 +196,9 @@ fn parseDelay(self: *SecondPass, scope: *const Scope) ParseError!Delay {
 }
 
 fn createExpr(self: *SecondPass, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
-    // you pass the location of the start of the expression. this function will use the parser's
+    // you pass the location of the start of the expression. this function will use the token_it's
     // current location to set the expression's end location
-    const loc1 = if (self.parser.i == 0) loc0 else self.parser.tokens[self.parser.i - 1].source_range.loc1;
+    const loc1 = if (self.token_it.i == 0) loc0 else self.tokens[self.token_it.i - 1].source_range.loc1;
     const expr = try self.arena_allocator.create(Expression);
     expr.* = .{
         .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
@@ -260,8 +260,8 @@ fn expectExpression(self: *SecondPass, scope: *const Scope) ParseError!*const Ex
 
 fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) ParseError!*const Expression {
     var negate = false;
-    if (if (self.parser.peek()) |token| token.tt == .sym_minus else false) {
-        _ = try self.parser.expect();
+    if (if (self.token_it.peek()) |token| token.tt == .sym_minus else false) {
+        _ = try self.token_it.expect();
         negate = true;
     }
 
@@ -272,10 +272,10 @@ fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) Pa
         a = try createExpr(self, loc0, .{ .negate = a });
     }
 
-    while (self.parser.peek()) |token| {
+    while (self.token_it.peek()) |token| {
         for (binary_operators) |bo| {
             if (token.tt == bo.symbol and priority <= bo.priority) {
-                _ = self.parser.next();
+                _ = self.token_it.next();
                 const b = try expectExpression2(self, scope, bo.priority);
                 a = try createExpr(self, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
                 break;
@@ -289,26 +289,26 @@ fn expectExpression2(self: *SecondPass, scope: *const Scope, priority: usize) Pa
 }
 
 fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expression {
-    const token = try self.parser.expect();
+    const token = try self.token_it.expect();
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
         .sym_left_paren => {
             const a = try expectExpression(self, scope);
-            const paren_token = try self.parser.expect();
+            const paren_token = try self.token_it.expect();
             if (paren_token.tt != .sym_right_paren) {
-                return fail(self.parser.source, paren_token.source_range, "expected `)`, found `<`", .{});
+                return fail(self.token_it.source, paren_token.source_range, "expected `)`, found `<`", .{});
             }
             return a;
         },
         .identifier => {
-            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             if (s[0] >= 'A' and s[0] <= 'Z') {
                 const call = try parseCall(self, scope, token, s);
                 return try createExpr(self, loc0, .{ .call = call });
             }
             const inner = parseLocalOrParam(self, scope, s) orelse
-                return fail(self.parser.source, token.source_range, "no local or param called `<`", .{});
+                return fail(self.token_it.source, token.source_range, "no local or param called `<`", .{});
             return try createExpr(self, loc0, inner);
         },
         .kw_false => {
@@ -318,14 +318,14 @@ fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expressi
             return try createExpr(self, loc0, .{ .literal_boolean = true });
         },
         .number => {
-            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             const n = std.fmt.parseFloat(f32, s) catch {
-                return fail(self.parser.source, token.source_range, "malformatted number", .{});
+                return fail(self.token_it.source, token.source_range, "malformatted number", .{});
             };
             return try createExpr(self, loc0, .{ .literal_number = n });
         },
         .enum_value => {
-            const s = self.parser.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
+            const s = self.token_it.source.contents[token.source_range.loc0.index..token.source_range.loc1.index];
             return try createExpr(self, loc0, .{ .literal_enum_value = s });
         },
         .kw_delay => {
@@ -336,23 +336,23 @@ fn expectTerm(self: *SecondPass, scope: *const Scope) ParseError!*const Expressi
             return try createExpr(self, loc0, .feedback);
         },
         else => {
-            return fail(self.parser.source, token.source_range, "expected expression, found `<`", .{});
+            return fail(self.token_it.source, token.source_range, "expected expression, found `<`", .{});
         },
     }
 }
 
 fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
-    const name_token = try self.parser.expect();
+    const name_token = try self.token_it.expect();
     if (name_token.tt != .identifier) {
-        return fail(self.parser.source, name_token.source_range, "expected identifier", .{});
+        return fail(self.token_it.source, name_token.source_range, "expected identifier", .{});
     }
-    const name = self.parser.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
+    const name = self.token_it.source.contents[name_token.source_range.loc0.index..name_token.source_range.loc1.index];
     if (name[0] < 'a' or name[0] > 'z') {
-        return fail(self.parser.source, name_token.source_range, "local name must start with a lowercase letter", .{});
+        return fail(self.token_it.source, name_token.source_range, "local name must start with a lowercase letter", .{});
     }
-    const equals_token = try self.parser.expect();
+    const equals_token = try self.token_it.expect();
     if (equals_token.tt != .sym_equals) {
-        return fail(self.parser.source, equals_token.source_range, "expect `=`, found `<`", .{});
+        return fail(self.token_it.source, equals_token.source_range, "expect `=`, found `<`", .{});
     }
     // note: locals are allowed to shadow params
     var maybe_s: ?*const Scope = scope;
@@ -362,7 +362,7 @@ fn parseLetAssignment(self: *SecondPass, scope: *Scope) !void {
                 .let_assignment => |x| {
                     const local = self.locals.items[x.local_index];
                     if (std.mem.eql(u8, local.name, name)) {
-                        return fail(self.parser.source, name_token.source_range, "redeclaration of local `<`", .{});
+                        return fail(self.token_it.source, name_token.source_range, "redeclaration of local `<`", .{});
                     }
                 },
                 .output => {},
@@ -390,7 +390,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
         .statements = std.ArrayList(Statement).init(self.arena_allocator),
     };
 
-    while (self.parser.next()) |token| {
+    while (self.token_it.next()) |token| {
         switch (token.tt) {
             .kw_end => break,
             .kw_let => {
@@ -405,7 +405,7 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
                 try scope.statements.append(.{ .feedback = expr });
             },
             else => {
-                return fail(self.parser.source, token.source_range, "expected `let`, `out` or `end`, found `<`", .{});
+                return fail(self.token_it.source, token.source_range, "expected `let`, `out` or `end`, found `<`", .{});
             },
         }
     }
@@ -449,11 +449,7 @@ pub fn secondPass(
         var self: SecondPass = .{
             .arena_allocator = &arena.allocator,
             .tokens = tokens,
-            .parser = .{
-                .source = source,
-                .tokens = tokens[module.begin_token..module.end_token],
-                .i = 0,
-            },
+            .token_it = TokenIterator.init(source, tokens[module.begin_token..module.end_token]),
             .first_pass_result = first_pass_result,
             .module = module,
             .module_index = module_index,

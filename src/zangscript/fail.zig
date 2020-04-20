@@ -1,25 +1,6 @@
 const std = @import("std");
-const Token = @import("tokenizer.zig").Token;
-const TokenType = @import("tokenizer.zig").TokenType;
-const ResolvedParamType = @import("first_pass.zig").ResolvedParamType;
-
-pub const Source = struct {
-    filename: []const u8,
-    contents: []const u8,
-};
-
-pub const SourceLocation = struct {
-    // which line in the source file (starts at 0)
-    line: usize,
-    // byte offset into source file.
-    // the column can be found by searching backward for a newline
-    index: usize,
-};
-
-pub const SourceRange = struct {
-    loc0: SourceLocation,
-    loc1: SourceLocation,
-};
+const Source = @import("tokenizer.zig").Source;
+const SourceRange = @import("tokenizer.zig").SourceRange;
 
 fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange) void {
     // TODO would be nice if it could say "keyword `param`" instead of just "`param`"
@@ -129,32 +110,3 @@ pub fn fail(
     stderr.print("\n", .{}) catch {};
     return error.Failed;
 }
-
-pub const Parser = struct {
-    source: Source,
-    tokens: []const Token,
-    i: usize,
-
-    pub fn next(self: *Parser) ?Token {
-        if (self.i < self.tokens.len) {
-            defer self.i += 1;
-            return self.tokens[self.i];
-        }
-        return null;
-    }
-
-    pub fn peek(self: *Parser) ?Token {
-        if (self.i < self.tokens.len) {
-            return self.tokens[self.i];
-        }
-        return null;
-    }
-
-    pub fn expect(self: *Parser) !Token {
-        // FIXME can i have it print what it was looking for?
-        // or maybe make EOF a kind of token?
-        return self.next() orelse {
-            return fail(self.source, null, "unexpected end of file", .{});
-        };
-    }
-};

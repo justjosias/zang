@@ -1,6 +1,6 @@
 const std = @import("std");
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
-const Source = @import("common.zig").Source;
+const Source = @import("tokenizer.zig").Source;
 const tokenize = @import("tokenizer.zig").tokenize;
 const FirstPassResult = @import("first_pass.zig").FirstPassResult;
 const firstPass = @import("first_pass.zig").firstPass;
