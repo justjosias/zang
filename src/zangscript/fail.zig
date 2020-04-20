@@ -2,42 +2,30 @@ const std = @import("std");
 const Source = @import("tokenizer.zig").Source;
 const SourceRange = @import("tokenizer.zig").SourceRange;
 
-fn printSourceRange(stderr: var, contents: []const u8, source_range: SourceRange) void {
-    // TODO would be nice if it could say "keyword `param`" instead of just "`param`"
-    // first i need to move the backquotes into here...
-    stderr.writeAll(contents[source_range.loc0.index..source_range.loc1.index]) catch {};
+fn printSourceRange(out: *std.fs.File.OutStream, contents: []const u8, source_range: SourceRange) !void {
+    try out.writeAll(contents[source_range.loc0.index..source_range.loc1.index]);
 }
 
-fn failPrint(stderr: var, maybe_source_range: ?SourceRange, contents: []const u8, comptime fmt: []const u8, args: var) void {
-    comptime var j: usize = 0;
+fn printErrorMessage(out: *std.fs.File.OutStream, maybe_source_range: ?SourceRange, contents: []const u8, comptime fmt: []const u8, args: var) !void {
+    comptime var arg_index: usize = 0;
     inline for (fmt) |ch| {
         if (ch == '%') {
             // source range
-            printSourceRange(stderr, contents, args[j]);
-            j += 1;
-        } else if (ch == '&') {
-            // data type
-            stderr.write("(datatype)") catch {};
-            // FIXME this crashes the compiler
-            //switch (args[j]) {
-            //    .boolean => stderr.write("boolean") catch {},
-            //    .constant => stderr.write("constant") catch {},
-            //    .constant_or_buffer => stderr.write("constant_or_buffer") catch {},
-            //}
-            j += 1;
+            try printSourceRange(out, contents, args[arg_index]);
+            arg_index += 1;
         } else if (ch == '#') {
             // string
-            stderr.writeAll(args[j]) catch {};
-            j += 1;
+            try out.writeAll(args[arg_index]);
+            arg_index += 1;
         } else if (ch == '<') {
-            // the maybe_source_range passed in
+            // the maybe_source_range that was passed in
             if (maybe_source_range) |source_range| {
-                printSourceRange(stderr, contents, source_range);
+                try printSourceRange(out, contents, source_range);
             } else {
-                stderr.writeByte('?') catch {};
+                try out.writeByte('?');
             }
         } else {
-            stderr.writeByte(ch) catch {};
+            try out.writeByte(ch);
         }
     }
 }
@@ -48,65 +36,64 @@ const KRED = "\x1B[31m";
 const KYEL = "\x1B[33m";
 const KWHITE = "\x1B[37m";
 
-pub fn fail(
-    source: Source,
-    maybe_source_range: ?SourceRange,
-    comptime fmt: []const u8,
-    args: var,
-) error{Failed} {
+fn printError(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []const u8, args: var) !void {
+    const held = std.debug.getStderrMutex().acquire();
+    defer held.release();
+    const out = std.debug.getStderrStream();
+
     const source_range = maybe_source_range orelse {
-        const held = std.debug.getStderrMutex().acquire();
-        defer held.release();
-        const stderr = std.debug.getStderrStream();
-        stderr.print(KYEL ++ KBOLD ++ "{}: " ++ KWHITE, .{source.filename}) catch {};
-        failPrint(stderr, maybe_source_range, source.contents, fmt, args);
-        stderr.print(KNRM ++ "\n\n", .{}) catch {};
-        return error.Failed;
+        // we don't know where in the source file the error occurred
+        try out.print(KYEL ++ KBOLD ++ "{}: " ++ KWHITE, .{source.filename});
+        try printErrorMessage(out, maybe_source_range, source.contents, fmt, args);
+        try out.print(KNRM ++ "\n\n", .{});
+        return;
     };
-    // display the problematic line
-    // look backward for newline.
+
+    // we want to echo the problematic line from the source file.
+    // look backward to find the start of the line
     var i: usize = source_range.loc0.index;
-    while (i > 0) {
-        i -= 1;
-        if (source.contents[i] == '\n') {
-            i += 1;
+    while (i > 0) : (i -= 1) {
+        if (source.contents[i - 1] == '\n') {
             break;
         }
     }
     const start = i;
-    // look forward for newline.
+    // look forward to find the end of the line
     i = source_range.loc0.index;
-    while (i < source.contents.len) {
+    while (i < source.contents.len) : (i += 1) {
         if (source.contents[i] == '\n' or source.contents[i] == '\r') {
             break;
         }
-        i += 1;
     }
     const end = i;
-    const col = source_range.loc0.index - start;
-    // ok
-    const held = std.debug.getStderrMutex().acquire();
-    defer held.release();
-    const stderr = std.debug.getStderrStream();
-    stderr.print(KYEL ++ KBOLD ++ "{}:{}:{}: " ++ KWHITE, .{
-        source.filename,
-        source_range.loc0.line + 1,
-        col + 1,
-    }) catch {};
-    failPrint(stderr, maybe_source_range, source.contents, fmt, args);
-    stderr.print(KNRM ++ "\n\n", .{}) catch {};
-    // display line
-    stderr.print("{}\n", .{source.contents[start..end]}) catch {};
-    // show arrow pointing at column
-    i = 0;
-    while (i < col) : (i += 1) {
-        stderr.print(" ", .{}) catch {};
+
+    const line_num = source_range.loc0.line + 1;
+    const column_num = source_range.loc0.index - start + 1;
+
+    // print source filename, line number, and column number
+    try out.print(KYEL ++ KBOLD ++ "{}:{}:{}: " ++ KWHITE, .{ source.filename, line_num, column_num });
+
+    // print the error message
+    try printErrorMessage(out, maybe_source_range, source.contents, fmt, args);
+    try out.print(KNRM ++ "\n\n", .{});
+
+    // echo the source line
+    try out.print("{}\n", .{source.contents[start..end]});
+
+    // show arrows pointing at the problematic span
+    i = start;
+    while (i < source_range.loc0.index) : (i += 1) {
+        try out.print(" ", .{});
     }
-    stderr.writeAll(KRED ++ KBOLD) catch {};
-    while (i < end - start and i < source_range.loc1.index - start) : (i += 1) {
-        stderr.print("^", .{}) catch {};
+    try out.writeAll(KRED ++ KBOLD);
+    while (i < end and i < source_range.loc1.index) : (i += 1) {
+        try out.print("^", .{});
     }
-    stderr.writeAll(KNRM) catch {};
-    stderr.print("\n", .{}) catch {};
+    try out.writeAll(KNRM);
+    try out.print("\n", .{});
+}
+
+pub fn fail(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []const u8, args: var) error{Failed} {
+    printError(source, maybe_source_range, fmt, args) catch {};
     return error.Failed;
 }
