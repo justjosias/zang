@@ -1,19 +1,19 @@
 const std = @import("std");
-const Source = @import("tokenizer.zig").Source;
-const SourceLocation = @import("tokenizer.zig").SourceLocation;
-const SourceRange = @import("tokenizer.zig").SourceRange;
-const Token = @import("tokenizer.zig").Token;
-const TokenType = @import("tokenizer.zig").TokenType;
-const TokenIterator = @import("tokenizer.zig").TokenIterator;
+const Source = @import("tokenize.zig").Source;
+const SourceLocation = @import("tokenize.zig").SourceLocation;
+const SourceRange = @import("tokenize.zig").SourceRange;
+const Token = @import("tokenize.zig").Token;
+const TokenType = @import("tokenize.zig").TokenType;
+const TokenIterator = @import("tokenize.zig").TokenIterator;
 const fail = @import("fail.zig").fail;
-const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const Module = @import("first_pass.zig").Module;
-const ModuleParam = @import("first_pass.zig").ModuleParam;
-const ParamType = @import("first_pass.zig").ParamType;
+const FirstPassResult = @import("parse1.zig").FirstPassResult;
+const Module = @import("parse1.zig").Module;
+const ModuleParam = @import("parse1.zig").ModuleParam;
+const ParamType = @import("parse1.zig").ParamType;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const GenError = @import("codegen.zig").GenError;
 const codegen = @import("codegen.zig").codegen;
-const secondPassPrintModule = @import("second_pass_print.zig").secondPassPrintModule;
+const secondPassPrintModule = @import("parse2_print.zig").secondPassPrintModule;
 
 pub const Scope = struct {
     parent: ?*const Scope,

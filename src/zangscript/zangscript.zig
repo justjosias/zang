@@ -1,11 +1,11 @@
 const std = @import("std");
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
-const Source = @import("tokenizer.zig").Source;
-const tokenize = @import("tokenizer.zig").tokenize;
-const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const firstPass = @import("first_pass.zig").firstPass;
-const SecondPassResult = @import("second_pass.zig").SecondPassResult;
-const secondPass = @import("second_pass.zig").secondPass;
+const Source = @import("tokenize.zig").Source;
+const tokenize = @import("tokenize.zig").tokenize;
+const FirstPassResult = @import("parse1.zig").FirstPassResult;
+const firstPass = @import("parse1.zig").firstPass;
+const SecondPassResult = @import("parse2.zig").SecondPassResult;
+const secondPass = @import("parse2.zig").secondPass;
 const codegen = @import("codegen.zig").codegen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 

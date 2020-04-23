@@ -1,7 +1,7 @@
 const std = @import("std");
 const zang = @import("../zang.zig");
-const ModuleParam = @import("first_pass.zig").ModuleParam;
-const ParamType = @import("first_pass.zig").ParamType;
+const ModuleParam = @import("parse1.zig").ModuleParam;
+const ParamType = @import("parse1.zig").ParamType;
 
 pub const BuiltinModule = struct {
     name: []const u8,

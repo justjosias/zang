@@ -1,6 +1,6 @@
 const std = @import("std");
-const Source = @import("tokenizer.zig").Source;
-const SourceRange = @import("tokenizer.zig").SourceRange;
+const Source = @import("tokenize.zig").Source;
+const SourceRange = @import("tokenize.zig").SourceRange;
 
 fn printSourceRange(out: *std.fs.File.OutStream, contents: []const u8, source_range: SourceRange) !void {
     try out.writeAll(contents[source_range.loc0.index..source_range.loc1.index]);

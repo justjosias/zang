@@ -1,14 +1,14 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
-const FirstPassResult = @import("first_pass.zig").FirstPassResult;
-const Module = @import("first_pass.zig").Module;
-const ModuleField = @import("first_pass.zig").ModuleField;
-const SecondPassModuleInfo = @import("second_pass.zig").SecondPassModuleInfo;
-const Expression = @import("second_pass.zig").Expression;
-const Statement = @import("second_pass.zig").Statement;
-const Field = @import("second_pass.zig").Field;
-const Local = @import("second_pass.zig").Local;
-const Scope = @import("second_pass.zig").Scope;
+const FirstPassResult = @import("parse1.zig").FirstPassResult;
+const Module = @import("parse1.zig").Module;
+const ModuleField = @import("parse1.zig").ModuleField;
+const SecondPassModuleInfo = @import("parse2.zig").SecondPassModuleInfo;
+const Expression = @import("parse2.zig").Expression;
+const Statement = @import("parse2.zig").Statement;
+const Field = @import("parse2.zig").Field;
+const Local = @import("parse2.zig").Local;
+const Scope = @import("parse2.zig").Scope;
 
 const State = struct {
     first_pass_result: FirstPassResult,

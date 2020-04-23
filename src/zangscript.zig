@@ -8,8 +8,8 @@ pub const BuiltinPackage = builtins.BuiltinPackage;
 pub const getBuiltinModule = builtins.getBuiltinModule;
 pub const zang_builtin_package = builtins.zang_builtin_package;
 
-const first_pass = @import("zangscript/first_pass.zig");
-pub const ModuleParam = first_pass.ModuleParam;
+const parse1 = @import("zangscript/parse1.zig");
+pub const ModuleParam = parse1.ModuleParam;
 
 const codegen_zig = @import("zangscript/codegen_zig.zig");
 pub const generateZig = codegen_zig.generateZig;

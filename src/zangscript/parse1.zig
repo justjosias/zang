@@ -1,8 +1,8 @@
 const std = @import("std");
-const Source = @import("tokenizer.zig").Source;
-const Token = @import("tokenizer.zig").Token;
-const TokenType = @import("tokenizer.zig").TokenType;
-const TokenIterator = @import("tokenizer.zig").TokenIterator;
+const Source = @import("tokenize.zig").Source;
+const Token = @import("tokenize.zig").Token;
+const TokenType = @import("tokenize.zig").TokenType;
+const TokenIterator = @import("tokenize.zig").TokenIterator;
 const fail = @import("fail.zig").fail;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 
