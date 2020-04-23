@@ -2,24 +2,20 @@ const std = @import("std");
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const Source = @import("tokenize.zig").Source;
 const tokenize = @import("tokenize.zig").tokenize;
-const FirstPassResult = @import("parse1.zig").FirstPassResult;
-const firstPass = @import("parse1.zig").firstPass;
-const SecondPassResult = @import("parse2.zig").SecondPassResult;
-const secondPass = @import("parse2.zig").secondPass;
+const ParseResult = @import("parse.zig").ParseResult;
+const parse = @import("parse.zig").parse;
 const codegen = @import("codegen.zig").codegen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 
 pub const Script = struct {
     allocator: *std.mem.Allocator,
     contents: []const u8,
-    first_pass_result: FirstPassResult,
-    second_pass_result: SecondPassResult,
+    parse_result: ParseResult,
     codegen_result: CodeGenResult,
 
     pub fn deinit(self: *Script) void {
         self.allocator.free(self.contents);
-        self.first_pass_result.deinit();
-        self.second_pass_result.deinit();
+        self.parse_result.deinit();
         self.codegen_result.deinit();
     }
 };
@@ -39,20 +35,16 @@ pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage
     const tokens = try tokenize(source, allocator);
     defer allocator.free(tokens);
 
-    var first_pass_result = try firstPass(source, tokens, builtin_packages, allocator);
-    errdefer first_pass_result.deinit();
+    var parse_result = try parse(source, tokens, builtin_packages, allocator);
+    errdefer parse_result.deinit();
 
-    var second_pass_result = try secondPass(source, tokens, first_pass_result, allocator);
-    errdefer second_pass_result.deinit();
-
-    const codegen_result = try codegen(source, first_pass_result, second_pass_result, allocator);
+    const codegen_result = try codegen(source, parse_result, allocator);
     errdefer codegen_result.deinit();
 
     return Script{
         .allocator = allocator,
         .contents = contents,
-        .first_pass_result = first_pass_result,
-        .second_pass_result = second_pass_result,
+        .parse_result = parse_result,
         .codegen_result = codegen_result,
     };
 }

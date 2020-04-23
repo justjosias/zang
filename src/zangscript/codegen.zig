@@ -2,19 +2,19 @@ const std = @import("std");
 const Source = @import("tokenize.zig").Source;
 const SourceRange = @import("tokenize.zig").SourceRange;
 const fail = @import("fail.zig").fail;
-const FirstPassResult = @import("parse1.zig").FirstPassResult;
-const ModuleParam = @import("parse1.zig").ModuleParam;
-const ParamType = @import("parse1.zig").ParamType;
-const CallArg = @import("parse2.zig").CallArg;
-const BinArithOp = @import("parse2.zig").BinArithOp;
-const Field = @import("parse2.zig").Field;
-const Local = @import("parse2.zig").Local;
-const Expression = @import("parse2.zig").Expression;
-const Statement = @import("parse2.zig").Statement;
-const LetAssignment = @import("parse2.zig").LetAssignment;
-const Scope = @import("parse2.zig").Scope;
-const SecondPassResult = @import("parse2.zig").SecondPassResult;
-const SecondPassModuleInfo = @import("parse2.zig").SecondPassModuleInfo;
+const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
+const ParseResult = @import("parse.zig").ParseResult;
+const Module = @import("parse.zig").Module;
+const ModuleParam = @import("parse.zig").ModuleParam;
+const ParamType = @import("parse.zig").ParamType;
+const CallArg = @import("parse.zig").CallArg;
+const BinArithOp = @import("parse.zig").BinArithOp;
+const Field = @import("parse.zig").Field;
+const Local = @import("parse.zig").Local;
+const Expression = @import("parse.zig").Expression;
+const Statement = @import("parse.zig").Statement;
+const LetAssignment = @import("parse.zig").LetAssignment;
+const Scope = @import("parse.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
@@ -127,7 +127,7 @@ pub const DelayDecl = struct {
 pub const CodegenModuleState = struct {
     arena_allocator: *std.mem.Allocator,
     source: Source,
-    first_pass_result: FirstPassResult,
+    modules: []const Module,
     module_results: []const CodeGenModuleResult,
     module_index: usize,
     fields: []const Field,
@@ -203,7 +203,7 @@ fn getFloatValue(self: *CodegenModuleState, result: ExpressionResult) ?FloatValu
             return FloatValue{ .temp_float_index = i };
         },
         .self_param => |i| {
-            const module = self.first_pass_result.modules[self.module_index];
+            const module = self.modules[self.module_index];
             if (module.params[i].param_type == .constant) {
                 return FloatValue{ .self_param = i };
             }
@@ -231,7 +231,7 @@ fn getBufferValue(self: *CodegenModuleState, result: ExpressionResult) ?BufferVa
             return BufferValue{ .temp_buffer_index = i };
         },
         .self_param => |i| {
-            const module = self.first_pass_result.modules[self.module_index];
+            const module = self.modules[self.module_index];
             if (module.params[i].param_type == .buffer) {
                 return BufferValue{ .self_param = i };
             }
@@ -264,7 +264,7 @@ fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) 
 // return something that can be used as a call arg.
 // generate a temp if necessary, but literals and self_params can be returned as is (avoid redundant copy)
 fn coerceParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
-    const module = self.first_pass_result.modules[self.module_index];
+    const module = self.modules[self.module_index];
 
     switch (param_type) {
         .boolean => {
@@ -430,7 +430,7 @@ fn coerceAssignment(self: *CodegenModuleState, sr: SourceRange, result_loc: Buff
             return fail(self.source, sr, "buffer-typed result loc cannot accept enum value", .{});
         },
         .self_param => |param_index| {
-            const module = self.first_pass_result.modules[self.module_index];
+            const module = self.modules[self.module_index];
             const param_type = module.params[param_index].param_type;
 
             switch (param_type) {
@@ -499,7 +499,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, resul
             return coerce(self, sr, result_info, .{ .temp_buffer_weak = self.local_temps[local_index].? });
         },
         .self_param => |param_index| {
-            const module = self.first_pass_result.modules[self.module_index];
+            const module = self.modules[self.module_index];
             if (module.params[param_index].param_type == .constant_or_buffer) {
                 // immediately turn constant_or_buffer into buffer (most of the rest of codegen
                 // isn't able to work with constant_or_buffer)
@@ -642,13 +642,13 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, resul
             return fail(self.source, expression.source_range, "invalid operand types", .{});
         },
         .call => |call| {
-            const module = self.first_pass_result.modules[self.module_index];
+            const module = self.modules[self.module_index];
             const field = self.fields[call.field_index];
 
             // the callee is guaranteed to have had its codegen done already, so its num_temps is known
             const callee_num_temps = self.module_results[field.resolved_module_index].num_temps;
 
-            const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+            const callee_module = self.modules[field.resolved_module_index];
 
             // pass params
             for (call.args) |a| {
@@ -818,26 +818,25 @@ const CodeGenVisitor = struct {
     arena_allocator: *std.mem.Allocator, // for persistent allocations (used in result)
     inner_allocator: *std.mem.Allocator, // for temporary allocations
     source: Source,
-    first_pass_result: FirstPassResult,
-    second_pass_result: SecondPassResult,
+    parse_result: ParseResult,
     module_results: []CodeGenModuleResult, // filled in as we go
     module_visited: []bool, // ditto
 };
 
 // codegen entry point
-pub fn codegen(source: Source, first_pass_result: FirstPassResult, second_pass_result: SecondPassResult, inner_allocator: *std.mem.Allocator) !CodeGenResult {
+pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.mem.Allocator) !CodeGenResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
-    var module_visited = try inner_allocator.alloc(bool, first_pass_result.modules.len);
+    var module_visited = try inner_allocator.alloc(bool, parse_result.modules.len);
     defer inner_allocator.free(module_visited);
 
     std.mem.set(bool, module_visited, false);
 
-    var module_results = try arena.allocator.alloc(CodeGenModuleResult, first_pass_result.modules.len);
+    var module_results = try arena.allocator.alloc(CodeGenModuleResult, parse_result.modules.len);
 
     var builtin_index: usize = 0;
-    for (first_pass_result.builtin_packages) |pkg| {
+    for (parse_result.builtin_packages) |pkg| {
         for (pkg.builtins) |builtin| {
             module_results[builtin_index] = .{
                 .is_builtin = true,
@@ -856,13 +855,12 @@ pub fn codegen(source: Source, first_pass_result: FirstPassResult, second_pass_r
         .arena_allocator = &arena.allocator,
         .inner_allocator = inner_allocator,
         .source = source,
-        .first_pass_result = first_pass_result,
-        .second_pass_result = second_pass_result,
+        .parse_result = parse_result,
         .module_results = module_results,
         .module_visited = module_visited,
     };
 
-    for (first_pass_result.modules) |module, i| {
+    for (parse_result.modules) |module, i| {
         try visitModule(&self, i, i);
     }
 
@@ -878,7 +876,7 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
     }
     self.module_visited[module_index] = true;
 
-    const module_info = self.second_pass_result.module_infos[module_index].?;
+    const module_info = self.parse_result.module_infos[module_index].?;
 
     // first, recursively resolve all modules that this one uses as its fields
     for (module_info.fields) |field, field_index| {
@@ -892,11 +890,11 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
     self.module_results[module_index] = try codegenModule(self, module_index, module_info);
 }
 
-fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: SecondPassModuleInfo) !CodeGenModuleResult {
+fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: ParsedModuleInfo) !CodeGenModuleResult {
     var state: CodegenModuleState = .{
         .arena_allocator = self.arena_allocator,
         .source = self.source,
-        .first_pass_result = self.first_pass_result,
+        .modules = self.parse_result.modules,
         .module_results = self.module_results,
         .module_index = module_index,
         .fields = module_info.fields,

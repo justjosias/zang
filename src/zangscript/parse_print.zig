@@ -1,19 +1,18 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
-const FirstPassResult = @import("parse1.zig").FirstPassResult;
-const Module = @import("parse1.zig").Module;
-const ModuleField = @import("parse1.zig").ModuleField;
-const SecondPassModuleInfo = @import("parse2.zig").SecondPassModuleInfo;
-const Expression = @import("parse2.zig").Expression;
-const Statement = @import("parse2.zig").Statement;
-const Field = @import("parse2.zig").Field;
-const Local = @import("parse2.zig").Local;
-const Scope = @import("parse2.zig").Scope;
+const Module = @import("parse.zig").Module;
+const ModuleField = @import("parse1zig").ModuleField;
+const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
+const Expression = @import("parse.zig").Expression;
+const Statement = @import("parse.zig").Statement;
+const Field = @import("parse.zig").Field;
+const Local = @import("parse.zig").Local;
+const Scope = @import("parse.zig").Scope;
 
 const State = struct {
-    first_pass_result: FirstPassResult,
+    modules: []const Module,
     module: Module,
-    module_info: SecondPassModuleInfo,
+    module_info: ParsedModuleInfo,
     helper: PrintHelper,
 
     pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
@@ -54,7 +53,7 @@ const State = struct {
         switch (expression.inner) {
             .call => |call| {
                 const field = self.module_info.fields[call.field_index];
-                const callee_module = self.first_pass_result.modules[field.resolved_module_index];
+                const callee_module = self.modules[field.resolved_module_index];
                 try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, callee_module.name });
                 for (call.args) |arg| {
                     try self.indent(indentation + 1);
@@ -91,12 +90,12 @@ const State = struct {
     }
 };
 
-pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module, module_info: SecondPassModuleInfo) !void {
+pub fn parsePrintModule(modules: []const Module, module: Module, module_info: ParsedModuleInfo) !void {
     const stderr_file = std.io.getStdErr();
     var stderr_file_out_stream = stderr_file.outStream();
 
     var self: State = .{
-        .first_pass_result = first_pass_result,
+        .modules = modules,
         .module = module,
         .module_info = module_info,
         .helper = PrintHelper.init(&stderr_file_out_stream),
@@ -105,7 +104,7 @@ pub fn secondPassPrintModule(first_pass_result: FirstPassResult, module: Module,
 
     try self.print("module '{str}'\n", .{module.name});
     for (module_info.fields) |field, i| {
-        const callee_module = first_pass_result.modules[field.resolved_module_index];
+        const callee_module = modules[field.resolved_module_index];
         try self.print("    field #{usize}({str})\n", .{ i, callee_module.name });
     }
     try self.print("statements:\n", .{});

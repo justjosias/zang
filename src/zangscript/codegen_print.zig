@@ -39,7 +39,7 @@ const State = struct {
             .literal_number => |value| try self.print("{f32}", .{value}),
             .literal_enum_value => |str| try self.print("'{str}'", .{str}),
             .self_param => |i| {
-                const module = self.codegen_state.first_pass_result.modules[self.codegen_state.module_index];
+                const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
             },
         }
@@ -49,7 +49,7 @@ const State = struct {
         switch (value) {
             .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
             .self_param => |i| { // guaranteed to be of type `constant`
-                const module = self.codegen_state.first_pass_result.modules[self.codegen_state.module_index];
+                const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
             },
             .literal => |v| try self.print("{f32}", .{v}),
@@ -67,7 +67,7 @@ const State = struct {
         switch (value) {
             .temp_buffer_index => |i| try self.print("temp{usize}", .{i}),
             .self_param => |i| { // guaranteed to be of type `buffer`
-                const module = self.codegen_state.first_pass_result.modules[self.codegen_state.module_index];
+                const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
             },
         }
@@ -84,7 +84,7 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
     };
     defer self.helper.deinit();
 
-    const self_module = codegen_state.first_pass_result.modules[codegen_state.module_index];
+    const self_module = codegen_state.modules[codegen_state.module_index];
 
     try self.print("module '{str}'\n", .{self_module.name});
     try self.print("    num_temps: {usize}\n", .{codegen_state.temp_buffers.finalCount()});
@@ -101,7 +101,7 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
                 try self.print("{buffer_dest} = {float_value}\n", .{ x.out, x.in });
             },
             .cob_to_buffer => |x| {
-                const module = self.codegen_state.first_pass_result.modules[self.codegen_state.module_index];
+                const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
             },
             .negate_float_to_float => |x| {
@@ -124,7 +124,7 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
             },
             .call => |call| {
                 const field = codegen_state.fields[call.field_index];
-                const callee_module = codegen_state.first_pass_result.modules[field.resolved_module_index];
+                const callee_module = codegen_state.modules[field.resolved_module_index];
                 try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
                 try self.print("        temps: [", .{});
                 for (call.temps) |temp, i| {

@@ -27,7 +27,7 @@ pub fn main() u8 {
     };
     defer script.deinit();
 
-    zangscript.generateZig(script.first_pass_result, script.codegen_result) catch |err| {
+    zangscript.generateZig(script.parse_result, script.codegen_result) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };

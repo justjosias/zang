@@ -1,7 +1,7 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
-const FirstPassResult = @import("parse1.zig").FirstPassResult;
-const Module = @import("parse1.zig").Module;
+const ParseResult = @import("parse.zig").ParseResult;
+const Module = @import("parse.zig").Module;
 const ModuleCodeGen = @import("codegen.zig").ModuleCodeGen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
@@ -10,7 +10,7 @@ const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
 
 const State = struct {
-    first_pass_result: FirstPassResult,
+    parse_result: ParseResult,
     module: ?Module,
     helper: PrintHelper,
 
@@ -45,7 +45,7 @@ const State = struct {
     }
 
     fn printModuleName(self: *State, module_index: usize) !void {
-        const module = self.first_pass_result.modules[module_index];
+        const module = self.parse_result.modules[module_index];
         if (module.zig_package_name) |pkg_name| {
             try self.print("{identifier}.", .{pkg_name});
         }
@@ -92,12 +92,12 @@ const State = struct {
     }
 };
 
-pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenResult) !void {
+pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !void {
     const stdout_file = std.io.getStdOut();
     var stdout_file_out_stream = stdout_file.outStream();
 
     var self: State = .{
-        .first_pass_result = first_pass_result,
+        .parse_result = parse_result,
         .module = null,
         .helper = PrintHelper.init(&stdout_file_out_stream),
     };
@@ -105,7 +105,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
-    for (first_pass_result.builtin_packages) |pkg| {
+    for (parse_result.builtin_packages) |pkg| {
         if (std.mem.eql(u8, pkg.zig_package_name, "zang")) {
             continue;
         }
@@ -114,13 +114,13 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
 
     const num_builtins = blk: {
         var n: usize = 0;
-        for (first_pass_result.builtin_packages) |pkg| {
+        for (parse_result.builtin_packages) |pkg| {
             n += pkg.builtins.len;
         }
         break :blk n;
     };
 
-    for (first_pass_result.modules) |module, i| {
+    for (parse_result.modules) |module, i| {
         if (i < num_builtins) {
             continue;
         }
@@ -146,7 +146,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         try self.print("}};\n", .{});
         try self.print("\n", .{});
         for (module_result.fields) |field, j| {
-            const field_module = first_pass_result.modules[field.resolved_module_index];
+            const field_module = parse_result.modules[field.resolved_module_index];
             try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field.resolved_module_index });
         }
         for (module_result.delays) |delay_decl, j| {
@@ -156,7 +156,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
         for (module_result.fields) |field, j| {
-            const field_module = first_pass_result.modules[field.resolved_module_index];
+            const field_module = parse_result.modules[field.resolved_module_index];
             try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field.resolved_module_index });
         }
         for (module_result.delays) |delay_decl, j| {
@@ -257,7 +257,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                 },
                 .call => |call| {
                     const field = module_result.fields[call.field_index];
-                    const field_module = first_pass_result.modules[field.resolved_module_index];
+                    const field_module = parse_result.modules[field.resolved_module_index];
                     try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
                     try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, field_module.name, span });
                     try self.print("{buffer_dest}}}, .{{", .{call.out});
@@ -270,7 +270,7 @@ pub fn generateZig(first_pass_result: FirstPassResult, codegen_result: CodeGenRe
                     }
                     // callee params
                     try self.print("}}, note_id_changed, .{{\n", .{});
-                    const callee_module = first_pass_result.modules[field.resolved_module_index];
+                    const callee_module = parse_result.modules[field.resolved_module_index];
                     for (call.args) |arg, j| {
                         const callee_param = callee_module.params[j];
                         try self.print(".{identifier} = ", .{callee_param.name});

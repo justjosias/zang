@@ -6,14 +6,133 @@ const Token = @import("tokenize.zig").Token;
 const TokenType = @import("tokenize.zig").TokenType;
 const TokenIterator = @import("tokenize.zig").TokenIterator;
 const fail = @import("fail.zig").fail;
-const FirstPassResult = @import("parse1.zig").FirstPassResult;
-const Module = @import("parse1.zig").Module;
-const ModuleParam = @import("parse1.zig").ModuleParam;
-const ParamType = @import("parse1.zig").ParamType;
-const CodeGenResult = @import("codegen.zig").CodeGenResult;
-const GenError = @import("codegen.zig").GenError;
-const codegen = @import("codegen.zig").codegen;
-const secondPassPrintModule = @import("parse2_print.zig").secondPassPrintModule;
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
+const parsePrintModule = @import("parse_print.zig").parsePrintModule;
+
+pub const ParamTypeEnum = struct {
+    zig_name: []const u8,
+    values: []const []const u8,
+};
+
+pub const ParamType = union(enum) {
+    boolean,
+    buffer,
+    constant,
+    constant_or_buffer,
+
+    // currently only builtin modules can define enum params
+    one_of: ParamTypeEnum,
+};
+
+pub const ModuleParam = struct {
+    name: []const u8,
+    param_type: ParamType,
+};
+
+pub const Module = struct {
+    name: []const u8,
+    zig_package_name: ?[]const u8, // only set for builtin modules
+    params: []const ModuleParam,
+    // FIXME - i wanted body_loc to be an optional struct value, but a zig
+    // compiler bug prevents that. (if i make it optional, the fields will read
+    // out as all 0's in the second pass)
+    has_body_loc: bool,
+    // the following will both be zero for builtin modules (has_body_loc is
+    // false)
+    begin_token: usize,
+    end_token: usize,
+};
+
+const FirstPass = struct {
+    arena_allocator: *std.mem.Allocator,
+    token_it: TokenIterator,
+    modules: std.ArrayList(Module),
+};
+
+fn expectParamType(self: *FirstPass) !ParamType {
+    const type_token = try self.token_it.expectIdentifier("param type");
+    const type_name = self.token_it.getSourceString(type_token.source_range);
+    if (std.mem.eql(u8, type_name, "boolean")) {
+        return .boolean;
+    }
+    if (std.mem.eql(u8, type_name, "constant")) {
+        return .constant;
+    }
+    if (std.mem.eql(u8, type_name, "waveform")) {
+        return .buffer;
+    }
+    if (std.mem.eql(u8, type_name, "cob")) {
+        return .constant_or_buffer;
+    }
+    return self.token_it.failExpected("param_type", type_token.source_range);
+}
+
+fn defineModule(self: *FirstPass) !void {
+    const module_name_token = try self.token_it.expectIdentifier("module name");
+    const module_name = self.token_it.getSourceString(module_name_token.source_range);
+    if (module_name[0] < 'A' or module_name[0] > 'Z') {
+        return fail(self.token_it.source, module_name_token.source_range, "module name must start with a capital letter", .{});
+    }
+    _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_colon});
+
+    var params = std.ArrayList(ModuleParam).init(self.arena_allocator);
+
+    while (true) {
+        const token = try self.token_it.expectOneOf(&[_]TokenType{ .kw_begin, .identifier });
+        switch (token.tt) {
+            else => unreachable,
+            .kw_begin => break,
+            .identifier => {
+                // param declaration
+                const param_name = self.token_it.getSourceString(token.source_range);
+                if (param_name[0] < 'a' or param_name[0] > 'z') {
+                    return fail(self.token_it.source, token.source_range, "param name must start with a lowercase letter", .{});
+                }
+                for (params.items) |param| {
+                    if (std.mem.eql(u8, param.name, param_name)) {
+                        return fail(self.token_it.source, token.source_range, "redeclaration of param `<`", .{});
+                    }
+                }
+                _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_colon});
+                const param_type = try expectParamType(self);
+                _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_comma});
+                try params.append(.{
+                    .name = param_name,
+                    .param_type = param_type,
+                });
+            },
+        }
+    }
+
+    // skip paint block
+    const begin_token = self.token_it.i;
+    var num_inner_blocks: usize = 0; // "delay" ops use inner blocks
+    while (true) {
+        const token = try self.token_it.expect("`end`");
+        switch (token.tt) {
+            .kw_begin => num_inner_blocks += 1,
+            .kw_end => {
+                if (num_inner_blocks == 0) {
+                    break;
+                }
+                num_inner_blocks -= 1;
+            },
+            else => {},
+        }
+    }
+    const end_token = self.token_it.i;
+
+    try self.modules.append(.{
+        .name = module_name,
+        .zig_package_name = null,
+        .params = params.toOwnedSlice(),
+        .has_body_loc = true,
+        .begin_token = begin_token,
+        .end_token = end_token,
+    });
+}
+
+//////////////////////////// SECOND PASS
 
 pub const Scope = struct {
     parent: ?*const Scope,
@@ -90,7 +209,7 @@ const SecondPass = struct {
     arena_allocator: *std.mem.Allocator,
     tokens: []const Token,
     token_it: TokenIterator,
-    first_pass_result: FirstPassResult,
+    modules: []const Module,
     module: Module,
     module_index: usize,
     fields: std.ArrayList(Field),
@@ -104,7 +223,7 @@ const ParseError = error{
 
 fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
     // resolve module name
-    const callee_module_index = for (self.first_pass_result.modules) |module, i| {
+    const callee_module_index = for (self.modules) |module, i| {
         if (std.mem.eql(u8, field_name, module.name)) {
             break i;
         }
@@ -398,33 +517,67 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
     return scope;
 }
 
-pub const SecondPassModuleInfo = struct {
+pub const ParsedModuleInfo = struct {
     scope: *Scope,
     fields: []const Field,
     locals: []const Local,
 };
 
-pub const SecondPassResult = struct {
+pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
-    module_infos: []const ?SecondPassModuleInfo, // null for builtins
+    builtin_packages: []const BuiltinPackage,
+    modules: []const Module,
+    module_infos: []const ?ParsedModuleInfo, // null for builtins
 
-    pub fn deinit(self: *SecondPassResult) void {
+    pub fn deinit(self: *ParseResult) void {
         self.arena.deinit();
     }
 };
 
-pub fn secondPass(
+pub fn parse(
     source: Source,
     tokens: []const Token,
-    first_pass_result: FirstPassResult,
+    builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
-) !SecondPassResult {
+) !ParseResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
-    var module_infos = try arena.allocator.alloc(?SecondPassModuleInfo, first_pass_result.modules.len);
+    // first pass: parse top level, skipping over module implementations
+    var first_pass: FirstPass = .{
+        .arena_allocator = &arena.allocator,
+        .token_it = TokenIterator.init(source, tokens),
+        .modules = std.ArrayList(Module).init(&arena.allocator),
+    };
 
-    for (first_pass_result.modules) |module, module_index| {
+    // add builtins
+    for (builtin_packages) |pkg| {
+        for (pkg.builtins) |builtin| {
+            try first_pass.modules.append(.{
+                .name = builtin.name,
+                .zig_package_name = pkg.zig_package_name,
+                .params = builtin.params,
+                .has_body_loc = false,
+                .begin_token = 0,
+                .end_token = 0,
+            });
+        }
+    }
+
+    // parse module declarations, including param declarations, but skipping over the paint blocks
+    while (first_pass.token_it.next()) |token| {
+        switch (token.tt) {
+            .kw_def => try defineModule(&first_pass),
+            else => return first_pass.token_it.failExpected("`def` or end of file", token.source_range),
+        }
+    }
+
+    const modules = first_pass.modules.toOwnedSlice();
+
+    // second pass: parse each module's paint block
+    var module_infos = try arena.allocator.alloc(?ParsedModuleInfo, modules.len);
+
+    for (modules) |module, module_index| {
         if (!module.has_body_loc) {
             // it's a builtin
             module_infos[module_index] = null;
@@ -435,7 +588,7 @@ pub fn secondPass(
             .arena_allocator = &arena.allocator,
             .tokens = tokens,
             .token_it = TokenIterator.init(source, tokens[module.begin_token..module.end_token]),
-            .first_pass_result = first_pass_result,
+            .modules = modules,
             .module = module,
             .module_index = module_index,
             .fields = std.ArrayList(Field).init(&arena.allocator),
@@ -444,7 +597,7 @@ pub fn secondPass(
 
         const top_scope = try parseStatements(&self, null);
 
-        const module_info: SecondPassModuleInfo = .{
+        const module_info: ParsedModuleInfo = .{
             .scope = top_scope,
             .fields = self.fields.toOwnedSlice(),
             .locals = self.locals.toOwnedSlice(),
@@ -453,11 +606,13 @@ pub fn secondPass(
         module_infos[module_index] = module_info;
 
         // diagnostic print
-        secondPassPrintModule(first_pass_result, module, module_info) catch |err| std.debug.warn("secondPassPrintModule failed: {}\n", .{err});
+        parsePrintModule(modules, module, module_info) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
     }
 
-    return SecondPassResult{
+    return ParseResult{
         .arena = arena,
+        .builtin_packages = builtin_packages,
+        .modules = modules,
         .module_infos = module_infos,
     };
 }

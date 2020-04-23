@@ -8,7 +8,7 @@ pub const BuiltinPackage = builtins.BuiltinPackage;
 pub const getBuiltinModule = builtins.getBuiltinModule;
 pub const zang_builtin_package = builtins.zang_builtin_package;
 
-const parse1 = @import("zangscript/parse1.zig");
+const parse = @import("zangscript/parse.zig");
 pub const ModuleParam = parse1.ModuleParam;
 
 const codegen_zig = @import("zangscript/codegen_zig.zig");
