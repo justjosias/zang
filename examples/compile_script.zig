@@ -21,13 +21,32 @@ pub fn main() u8 {
 
     var allocator = &leak_count_allocator.allocator;
 
-    var script = zangscript.loadScript("examples/script.txt", &builtin_packages, allocator) catch |err| {
-        std.debug.warn("loadScript failed: {}\n", .{err});
+    const filename = "examples/script.txt";
+
+    const contents = std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
+        std.debug.warn("failed to load {}: {}\n", .{ filename, err });
         return 1;
     };
-    defer script.deinit();
+    defer allocator.free(contents);
 
-    zangscript.generateZig(script.parse_result, script.codegen_result) catch |err| {
+    const source: zangscript.Source = .{
+        .filename = filename,
+        .contents = contents,
+    };
+
+    var parse_result = zangscript.parse(source, &builtin_packages, allocator) catch |err| {
+        std.debug.warn("parse failed: {}\n", .{err});
+        return 1;
+    };
+    defer parse_result.deinit();
+
+    var codegen_result = zangscript.codegen(source, parse_result, allocator) catch |err| {
+        std.debug.warn("codegen failed: {}\n", .{err});
+        return 1;
+    };
+    defer codegen_result.deinit();
+
+    zangscript.generateZig(parse_result, codegen_result) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };
