@@ -860,7 +860,7 @@ pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.
         .module_visited = module_visited,
     };
 
-    for (parse_result.modules) |module, i| {
+    for (parse_result.modules) |_, i| {
         try visitModule(&self, i, i);
     }
 
@@ -876,7 +876,7 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
     }
     self.module_visited[module_index] = true;
 
-    const module_info = self.parse_result.module_infos[module_index].?;
+    const module_info = self.parse_result.modules[module_index].info.?;
 
     // first, recursively resolve all modules that this one uses as its fields
     for (module_info.fields) |field, field_index| {

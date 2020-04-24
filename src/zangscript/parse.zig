@@ -29,6 +29,17 @@ pub const ModuleParam = struct {
     param_type: ParamType,
 };
 
+pub const Field = struct {
+    type_token: Token,
+    resolved_module_index: usize,
+};
+
+pub const ParsedModuleInfo = struct {
+    scope: *Scope,
+    fields: []const Field,
+    locals: []const Local,
+};
+
 pub const Module = struct {
     name: []const u8,
     zig_package_name: ?[]const u8, // only set for builtin modules
@@ -41,6 +52,8 @@ pub const Module = struct {
     // false)
     begin_token: usize,
     end_token: usize,
+    // info: null for builtins
+    info: ?ParsedModuleInfo,
 };
 
 const FirstPass = struct {
@@ -129,6 +142,7 @@ fn defineModule(self: *FirstPass) !void {
         .has_body_loc = true,
         .begin_token = begin_token,
         .end_token = end_token,
+        .info = null, // this will get filled in later
     });
 }
 
@@ -507,22 +521,10 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
     return scope;
 }
 
-pub const Field = struct {
-    type_token: Token,
-    resolved_module_index: usize,
-};
-
-pub const ParsedModuleInfo = struct {
-    scope: *Scope,
-    fields: []const Field,
-    locals: []const Local,
-};
-
 pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
     builtin_packages: []const BuiltinPackage,
     modules: []const Module,
-    module_infos: []const ?ParsedModuleInfo, // null for builtins
 
     pub fn deinit(self: *ParseResult) void {
         self.arena.deinit();
@@ -555,6 +557,7 @@ pub fn parse(
                 .has_body_loc = false,
                 .begin_token = 0,
                 .end_token = 0,
+                .info = null,
             });
         }
     }
@@ -608,10 +611,9 @@ pub fn parse(
 
     // kind of a third pass: resolve fields
     // now that i've added this, the first and second passes can actually be combined. (TODO)
-    var module_infos = try arena.allocator.alloc(?ParsedModuleInfo, modules.len);
     for (results) |maybe_result, module_index| {
         const result = maybe_result orelse {
-            module_infos[module_index] = null;
+            modules[module_index].info = null; // actually this was already null
             continue;
         };
         var resolved_fields = try arena.allocator.alloc(Field, result.fields.len);
@@ -629,7 +631,7 @@ pub fn parse(
                 .resolved_module_index = callee_module_index,
             };
         }
-        module_infos[module_index] = ParsedModuleInfo{
+        modules[module_index].info = ParsedModuleInfo{
             .scope = result.scope,
             .fields = resolved_fields,
             .locals = result.locals,
@@ -637,15 +639,13 @@ pub fn parse(
     }
 
     // diagnostic print
-    for (modules) |module, module_index| {
-        const module_info = module_infos[module_index] orelse continue;
-        parsePrintModule(modules, module, module_info) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+    for (modules) |module| {
+        parsePrintModule(modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
     }
 
     return ParseResult{
         .arena = arena,
         .builtin_packages = builtin_packages,
         .modules = modules,
-        .module_infos = module_infos,
     };
 }

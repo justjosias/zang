@@ -2,7 +2,6 @@ const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
 const Module = @import("parse.zig").Module;
 const ModuleField = @import("parse1zig").ModuleField;
-const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const Expression = @import("parse.zig").Expression;
 const Statement = @import("parse.zig").Statement;
 const Field = @import("parse.zig").Field;
@@ -12,7 +11,6 @@ const Scope = @import("parse.zig").Scope;
 const State = struct {
     modules: []const Module,
     module: Module,
-    module_info: ParsedModuleInfo,
     helper: PrintHelper,
 
     pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
@@ -34,7 +32,7 @@ const State = struct {
         try self.indent(indentation);
         switch (statement) {
             .let_assignment => |x| {
-                try self.print("LET {str} =\n", .{self.module_info.locals[x.local_index].name});
+                try self.print("LET {str} =\n", .{self.module.info.?.locals[x.local_index].name});
                 try self.printExpression(x.expression, indentation + 1);
             },
             .output => |expression| {
@@ -52,7 +50,7 @@ const State = struct {
         try self.indent(indentation);
         switch (expression.inner) {
             .call => |call| {
-                const field = self.module_info.fields[call.field_index];
+                const field = self.module.info.?.fields[call.field_index];
                 const callee_module = self.modules[field.resolved_module_index];
                 try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, callee_module.name });
                 for (call.args) |arg| {
@@ -63,7 +61,7 @@ const State = struct {
                 try self.indent(indentation);
                 try self.print(")\n", .{});
             },
-            .local => |local_index| try self.print("{str}\n", .{self.module_info.locals[local_index].name}),
+            .local => |local_index| try self.print("{str}\n", .{self.module.info.?.locals[local_index].name}),
             .delay => |delay| {
                 try self.print("delay {usize} (\n", .{delay.num_samples});
                 for (delay.scope.statements.items) |statement| {
@@ -90,26 +88,29 @@ const State = struct {
     }
 };
 
-pub fn parsePrintModule(modules: []const Module, module: Module, module_info: ParsedModuleInfo) !void {
+pub fn parsePrintModule(modules: []const Module, module: Module) !void {
     const stderr_file = std.io.getStdErr();
     var stderr_file_out_stream = stderr_file.outStream();
 
     var self: State = .{
         .modules = modules,
         .module = module,
-        .module_info = module_info,
         .helper = PrintHelper.init(&stderr_file_out_stream),
     };
     defer self.helper.deinit();
 
-    try self.print("module '{str}'\n", .{module.name});
-    for (module_info.fields) |field, i| {
-        const callee_module = modules[field.resolved_module_index];
-        try self.print("    field #{usize}({str})\n", .{ i, callee_module.name });
-    }
-    try self.print("statements:\n", .{});
-    for (module_info.scope.statements.items) |statement| {
-        try self.printStatement(statement, 1);
+    if (module.info) |info| {
+        try self.print("module '{str}'\n", .{module.name});
+        for (info.fields) |field, i| {
+            const callee_module = modules[field.resolved_module_index];
+            try self.print("    field #{usize}({str})\n", .{ i, callee_module.name });
+        }
+        try self.print("statements:\n", .{});
+        for (info.scope.statements.items) |statement| {
+            try self.printStatement(statement, 1);
+        }
+    } else {
+        try self.print("builtin module '{str}'\n", .{module.name});
     }
     try self.print("\n", .{});
 }
