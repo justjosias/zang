@@ -53,95 +53,139 @@ pub const Token = struct {
     tt: TokenType,
 };
 
-fn addToken(tokens: *std.ArrayList(Token), loc0: SourceLocation, loc1: SourceLocation, tt: TokenType) !void {
-    try tokens.append(.{
-        .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
-        .tt = tt,
-    });
-}
+pub const Tokenizer = struct {
+    source: Source,
+    loc: SourceLocation,
 
-pub fn tokenize(source: Source, allocator: *std.mem.Allocator) ![]const Token {
-    var tokens = std.ArrayList(Token).init(allocator);
-    errdefer tokens.deinit();
-
-    const src = source.contents;
-    var loc: SourceLocation = .{
-        .line = 0,
-        .index = 0,
-    };
-    while (true) {
-        while (loc.index < src.len and isWhitespace(src[loc.index])) {
-            if (src[loc.index] == '\r') {
-                loc.index += 1;
-                if (loc.index == src.len or src[loc.index] != '\n') {
-                    loc.line += 1;
-                    continue;
-                }
-            }
-            if (src[loc.index] == '\n') {
-                loc.line += 1;
-            }
-            loc.index += 1;
-        }
-        if (loc.index + 2 < src.len and src[loc.index] == '/' and src[loc.index + 1] == '/') {
-            while (loc.index < src.len and src[loc.index] != '\r' and src[loc.index] != '\n') {
-                loc.index += 1;
-            }
-            continue;
-        }
-        if (loc.index == src.len) {
-            break;
-        }
-        const start = loc;
-        if (getSymbol(src[loc.index..])) |result| {
-            loc.index += result.len;
-            try addToken(&tokens, start, loc, result.tt);
-            continue;
-        }
-        if (src[loc.index] == '\'') {
-            loc.index += 1;
-            const start2 = loc;
-            while (true) {
-                if (loc.index == src.len or src[loc.index] == '\r' or src[loc.index] == '\n') {
-                    const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                    return fail(source, sr, "expected closing `'`, found end of line", .{});
-                }
-                if (src[loc.index] == '\'') {
-                    break;
-                }
-                loc.index += 1;
-            }
-            if (loc.index == start2.index) {
-                // the reason i catch this here is that the quotes are not included in the
-                // enum literal token. and if i let an empty value through, there will be
-                // no characters to underline in further compile errors. whereas here we
-                // know about the quote characters and can include them in the underlining
-                loc.index += 1;
-                const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                return fail(source, sr, "enum literal cannot be empty", .{});
-            }
-            try addToken(&tokens, start2, loc, .enum_value);
-            loc.index += 1;
-            continue;
-        }
-        if (getNumber(src[loc.index..])) |len| {
-            loc.index += len;
-            try addToken(&tokens, start, loc, .number);
-            continue;
-        }
-        if (getIdentifier(src[loc.index..])) |len| {
-            loc.index += len;
-            const string = src[start.index..loc.index];
-            const tt = getKeyword(string) orelse .identifier;
-            try addToken(&tokens, start, loc, tt);
-            continue;
-        }
-        loc.index += 1;
-        try addToken(&tokens, start, loc, .illegal);
+    pub fn init(source: Source) Tokenizer {
+        return .{
+            .source = source,
+            .loc = .{ .line = 0, .index = 0 },
+        };
     }
 
-    return tokens.toOwnedSlice();
-}
+    fn makeToken(loc0: SourceLocation, loc1: SourceLocation, tt: TokenType) Token {
+        return .{
+            .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
+            .tt = tt,
+        };
+    }
+
+    pub fn next(self: *Tokenizer) !?Token {
+        const src = self.source.contents;
+
+        var loc = self.loc;
+        defer self.loc = loc;
+
+        while (true) {
+            while (loc.index < src.len and isWhitespace(src[loc.index])) {
+                if (src[loc.index] == '\r') {
+                    loc.index += 1;
+                    if (loc.index == src.len or src[loc.index] != '\n') {
+                        loc.line += 1;
+                        continue;
+                    }
+                }
+                if (src[loc.index] == '\n') {
+                    loc.line += 1;
+                }
+                loc.index += 1;
+            }
+            if (loc.index + 2 < src.len and src[loc.index] == '/' and src[loc.index + 1] == '/') {
+                while (loc.index < src.len and src[loc.index] != '\r' and src[loc.index] != '\n') {
+                    loc.index += 1;
+                }
+                continue;
+            }
+            if (loc.index == src.len) {
+                break;
+            }
+            const start = loc;
+            if (getSymbol(src[loc.index..])) |result| {
+                loc.index += result.len;
+                return makeToken(start, loc, result.tt);
+            }
+            if (src[loc.index] == '\'') {
+                loc.index += 1;
+                const start2 = loc;
+                while (true) {
+                    if (loc.index == src.len or src[loc.index] == '\r' or src[loc.index] == '\n') {
+                        const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
+                        return fail(self.source, sr, "expected closing `'`, found end of line", .{});
+                    }
+                    if (src[loc.index] == '\'') {
+                        break;
+                    }
+                    loc.index += 1;
+                }
+                if (loc.index == start2.index) {
+                    // the reason i catch this here is that the quotes are not included in the
+                    // enum literal token. and if i let an empty value through, there will be
+                    // no characters to underline in further compile errors. whereas here we
+                    // know about the quote characters and can include them in the underlining
+                    loc.index += 1;
+                    const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
+                    return fail(self.source, sr, "enum literal cannot be empty", .{});
+                }
+                const token = makeToken(start2, loc, .enum_value);
+                loc.index += 1;
+                return token;
+            }
+            if (getNumber(src[loc.index..])) |len| {
+                loc.index += len;
+                return makeToken(start, loc, .number);
+            }
+            if (getIdentifier(src[loc.index..])) |len| {
+                loc.index += len;
+                const string = src[start.index..loc.index];
+                const tt = getKeyword(string) orelse .identifier;
+                return makeToken(start, loc, tt);
+            }
+            loc.index += 1;
+            return makeToken(start, loc, .illegal);
+        }
+        return null;
+    }
+
+    pub fn peek(self: *Tokenizer) !?Token {
+        const loc = self.loc;
+        defer self.loc = loc;
+
+        return try self.next();
+    }
+
+    pub fn failExpected(self: *Tokenizer, desc: []const u8, found: SourceRange) error{Failed} {
+        return fail(self.source, found, "expected #, found `<`", .{desc});
+    }
+
+    pub fn expect(self: *Tokenizer, desc: []const u8) !Token {
+        const token = try self.next();
+        return token orelse fail(self.source, null, "expected #, found end of file", .{desc});
+    }
+
+    pub fn expectIdentifier(self: *Tokenizer, desc: []const u8) !Token {
+        const token = try self.expect(desc);
+        if (token.tt != .identifier) {
+            return self.failExpected(desc, token.source_range);
+        }
+        return token;
+    }
+
+    pub fn expectOneOf(self: *Tokenizer, comptime tts: []const TokenType) !Token {
+        comptime var desc: []const u8 = "";
+        inline for (tts) |tt, i| {
+            if (i > 0) desc = desc ++ ", ";
+            desc = desc ++ describeTokenType(tt);
+        }
+        const token = try self.expect(desc);
+        for (tts) |tt| {
+            if (token.tt == tt) {
+                return token;
+            }
+        }
+        return self.failExpected(desc, token.source_range);
+    }
+};
 
 inline fn isWhitespace(ch: u8) bool {
     return ch == ' ' or ch == '\t' or ch == '\r' or ch == '\n';
@@ -246,68 +290,3 @@ fn describeTokenType(tt: TokenType) []const u8 {
         .number => "number",
     };
 }
-
-pub const TokenIterator = struct {
-    source: Source,
-    tokens: []const Token,
-    i: usize,
-
-    pub fn init(source: Source, tokens: []const Token) TokenIterator {
-        return .{
-            .source = source,
-            .tokens = tokens,
-            .i = 0,
-        };
-    }
-
-    pub fn next(self: *TokenIterator) ?Token {
-        if (self.i < self.tokens.len) {
-            defer self.i += 1;
-            return self.tokens[self.i];
-        }
-        return null;
-    }
-
-    pub fn peek(self: *TokenIterator) ?Token {
-        if (self.i < self.tokens.len) {
-            return self.tokens[self.i];
-        }
-        return null;
-    }
-
-    // this doesn't really belong here...
-    pub fn getSourceString(self: *const TokenIterator, source_range: SourceRange) []const u8 {
-        return self.source.getString(source_range);
-    }
-
-    pub fn failExpected(self: *TokenIterator, desc: []const u8, found: SourceRange) error{Failed} {
-        return fail(self.source, found, "expected #, found `<`", .{desc});
-    }
-
-    pub fn expect(self: *TokenIterator, desc: []const u8) !Token {
-        return self.next() orelse return fail(self.source, null, "expected #, found end of file", .{desc});
-    }
-
-    pub fn expectIdentifier(self: *TokenIterator, desc: []const u8) !Token {
-        const token = try self.expect(desc);
-        if (token.tt != .identifier) {
-            return self.failExpected(desc, token.source_range);
-        }
-        return token;
-    }
-
-    pub fn expectOneOf(self: *TokenIterator, comptime tts: []const TokenType) !Token {
-        comptime var desc: []const u8 = "";
-        inline for (tts) |tt, i| {
-            if (i > 0) desc = desc ++ ", ";
-            desc = desc ++ describeTokenType(tt);
-        }
-        const token = try self.expect(desc);
-        for (tts) |tt| {
-            if (token.tt == tt) {
-                return token;
-            }
-        }
-        return self.failExpected(desc, token.source_range);
-    }
-};

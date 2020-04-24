@@ -1,7 +1,6 @@
 const std = @import("std");
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const Source = @import("tokenize.zig").Source;
-const tokenize = @import("tokenize.zig").tokenize;
 const ParseResult = @import("parse.zig").ParseResult;
 const parse = @import("parse.zig").parse;
 const codegen = @import("codegen.zig").codegen;
@@ -32,10 +31,7 @@ pub fn loadScript(filename: []const u8, builtin_packages: []const BuiltinPackage
         .contents = contents,
     };
 
-    const tokens = try tokenize(source, allocator);
-    defer allocator.free(tokens);
-
-    var parse_result = try parse(source, tokens, builtin_packages, allocator);
+    var parse_result = try parse(source, builtin_packages, allocator);
     errdefer parse_result.deinit();
 
     const codegen_result = try codegen(source, parse_result, allocator);

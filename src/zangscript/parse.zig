@@ -4,7 +4,7 @@ const SourceLocation = @import("tokenize.zig").SourceLocation;
 const SourceRange = @import("tokenize.zig").SourceRange;
 const Token = @import("tokenize.zig").Token;
 const TokenType = @import("tokenize.zig").TokenType;
-const TokenIterator = @import("tokenize.zig").TokenIterator;
+const Tokenizer = @import("tokenize.zig").Tokenizer;
 const fail = @import("fail.zig").fail;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const parsePrintModule = @import("parse_print.zig").parsePrintModule;
@@ -125,8 +125,7 @@ const UnresolvedField = struct {
 
 const FirstPass = struct {
     arena_allocator: *std.mem.Allocator,
-    tokens: []const Token,
-    token_it: TokenIterator,
+    tokenizer: Tokenizer,
     modules: std.ArrayList(Module),
     unresolved_infos: std.ArrayList(?UnresolvedModuleInfo), // null for builtins
 };
@@ -138,8 +137,8 @@ const SecondPass = struct {
 };
 
 fn expectParamType(self: *FirstPass) !ParamType {
-    const type_token = try self.token_it.expectIdentifier("param type");
-    const type_name = self.token_it.getSourceString(type_token.source_range);
+    const type_token = try self.tokenizer.expectIdentifier("param type");
+    const type_name = self.tokenizer.source.getString(type_token.source_range);
     if (std.mem.eql(u8, type_name, "boolean")) {
         return .boolean;
     }
@@ -152,38 +151,38 @@ fn expectParamType(self: *FirstPass) !ParamType {
     if (std.mem.eql(u8, type_name, "cob")) {
         return .constant_or_buffer;
     }
-    return self.token_it.failExpected("param_type", type_token.source_range);
+    return self.tokenizer.failExpected("param_type", type_token.source_range);
 }
 
 fn defineModule(self: *FirstPass) !void {
-    const module_name_token = try self.token_it.expectIdentifier("module name");
-    const module_name = self.token_it.getSourceString(module_name_token.source_range);
+    const module_name_token = try self.tokenizer.expectIdentifier("module name");
+    const module_name = self.tokenizer.source.getString(module_name_token.source_range);
     if (module_name[0] < 'A' or module_name[0] > 'Z') {
-        return fail(self.token_it.source, module_name_token.source_range, "module name must start with a capital letter", .{});
+        return fail(self.tokenizer.source, module_name_token.source_range, "module name must start with a capital letter", .{});
     }
-    _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_colon});
+    _ = try self.tokenizer.expectOneOf(&[_]TokenType{.sym_colon});
 
     var params = std.ArrayList(ModuleParam).init(self.arena_allocator);
 
     while (true) {
-        const token = try self.token_it.expectOneOf(&[_]TokenType{ .kw_begin, .identifier });
+        const token = try self.tokenizer.expectOneOf(&[_]TokenType{ .kw_begin, .identifier });
         switch (token.tt) {
             else => unreachable,
             .kw_begin => break,
             .identifier => {
                 // param declaration
-                const param_name = self.token_it.getSourceString(token.source_range);
+                const param_name = self.tokenizer.source.getString(token.source_range);
                 if (param_name[0] < 'a' or param_name[0] > 'z') {
-                    return fail(self.token_it.source, token.source_range, "param name must start with a lowercase letter", .{});
+                    return fail(self.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{});
                 }
                 for (params.items) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
-                        return fail(self.token_it.source, token.source_range, "redeclaration of param `<`", .{});
+                        return fail(self.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
                     }
                 }
-                _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_colon});
+                _ = try self.tokenizer.expectOneOf(&[_]TokenType{.sym_colon});
                 const param_type = try expectParamType(self);
-                _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_comma});
+                _ = try self.tokenizer.expectOneOf(&[_]TokenType{.sym_comma});
                 try params.append(.{
                     .name = param_name,
                     .param_type = param_type,
@@ -226,24 +225,24 @@ fn parseCall(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sco
         .type_token = field_name_token,
     });
 
-    _ = try first_pass.token_it.expectOneOf(&[_]TokenType{.sym_left_paren});
+    _ = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.sym_left_paren});
     var args = std.ArrayList(CallArg).init(first_pass.arena_allocator);
     var first = true;
-    var token = try first_pass.token_it.expect("`)` or arg name");
+    var token = try first_pass.tokenizer.expect("`)` or arg name");
     while (token.tt != .sym_right_paren) {
         if (first) {
             first = false;
         } else {
             if (token.tt == .sym_comma) {
-                token = try first_pass.token_it.expect("`)` or arg name");
+                token = try first_pass.tokenizer.expect("`)` or arg name");
             } else {
-                return first_pass.token_it.failExpected("`,` or `)`", token.source_range);
+                return first_pass.tokenizer.failExpected("`,` or `)`", token.source_range);
             }
         }
         switch (token.tt) {
             .identifier => {
-                const identifier = first_pass.token_it.getSourceString(token.source_range);
-                const equals_token = try first_pass.token_it.expect("`=`, `,` or `)`");
+                const identifier = first_pass.tokenizer.source.getString(token.source_range);
+                const equals_token = try first_pass.tokenizer.expect("`=`, `,` or `)`");
                 if (equals_token.tt == .sym_equals) {
                     const subexpr = try expectExpression(first_pass, second_pass, scope);
                     try args.append(.{
@@ -251,11 +250,11 @@ fn parseCall(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sco
                         .param_name_token = token,
                         .value = subexpr,
                     });
-                    token = try first_pass.token_it.expect("`)` or arg name");
+                    token = try first_pass.tokenizer.expect("`)` or arg name");
                 } else {
                     // shorthand param passing: `val` expands to `val=val`
                     const inner = parseLocalOrParam(second_pass, scope, identifier) orelse
-                        return fail(first_pass.token_it.source, token.source_range, "no param or local called `<`", .{});
+                        return fail(first_pass.tokenizer.source, token.source_range, "no param or local called `<`", .{});
                     const loc0 = token.source_range.loc0;
                     const subexpr = try createExpr(first_pass, loc0, inner);
                     try args.append(.{
@@ -267,7 +266,7 @@ fn parseCall(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sco
                 }
             },
             else => {
-                return first_pass.token_it.failExpected("`)` or arg name", token.source_range);
+                return first_pass.tokenizer.failExpected("`)` or arg name", token.source_range);
             },
         }
     }
@@ -280,15 +279,15 @@ fn parseCall(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sco
 fn parseDelay(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Scope) ParseError!Delay {
     // constant number for the number of delay samples (this is a limitation of my current delay implementation)
     const num_samples = blk: {
-        const token = try first_pass.token_it.expectOneOf(&[_]TokenType{.number});
-        const s = first_pass.token_it.getSourceString(token.source_range);
+        const token = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.number});
+        const s = first_pass.tokenizer.source.getString(token.source_range);
         const n = std.fmt.parseInt(usize, s, 10) catch {
-            return fail(first_pass.token_it.source, token.source_range, "malformatted integer", .{});
+            return fail(first_pass.tokenizer.source, token.source_range, "malformatted integer", .{});
         };
         break :blk n;
     };
     // keyword `begin`
-    _ = try first_pass.token_it.expectOneOf(&[_]TokenType{.kw_begin});
+    _ = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.kw_begin});
     // inner statements
     const inner_scope = try parseStatements(first_pass, second_pass, scope);
     return Delay{
@@ -298,12 +297,11 @@ fn parseDelay(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sc
 }
 
 fn createExpr(first_pass: *FirstPass, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
-    // you pass the location of the start of the expression. this function will use the token_it's
+    // you pass the location of the start of the expression. this function will use the tokenizer's
     // current location to set the expression's end location
-    const loc1 = if (first_pass.token_it.i == 0) loc0 else first_pass.tokens[first_pass.token_it.i - 1].source_range.loc1;
     const expr = try first_pass.arena_allocator.create(Expression);
     expr.* = .{
-        .source_range = .{ .loc0 = loc0, .loc1 = loc1 },
+        .source_range = .{ .loc0 = loc0, .loc1 = first_pass.tokenizer.loc },
         .inner = inner,
     };
     return expr;
@@ -362,8 +360,9 @@ fn expectExpression(first_pass: *FirstPass, second_pass: *SecondPass, scope: *co
 
 fn expectExpression2(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Scope, priority: usize) ParseError!*const Expression {
     var negate = false;
-    if (if (first_pass.token_it.peek()) |token| token.tt == .sym_minus else false) {
-        _ = first_pass.token_it.next();
+    const peeked_token = try first_pass.tokenizer.peek();
+    if (if (peeked_token) |token| token.tt == .sym_minus else false) {
+        _ = try first_pass.tokenizer.next(); // skip the peeked token
         negate = true;
     }
 
@@ -374,10 +373,10 @@ fn expectExpression2(first_pass: *FirstPass, second_pass: *SecondPass, scope: *c
         a = try createExpr(first_pass, loc0, .{ .negate = a });
     }
 
-    while (first_pass.token_it.peek()) |token| {
+    while (try first_pass.tokenizer.peek()) |token| {
         for (binary_operators) |bo| {
             if (token.tt == bo.symbol and priority <= bo.priority) {
-                _ = first_pass.token_it.next();
+                _ = try first_pass.tokenizer.next(); // skip the peeked token
                 const b = try expectExpression2(first_pass, second_pass, scope, bo.priority);
                 a = try createExpr(first_pass, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
                 break;
@@ -391,23 +390,23 @@ fn expectExpression2(first_pass: *FirstPass, second_pass: *SecondPass, scope: *c
 }
 
 fn expectTerm(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Scope) ParseError!*const Expression {
-    const token = try first_pass.token_it.expect("expression");
+    const token = try first_pass.tokenizer.expect("expression");
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
         .sym_left_paren => {
             const a = try expectExpression(first_pass, second_pass, scope);
-            _ = try first_pass.token_it.expectOneOf(&[_]TokenType{.sym_right_paren});
+            _ = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.sym_right_paren});
             return a;
         },
         .identifier => {
-            const s = first_pass.token_it.getSourceString(token.source_range);
+            const s = first_pass.tokenizer.source.getString(token.source_range);
             if (s[0] >= 'A' and s[0] <= 'Z') {
                 const call = try parseCall(first_pass, second_pass, scope, token, s);
                 return try createExpr(first_pass, loc0, .{ .call = call });
             }
             const inner = parseLocalOrParam(second_pass, scope, s) orelse
-                return fail(first_pass.token_it.source, token.source_range, "no local or param called `<`", .{});
+                return fail(first_pass.tokenizer.source, token.source_range, "no local or param called `<`", .{});
             return try createExpr(first_pass, loc0, inner);
         },
         .kw_false => {
@@ -417,14 +416,14 @@ fn expectTerm(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sc
             return try createExpr(first_pass, loc0, .{ .literal_boolean = true });
         },
         .number => {
-            const s = first_pass.token_it.getSourceString(token.source_range);
+            const s = first_pass.tokenizer.source.getString(token.source_range);
             const n = std.fmt.parseFloat(f32, s) catch {
-                return fail(first_pass.token_it.source, token.source_range, "malformatted number", .{});
+                return fail(first_pass.tokenizer.source, token.source_range, "malformatted number", .{});
             };
             return try createExpr(first_pass, loc0, .{ .literal_number = n });
         },
         .enum_value => {
-            const s = first_pass.token_it.getSourceString(token.source_range);
+            const s = first_pass.tokenizer.source.getString(token.source_range);
             return try createExpr(first_pass, loc0, .{ .literal_enum_value = s });
         },
         .kw_delay => {
@@ -435,18 +434,18 @@ fn expectTerm(first_pass: *FirstPass, second_pass: *SecondPass, scope: *const Sc
             return try createExpr(first_pass, loc0, .feedback);
         },
         else => {
-            return first_pass.token_it.failExpected("expression", token.source_range);
+            return first_pass.tokenizer.failExpected("expression", token.source_range);
         },
     }
 }
 
 fn parseLetAssignment(first_pass: *FirstPass, second_pass: *SecondPass, scope: *Scope) !void {
-    const name_token = try first_pass.token_it.expectOneOf(&[_]TokenType{.identifier});
-    const name = first_pass.token_it.getSourceString(name_token.source_range);
+    const name_token = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.identifier});
+    const name = first_pass.tokenizer.source.getString(name_token.source_range);
     if (name[0] < 'a' or name[0] > 'z') {
-        return fail(first_pass.token_it.source, name_token.source_range, "local name must start with a lowercase letter", .{});
+        return fail(first_pass.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
     }
-    _ = try first_pass.token_it.expectOneOf(&[_]TokenType{.sym_equals});
+    _ = try first_pass.tokenizer.expectOneOf(&[_]TokenType{.sym_equals});
     // note: locals are allowed to shadow params
     var maybe_s: ?*const Scope = scope;
     while (maybe_s) |s| : (maybe_s = s.parent) {
@@ -455,7 +454,7 @@ fn parseLetAssignment(first_pass: *FirstPass, second_pass: *SecondPass, scope: *
                 .let_assignment => |x| {
                     const local = second_pass.locals.items[x.local_index];
                     if (std.mem.eql(u8, local.name, name)) {
-                        return fail(first_pass.token_it.source, name_token.source_range, "redeclaration of local `<`", .{});
+                        return fail(first_pass.tokenizer.source, name_token.source_range, "redeclaration of local `<`", .{});
                     }
                 },
                 .output => {},
@@ -483,7 +482,7 @@ fn parseStatements(first_pass: *FirstPass, second_pass: *SecondPass, parent_scop
         .statements = std.ArrayList(Statement).init(first_pass.arena_allocator),
     };
 
-    while (first_pass.token_it.next()) |token| {
+    while (try first_pass.tokenizer.next()) |token| {
         switch (token.tt) {
             .kw_end => break,
             .kw_let => {
@@ -498,7 +497,7 @@ fn parseStatements(first_pass: *FirstPass, second_pass: *SecondPass, parent_scop
                 try scope.statements.append(.{ .feedback = expr });
             },
             else => {
-                return first_pass.token_it.failExpected("`let`, `out`, `feedback` or `end`", token.source_range);
+                return first_pass.tokenizer.failExpected("`let`, `out`, `feedback` or `end`", token.source_range);
             },
         }
     }
@@ -518,7 +517,6 @@ pub const ParseResult = struct {
 
 pub fn parse(
     source: Source,
-    tokens: []const Token,
     builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
 ) !ParseResult {
@@ -528,8 +526,7 @@ pub fn parse(
     // first pass: parse top level, skipping over module implementations
     var first_pass: FirstPass = .{
         .arena_allocator = &arena.allocator,
-        .tokens = tokens,
-        .token_it = TokenIterator.init(source, tokens),
+        .tokenizer = Tokenizer.init(source),
         .modules = std.ArrayList(Module).init(&arena.allocator),
         .unresolved_infos = std.ArrayList(?UnresolvedModuleInfo).init(inner_allocator),
     };
@@ -549,10 +546,10 @@ pub fn parse(
     }
 
     // parse the file
-    while (first_pass.token_it.next()) |token| {
+    while (try first_pass.tokenizer.next()) |token| {
         switch (token.tt) {
             .kw_def => try defineModule(&first_pass),
-            else => return first_pass.token_it.failExpected("`def` or end of file", token.source_range),
+            else => return first_pass.tokenizer.failExpected("`def` or end of file", token.source_range),
         }
     }
 
