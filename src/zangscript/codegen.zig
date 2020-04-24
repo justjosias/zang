@@ -130,7 +130,7 @@ pub const CodegenModuleState = struct {
     modules: []const Module,
     module_results: []const CodeGenModuleResult,
     module_index: usize,
-    fields: []const Field,
+    resolved_fields: []const usize,
     locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
@@ -643,12 +643,12 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, resul
         },
         .call => |call| {
             const module = self.modules[self.module_index];
-            const field = self.fields[call.field_index];
+            const field_module_index = self.resolved_fields[call.field_index];
 
             // the callee is guaranteed to have had its codegen done already, so its num_temps is known
-            const callee_num_temps = self.module_results[field.resolved_module_index].num_temps;
+            const callee_num_temps = self.module_results[field_module_index].num_temps;
 
-            const callee_module = self.modules[field.resolved_module_index];
+            const callee_module = self.modules[field_module_index];
 
             // pass params
             for (call.args) |a| {
@@ -798,7 +798,7 @@ pub const CodeGenModuleResult = struct {
     num_outputs: usize,
     num_temps: usize,
     // if is_builtin is true, the following are undefined
-    fields: []const Field, // this is owned by SecondPassResult
+    resolved_fields: []const usize, // owned slice
     delays: []const DelayDecl, // owned slice
     instructions: []const Instruction, // owned slice
 };
@@ -843,7 +843,7 @@ pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.
                 .instructions = undefined, // FIXME - should be null
                 .num_outputs = builtin.num_outputs,
                 .num_temps = builtin.num_temps,
-                .fields = undefined, // FIXME - should be null?
+                .resolved_fields = undefined, // FIXME - should be null?
                 .delays = undefined, // FIXME - should be null?
             };
             module_visited[builtin_index] = true;
@@ -879,25 +879,41 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
     const module_info = self.parse_result.modules[module_index].info.?;
 
     // first, recursively resolve all modules that this one uses as its fields
+    var resolved_fields = try self.arena_allocator.alloc(usize, module_info.fields.len);
+
     for (module_info.fields) |field, field_index| {
-        if (field.resolved_module_index == self_module_index) {
+        // find the module index for this field name
+        const field_name = self.source.getString(field.type_token.source_range);
+        const resolved_module_index = for (self.parse_result.modules) |m, i| {
+            if (std.mem.eql(u8, field_name, m.name)) {
+                break i;
+            }
+        } else {
+            return fail(self.source, field.type_token.source_range, "no module called `<`", .{});
+        };
+
+        // check for dependency loops and then recurse
+        if (resolved_module_index == self_module_index) {
             return fail(self.source, field.type_token.source_range, "circular dependency in module fields", .{});
         }
-        try visitModule(self, self_module_index, field.resolved_module_index);
+        try visitModule(self, self_module_index, resolved_module_index);
+
+        // ok
+        resolved_fields[field_index] = resolved_module_index;
     }
 
     // now resolve this one
-    self.module_results[module_index] = try codegenModule(self, module_index, module_info);
+    self.module_results[module_index] = try codegenModule(self, module_index, module_info, resolved_fields);
 }
 
-fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: ParsedModuleInfo) !CodeGenModuleResult {
+fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: ParsedModuleInfo, resolved_fields: []const usize) !CodeGenModuleResult {
     var state: CodegenModuleState = .{
         .arena_allocator = self.arena_allocator,
         .source = self.source,
         .modules = self.parse_result.modules,
         .module_results = self.module_results,
         .module_index = module_index,
-        .fields = module_info.fields,
+        .resolved_fields = resolved_fields,
         .locals = module_info.locals,
         .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
         .temp_buffers = TempManager.init(self.inner_allocator), // frees its own memory in deinit
@@ -940,7 +956,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .is_builtin = false,
         .num_outputs = 1,
         .num_temps = state.temp_buffers.finalCount(),
-        .fields = module_info.fields,
+        .resolved_fields = resolved_fields,
         .delays = state.delays.toOwnedSlice(),
         .instructions = state.instructions.toOwnedSlice(),
     };

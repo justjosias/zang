@@ -31,7 +31,6 @@ pub const ModuleParam = struct {
 
 pub const Field = struct {
     type_token: Token,
-    resolved_module_index: usize,
 };
 
 pub const ParsedModuleInfo = struct {
@@ -113,26 +112,15 @@ pub const Statement = union(enum) {
     feedback: *const Expression,
 };
 
-const UnresolvedModuleInfo = struct {
-    scope: *Scope,
-    fields: []const UnresolvedField,
-    locals: []const Local,
-};
-
-const UnresolvedField = struct {
-    type_token: Token,
-};
-
 const ParseState = struct {
     arena_allocator: *std.mem.Allocator,
     tokenizer: Tokenizer,
     modules: std.ArrayList(Module),
-    unresolved_infos: std.ArrayList(?UnresolvedModuleInfo), // null for builtins
 };
 
 const ParseModuleState = struct {
     params: []const ModuleParam,
-    fields: std.ArrayList(UnresolvedField),
+    fields: std.ArrayList(Field),
     locals: std.ArrayList(Local),
 };
 
@@ -194,23 +182,26 @@ fn defineModule(ps: *ParseState) !void {
     // parse paint block
     var ps_mod: ParseModuleState = .{
         .params = params.toOwnedSlice(),
-        .fields = std.ArrayList(UnresolvedField).init(ps.arena_allocator),
+        .fields = std.ArrayList(Field).init(ps.arena_allocator),
         .locals = std.ArrayList(Local).init(ps.arena_allocator),
     };
 
     const top_scope = try parseStatements(ps, &ps_mod, null);
 
-    try ps.modules.append(.{
+    // FIXME a zig compiler bug prevents me from doing this all in one literal
+    // (it compiles but then segfaults at runtime)
+    var module: Module = .{
         .name = module_name,
         .zig_package_name = null,
         .params = ps_mod.params,
-        .info = null, // this will get filled in later
-    });
-    try ps.unresolved_infos.append(UnresolvedModuleInfo{
+        .info = null,
+    };
+    module.info = .{
         .scope = top_scope,
         .fields = ps_mod.fields.toOwnedSlice(),
         .locals = ps_mod.locals.toOwnedSlice(),
-    });
+    };
+    try ps.modules.append(module);
 }
 
 const ParseError = error{
@@ -528,9 +519,7 @@ pub fn parse(
         .arena_allocator = &arena.allocator,
         .tokenizer = Tokenizer.init(source),
         .modules = std.ArrayList(Module).init(&arena.allocator),
-        .unresolved_infos = std.ArrayList(?UnresolvedModuleInfo).init(inner_allocator),
     };
-    defer ps.unresolved_infos.deinit();
 
     // add builtins
     for (builtin_packages) |pkg| {
@@ -541,7 +530,6 @@ pub fn parse(
                 .params = builtin.params,
                 .info = null,
             });
-            try ps.unresolved_infos.append(null);
         }
     }
 
@@ -555,34 +543,9 @@ pub fn parse(
 
     const modules = ps.modules.toOwnedSlice();
 
-    // resolve fields, filling in the `info` field for each module
-    for (modules) |*module, module_index| {
-        const unresolved_info = ps.unresolved_infos.items[module_index] orelse continue;
-        var resolved_fields = try arena.allocator.alloc(Field, unresolved_info.fields.len);
-        for (unresolved_info.fields) |field, field_index| {
-            const field_name = source.getString(field.type_token.source_range);
-            const callee_module_index = for (modules) |m, i| {
-                if (std.mem.eql(u8, field_name, m.name)) {
-                    break i;
-                }
-            } else {
-                return fail(source, field.type_token.source_range, "no module called `<`", .{});
-            };
-            resolved_fields[field_index] = .{
-                .type_token = field.type_token,
-                .resolved_module_index = callee_module_index,
-            };
-        }
-        module.info = ParsedModuleInfo{
-            .scope = unresolved_info.scope,
-            .fields = resolved_fields,
-            .locals = unresolved_info.locals,
-        };
-    }
-
     // diagnostic print
     for (modules) |module| {
-        parsePrintModule(modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+        parsePrintModule(source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
     }
 
     return ParseResult{

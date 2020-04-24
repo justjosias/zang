@@ -1,4 +1,5 @@
 const std = @import("std");
+const Source = @import("tokenize.zig").Source;
 const PrintHelper = @import("print_helper.zig").PrintHelper;
 const Module = @import("parse.zig").Module;
 const ModuleField = @import("parse1zig").ModuleField;
@@ -9,6 +10,7 @@ const Local = @import("parse.zig").Local;
 const Scope = @import("parse.zig").Scope;
 
 const State = struct {
+    source: Source,
     modules: []const Module,
     module: Module,
     helper: PrintHelper,
@@ -51,8 +53,8 @@ const State = struct {
         switch (expression.inner) {
             .call => |call| {
                 const field = self.module.info.?.fields[call.field_index];
-                const callee_module = self.modules[field.resolved_module_index];
-                try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, callee_module.name });
+                const field_name = self.source.getString(field.type_token.source_range);
+                try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, field_name });
                 for (call.args) |arg| {
                     try self.indent(indentation + 1);
                     try self.print("{str}:\n", .{arg.param_name});
@@ -88,11 +90,12 @@ const State = struct {
     }
 };
 
-pub fn parsePrintModule(modules: []const Module, module: Module) !void {
+pub fn parsePrintModule(source: Source, modules: []const Module, module: Module) !void {
     const stderr_file = std.io.getStdErr();
     var stderr_file_out_stream = stderr_file.outStream();
 
     var self: State = .{
+        .source = source,
         .modules = modules,
         .module = module,
         .helper = PrintHelper.init(&stderr_file_out_stream),
@@ -102,8 +105,8 @@ pub fn parsePrintModule(modules: []const Module, module: Module) !void {
     if (module.info) |info| {
         try self.print("module '{str}'\n", .{module.name});
         for (info.fields) |field, i| {
-            const callee_module = modules[field.resolved_module_index];
-            try self.print("    field #{usize}({str})\n", .{ i, callee_module.name });
+            const name = source.getString(field.type_token.source_range);
+            try self.print("    field #{usize}({str})\n", .{ i, name });
         }
         try self.print("statements:\n", .{});
         for (info.scope.statements.items) |statement| {

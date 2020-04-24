@@ -145,9 +145,9 @@ pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !vo
         }
         try self.print("}};\n", .{});
         try self.print("\n", .{});
-        for (module_result.fields) |field, j| {
-            const field_module = parse_result.modules[field.resolved_module_index];
-            try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field.resolved_module_index });
+        for (module_result.resolved_fields) |field_module_index, j| {
+            const field_module = parse_result.modules[field_module_index];
+            try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field_module_index });
         }
         for (module_result.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
@@ -155,9 +155,9 @@ pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !vo
         try self.print("\n", .{});
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
-        for (module_result.fields) |field, j| {
-            const field_module = parse_result.modules[field.resolved_module_index];
-            try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field.resolved_module_index });
+        for (module_result.resolved_fields) |field_module_index, j| {
+            const field_module = parse_result.modules[field_module_index];
+            try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field_module_index });
         }
         for (module_result.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
@@ -256,10 +256,10 @@ pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !vo
                     }
                 },
                 .call => |call| {
-                    const field = module_result.fields[call.field_index];
-                    const field_module = parse_result.modules[field.resolved_module_index];
+                    const field_module_index = module_result.resolved_fields[call.field_index];
+                    const callee_module = parse_result.modules[field_module_index];
                     try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
-                    try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, field_module.name, span });
+                    try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });
                     try self.print("{buffer_dest}}}, .{{", .{call.out});
                     // callee temps
                     for (call.temps) |n, j| {
@@ -270,7 +270,6 @@ pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !vo
                     }
                     // callee params
                     try self.print("}}, note_id_changed, .{{\n", .{});
-                    const callee_module = parse_result.modules[field.resolved_module_index];
                     for (call.args) |arg, j| {
                         const callee_param = callee_module.params[j];
                         try self.print(".{identifier} = ", .{callee_param.name});

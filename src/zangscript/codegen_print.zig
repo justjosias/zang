@@ -123,8 +123,8 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
                 try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {buffer_value} {buffer_value}\n", .{ x.out, x.operator, x.a, x.b });
             },
             .call => |call| {
-                const field = codegen_state.fields[call.field_index];
-                const callee_module = codegen_state.modules[field.resolved_module_index];
+                const field_module_index = codegen_state.resolved_fields[call.field_index];
+                const callee_module = codegen_state.modules[field_module_index];
                 try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
                 try self.print("        temps: [", .{});
                 for (call.temps) |temp, i| {
