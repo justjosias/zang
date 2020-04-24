@@ -46,7 +46,9 @@ pub fn main() u8 {
     };
     defer codegen_result.deinit();
 
-    zangscript.generateZig(parse_result, codegen_result) catch |err| {
+    var stdout_file_out_stream = std.io.getStdOut().outStream();
+
+    zangscript.generateZig(&stdout_file_out_stream, parse_result, codegen_result) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };

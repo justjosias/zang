@@ -92,14 +92,11 @@ const State = struct {
     }
 };
 
-pub fn generateZig(parse_result: ParseResult, codegen_result: CodeGenResult) !void {
-    const stdout_file = std.io.getStdOut();
-    var stdout_file_out_stream = stdout_file.outStream();
-
+pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codegen_result: CodeGenResult) !void {
     var self: State = .{
         .parse_result = parse_result,
         .module = null,
-        .helper = PrintHelper.init(&stdout_file_out_stream),
+        .helper = PrintHelper.init(out),
     };
     defer self.helper.deinit();
 
