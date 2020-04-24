@@ -4,6 +4,10 @@ const fail = @import("fail.zig").fail;
 pub const Source = struct {
     filename: []const u8,
     contents: []const u8,
+
+    pub fn getString(self: Source, source_range: SourceRange) []const u8 {
+        return self.contents[source_range.loc0.index..source_range.loc1.index];
+    }
 };
 
 pub const SourceLocation = struct {
@@ -271,8 +275,9 @@ pub const TokenIterator = struct {
         return null;
     }
 
+    // this doesn't really belong here...
     pub fn getSourceString(self: *const TokenIterator, source_range: SourceRange) []const u8 {
-        return self.source.contents[source_range.loc0.index..source_range.loc1.index];
+        return self.source.getString(source_range);
     }
 
     pub fn failExpected(self: *TokenIterator, desc: []const u8, found: SourceRange) error{Failed} {

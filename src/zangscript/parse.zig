@@ -200,9 +200,8 @@ pub const Statement = union(enum) {
     feedback: *const Expression,
 };
 
-pub const Field = struct {
+pub const UnresolvedField = struct {
     type_token: Token,
-    resolved_module_index: usize,
 };
 
 const SecondPass = struct {
@@ -212,7 +211,7 @@ const SecondPass = struct {
     modules: []const Module,
     module: Module,
     module_index: usize,
-    fields: std.ArrayList(Field),
+    fields: std.ArrayList(UnresolvedField),
     locals: std.ArrayList(Local),
 };
 
@@ -222,19 +221,10 @@ const ParseError = error{
 };
 
 fn parseCall(self: *SecondPass, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
-    // resolve module name
-    const callee_module_index = for (self.modules) |module, i| {
-        if (std.mem.eql(u8, field_name, module.name)) {
-            break i;
-        }
-    } else {
-        return fail(self.token_it.source, field_name_token.source_range, "no module called `<`", .{});
-    };
-    // add the field
+    // add a field
     const field_index = self.fields.items.len;
     try self.fields.append(.{
         .type_token = field_name_token,
-        .resolved_module_index = callee_module_index,
     });
 
     _ = try self.token_it.expectOneOf(&[_]TokenType{.sym_left_paren});
@@ -517,6 +507,11 @@ fn parseStatements(self: *SecondPass, parent_scope: ?*const Scope) !*Scope {
     return scope;
 }
 
+pub const Field = struct {
+    type_token: Token,
+    resolved_module_index: usize,
+};
+
 pub const ParsedModuleInfo = struct {
     scope: *Scope,
     fields: []const Field,
@@ -575,12 +570,19 @@ pub fn parse(
     const modules = first_pass.modules.toOwnedSlice();
 
     // second pass: parse each module's paint block
-    var module_infos = try arena.allocator.alloc(?ParsedModuleInfo, modules.len);
+    const SecondPassResult = struct {
+        scope: *Scope,
+        fields: []const UnresolvedField,
+        locals: []const Local,
+    };
+
+    var results = try inner_allocator.alloc(?SecondPassResult, modules.len);
+    defer inner_allocator.free(results);
 
     for (modules) |module, module_index| {
         if (!module.has_body_loc) {
             // it's a builtin
-            module_infos[module_index] = null;
+            results[module_index] = null;
             continue;
         }
 
@@ -591,21 +593,52 @@ pub fn parse(
             .modules = modules,
             .module = module,
             .module_index = module_index,
-            .fields = std.ArrayList(Field).init(&arena.allocator),
+            .fields = std.ArrayList(UnresolvedField).init(&arena.allocator),
             .locals = std.ArrayList(Local).init(&arena.allocator),
         };
 
         const top_scope = try parseStatements(&self, null);
 
-        const module_info: ParsedModuleInfo = .{
+        results[module_index] = SecondPassResult{
             .scope = top_scope,
             .fields = self.fields.toOwnedSlice(),
             .locals = self.locals.toOwnedSlice(),
         };
+    }
 
-        module_infos[module_index] = module_info;
+    // kind of a third pass: resolve fields
+    // now that i've added this, the first and second passes can actually be combined. (TODO)
+    var module_infos = try arena.allocator.alloc(?ParsedModuleInfo, modules.len);
+    for (results) |maybe_result, module_index| {
+        const result = maybe_result orelse {
+            module_infos[module_index] = null;
+            continue;
+        };
+        var resolved_fields = try arena.allocator.alloc(Field, result.fields.len);
+        for (result.fields) |field, field_index| {
+            const field_name = source.getString(field.type_token.source_range);
+            const callee_module_index = for (modules) |module, i| {
+                if (std.mem.eql(u8, field_name, module.name)) {
+                    break i;
+                }
+            } else {
+                return fail(source, field.type_token.source_range, "no module called `<`", .{});
+            };
+            resolved_fields[field_index] = .{
+                .type_token = field.type_token,
+                .resolved_module_index = callee_module_index,
+            };
+        }
+        module_infos[module_index] = ParsedModuleInfo{
+            .scope = result.scope,
+            .fields = resolved_fields,
+            .locals = result.locals,
+        };
+    }
 
-        // diagnostic print
+    // diagnostic print
+    for (modules) |module, module_index| {
+        const module_info = module_infos[module_index] orelse continue;
         parsePrintModule(modules, module, module_info) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
     }
 
