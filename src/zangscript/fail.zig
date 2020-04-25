@@ -97,3 +97,7 @@ pub fn fail(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []co
     printError(source, maybe_source_range, fmt, args) catch {};
     return error.Failed;
 }
+
+pub fn info(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []const u8, args: var) void {
+    printError(source, maybe_source_range, fmt, args) catch {};
+}

@@ -9,11 +9,11 @@ const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
 const CallArg = @import("parse.zig").CallArg;
 const BinArithOp = @import("parse.zig").BinArithOp;
+const Delay = @import("parse.zig").Delay;
 const Field = @import("parse.zig").Field;
 const Local = @import("parse.zig").Local;
 const Expression = @import("parse.zig").Expression;
 const Statement = @import("parse.zig").Statement;
-const LetAssignment = @import("parse.zig").LetAssignment;
 const Scope = @import("parse.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
@@ -22,7 +22,7 @@ const printBytecode = @import("codegen_print.zig").printBytecode;
 // if it's a temp, the caller needs to make sure to release it (by calling
 // releaseExpressionResult).
 pub const ExpressionResult = union(enum) {
-    nothing,
+    nothing, // why does this exist? can't it be temp_buffer_weak?
     temp_buffer_weak: usize, // not freed by releaseExpressionResult
     temp_buffer: usize,
     temp_float: usize,
@@ -197,77 +197,56 @@ pub const GenError = error{
 };
 
 fn getFloatValue(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
-    switch (result) {
+    return switch (result) {
         .nothing => unreachable,
-        .temp_float => |i| {
-            return FloatValue{ .temp_float_index = i };
-        },
-        .self_param => |i| {
-            const module = self.modules[self.module_index];
-            if (module.params[i].param_type == .constant) {
-                return FloatValue{ .self_param = i };
-            }
-            return null;
-        },
-        .literal_number => |value| {
-            return FloatValue{ .literal = value };
-        },
+        .temp_float => |i| FloatValue{ .temp_float_index = i },
+        .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .constant)
+            FloatValue{ .self_param = i }
+        else
+            null,
+        .literal_number => |value| FloatValue{ .literal = value },
         .literal_boolean,
         .literal_enum_value,
         .temp_buffer_weak,
         .temp_buffer,
         .temp_bool,
-        => return null,
-    }
+        => null,
+    };
 }
 
 fn getBufferValue(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
-    switch (result) {
+    return switch (result) {
         .nothing => unreachable,
-        .temp_buffer_weak => |i| {
-            return BufferValue{ .temp_buffer_index = i };
-        },
-        .temp_buffer => |i| {
-            return BufferValue{ .temp_buffer_index = i };
-        },
-        .self_param => |i| {
-            const module = self.modules[self.module_index];
-            if (module.params[i].param_type == .buffer) {
-                return BufferValue{ .self_param = i };
-            }
-            return null;
-        },
+        .temp_buffer_weak => |i| BufferValue{ .temp_buffer_index = i },
+        .temp_buffer => |i| BufferValue{ .temp_buffer_index = i },
+        .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .buffer)
+            BufferValue{ .self_param = i }
+        else
+            null,
         .temp_float,
         .temp_bool,
         .literal_boolean,
         .literal_number,
         .literal_enum_value,
-        => return null,
-    }
+        => null,
+    };
 }
 
 fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) void {
     switch (result) {
         .temp_buffer => |i| self.temp_buffers.release(i),
-        .nothing,
-        .temp_buffer_weak,
-        .temp_float,
-        .temp_bool,
-        .literal_boolean,
-        .literal_number,
-        .literal_enum_value,
-        .self_param,
-        => {},
+        else => {},
     }
 }
 
-// return something that can be used as a call arg.
+// type-check and coerce a callee module's param.
 // generate a temp if necessary, but literals and self_params can be returned as is (avoid redundant copy)
-fn coerceParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
+fn coerceCalleeParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
     const module = self.modules[self.module_index];
 
     switch (param_type) {
         .boolean => {
+            // the destination param is a boolean. we were given a `result` - ensure that it is a boolean
             const ok = switch (result) {
                 .nothing => unreachable,
                 .temp_buffer_weak => false,
@@ -285,26 +264,26 @@ fn coerceParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType
             return result;
         },
         .buffer => {
-            const Ok = union(enum) { valid, invalid, convert: FloatValue };
+            const Ok = union(enum) { valid, invalid, convert_from: FloatValue };
             const ok: Ok = switch (result) {
                 .nothing => unreachable,
                 .temp_buffer_weak => .valid,
                 .temp_buffer => .valid,
-                .temp_float => |index| .{ .convert = FloatValue{ .temp_float_index = index } },
+                .temp_float => |index| Ok{ .convert_from = FloatValue{ .temp_float_index = index } },
                 .temp_bool => .invalid,
                 .literal_boolean => .invalid,
-                .literal_number => |value| Ok{ .convert = FloatValue{ .literal = value } },
+                .literal_number => |value| Ok{ .convert_from = FloatValue{ .literal = value } },
                 .literal_enum_value => .invalid,
                 .self_param => |param_index| switch (module.params[param_index].param_type) {
                     .buffer => Ok{ .valid = {} },
-                    .constant => Ok{ .convert = FloatValue{ .self_param = param_index } },
+                    .constant => Ok{ .convert_from = FloatValue{ .self_param = param_index } },
                     else => Ok{ .invalid = {} },
                 },
             };
             switch (ok) {
                 .valid => return result,
                 .invalid => return fail(self.source, sr, "expected waveform value", .{}),
-                .convert => |value| {
+                .convert_from => |value| {
                     const temp_buffer_index = try self.temp_buffers.claim();
                     try self.instructions.append(.{
                         .float_to_buffer = .{
@@ -461,24 +440,281 @@ fn coerceAssignment(self: *CodegenModuleState, sr: SourceRange, result_loc: Buff
 }
 
 const ResultInfo = union(enum) {
+    // none: create a temp for the destination, except for literals/params - those can be passed directly.
+    // no type checking (type is propagated from the inside out).
     none,
-    param_type: ParamType,
+    // callee_param: create a temp for the destination, except for literals/params - those can be passed directly.
+    // type check against the required destination type.
+    callee_param: ParamType,
+    // result_loc: a destination is already set up, so don't create a temp.
+    // type check against the required destination type.
     result_loc: BufferDest,
 };
 
-fn coerce(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, result: ExpressionResult) GenError!ExpressionResult {
+fn coerce(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, result: ExpressionResult) !ExpressionResult {
     switch (result_info) {
         .none => {
             return result;
         },
-        .param_type => |param_type| {
-            return try coerceParam(self, sr, param_type, result);
+        .callee_param => |param_type| {
+            return try coerceCalleeParam(self, sr, param_type, result);
         },
         .result_loc => |result_loc| {
             try coerceAssignment(self, sr, result_loc, result);
             return ExpressionResult.nothing;
         },
     }
+}
+
+fn genSelfParam(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, param_index: usize) !ExpressionResult {
+    const module = self.modules[self.module_index];
+    if (module.params[param_index].param_type == .constant_or_buffer) {
+        // immediately turn constant_or_buffer into buffer (most of the rest of codegen
+        // isn't able to work with constant_or_buffer)
+        const temp_buffer_index = try self.temp_buffers.claim();
+        try self.instructions.append(.{
+            .cob_to_buffer = .{
+                // TODO look at result_info and use that output
+                .out = .{ .temp_buffer_index = temp_buffer_index },
+                .in_self_param = param_index,
+            },
+        });
+        return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+    } else {
+        return coerce(self, sr, result_info, .{ .self_param = param_index });
+    }
+}
+
+fn genNegate(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, expr: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+    const ra = try genExpression(self, expr, .none, maybe_feedback_temp_index);
+    defer releaseExpressionResult(self, ra);
+
+    if (getFloatValue(self, ra)) |a| {
+        const temp_float_index = self.num_temp_floats;
+        self.num_temp_floats += 1;
+        try self.instructions.append(.{
+            .negate_float_to_float = .{
+                .out_temp_float_index = temp_float_index,
+                .a = a,
+            },
+        });
+        return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
+    }
+    if (getBufferValue(self, ra)) |a| {
+        const temp_buffer_index = try self.temp_buffers.claim();
+        try self.instructions.append(.{
+            .negate_buffer_to_buffer = .{
+                .out = .{ .temp_buffer_index = temp_buffer_index },
+                .a = a,
+            },
+        });
+        return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+    }
+    return fail(self.source, expr.source_range, "arithmetic can only be performed on numerical types", .{});
+}
+
+const ResultAndBufferDest = struct {
+    result: ExpressionResult,
+    buffer_dest: BufferDest,
+};
+
+// get a destination buffer to write to
+fn getBufferDest(self: *CodegenModuleState, result_info: ResultInfo) !ResultAndBufferDest {
+    switch (result_info) {
+        .none, .callee_param => {
+            const temp_buffer_index = try self.temp_buffers.claim();
+            return ResultAndBufferDest{
+                .result = .{ .temp_buffer = temp_buffer_index },
+                .buffer_dest = .{ .temp_buffer_index = temp_buffer_index },
+            };
+        },
+        .result_loc => |result_loc| {
+            return ResultAndBufferDest{ .result = .nothing, .buffer_dest = result_loc };
+        },
+    }
+}
+
+fn genBinArith(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, op: BinArithOp, ea: *const Expression, eb: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+    const ra = try genExpression(self, ea, .none, maybe_feedback_temp_index);
+    defer releaseExpressionResult(self, ra);
+    const rb = try genExpression(self, eb, .none, maybe_feedback_temp_index);
+    defer releaseExpressionResult(self, rb);
+
+    // float * float -> float
+    if (getFloatValue(self, ra)) |a| {
+        if (getFloatValue(self, rb)) |b| {
+            switch (result_info) {
+                .none, .callee_param => {},
+                .result_loc => unreachable, // result_locs can't have float type (only buffer type)
+            }
+            // so we always generate a temp for the result
+            const temp_float_index = self.num_temp_floats;
+            self.num_temp_floats += 1;
+            try self.instructions.append(.{
+                .arith_float_float = .{
+                    .out_temp_float_index = temp_float_index,
+                    .operator = op,
+                    .a = a,
+                    .b = b,
+                },
+            });
+            return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
+        }
+    }
+    // buffer * float -> buffer
+    if (getBufferValue(self, ra)) |a| {
+        if (getFloatValue(self, rb)) |b| {
+            const x = try getBufferDest(self, result_info);
+            try self.instructions.append(.{
+                .arith_buffer_float = .{
+                    .out = x.buffer_dest,
+                    .operator = op,
+                    .a = a,
+                    .b = b,
+                },
+            });
+            return x.result;
+        }
+    }
+    // float * buffer -> buffer
+    if (getFloatValue(self, ra)) |a| {
+        if (getBufferValue(self, rb)) |b| {
+            const x = try getBufferDest(self, result_info);
+            try self.instructions.append(.{
+                .arith_float_buffer = .{
+                    .out = x.buffer_dest,
+                    .operator = op,
+                    .a = a,
+                    .b = b,
+                },
+            });
+            return x.result;
+        }
+    }
+    // buffer * buffer -> buffer
+    if (getBufferValue(self, ra)) |a| {
+        if (getBufferValue(self, rb)) |b| {
+            const x = try getBufferDest(self, result_info);
+            try self.instructions.append(.{
+                .arith_buffer_buffer = .{
+                    .out = x.buffer_dest,
+                    .operator = op,
+                    .a = a,
+                    .b = b,
+                },
+            });
+            return x.result;
+        }
+    }
+    return fail(self.source, sr, "arithmetic can only be performed on numerical types", .{});
+}
+
+fn genCall(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, field_index: usize, args: []const CallArg, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+    const field_module_index = self.resolved_fields[field_index];
+
+    // the callee is guaranteed to have had its codegen done already, so its num_temps is known
+    const callee_num_temps = self.module_results[field_module_index].num_temps;
+
+    const callee_module = self.modules[field_module_index];
+
+    // pass params
+    for (args) |a| {
+        for (callee_module.params) |param| {
+            if (std.mem.eql(u8, a.param_name, param.name)) break;
+        } else {
+            return fail(self.source, a.param_name_token.source_range, "invalid param `<`", .{});
+        }
+    }
+    var arg_results = try self.arena_allocator.alloc(ExpressionResult, callee_module.params.len);
+    for (callee_module.params) |param, i| {
+        // find this arg in the call node
+        var maybe_arg: ?CallArg = null;
+        for (args) |a| {
+            if (std.mem.eql(u8, a.param_name, param.name)) {
+                if (maybe_arg != null) {
+                    return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
+                }
+                maybe_arg = a;
+            }
+        }
+        const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
+        arg_results[i] = try genExpression(self, arg.value, .{ .callee_param = param.param_type }, maybe_feedback_temp_index);
+    }
+    defer for (callee_module.params) |param, i| releaseExpressionResult(self, arg_results[i]);
+
+    // the callee needs temps for its own internal use
+    var temps = try self.arena_allocator.alloc(usize, callee_num_temps);
+    for (temps) |*ptr| {
+        ptr.* = try self.temp_buffers.claim();
+    }
+    defer for (temps) |temp_buffer_index| self.temp_buffers.release(temp_buffer_index);
+
+    const x = try getBufferDest(self, result_info);
+    try self.instructions.append(.{
+        .call = .{
+            .out = x.buffer_dest,
+            .field_index = field_index,
+            .temps = temps,
+            .args = arg_results,
+        },
+    });
+    return x.result;
+}
+
+fn genDelayLevelStatement(self: *CodegenModuleState, statement: Statement, out: BufferDest, feedback_out_temp_index: usize, feedback_temp_index: usize) !void {
+    switch (statement) {
+        .let_assignment => |x| {
+            try genLetAssignment(self, x.local_index, x.expression, feedback_temp_index);
+        },
+        .output => |expr| {
+            const result = try genExpression(self, expr, .{ .result_loc = out }, feedback_temp_index);
+            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+        },
+        .feedback => |expr| {
+            const result = try genExpression(self, expr, .{ .result_loc = .{ .temp_buffer_index = feedback_out_temp_index } }, feedback_temp_index);
+            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+        },
+    }
+}
+
+fn genDelay(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, delay: Delay, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+    if (maybe_feedback_temp_index != null) {
+        return fail(self.source, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
+    }
+
+    const delay_index = self.delays.items.len;
+    try self.delays.append(.{ .num_samples = delay.num_samples });
+
+    const feedback_temp_index = try self.temp_buffers.claim();
+    defer self.temp_buffers.release(feedback_temp_index);
+
+    const x = try getBufferDest(self, result_info);
+
+    const feedback_out_temp_index = try self.temp_buffers.claim();
+    defer self.temp_buffers.release(feedback_out_temp_index);
+
+    try self.instructions.append(.{
+        .delay_begin = .{
+            .out = x.buffer_dest,
+            .delay_index = delay_index,
+            .feedback_out_temp_buffer_index = feedback_out_temp_index,
+            .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
+        },
+    });
+
+    for (delay.scope.statements.items) |statement| {
+        try genDelayLevelStatement(self, statement, x.buffer_dest, feedback_out_temp_index, feedback_temp_index);
+    }
+
+    try self.instructions.append(.{
+        .delay_end = .{
+            .out = x.buffer_dest,
+            .feedback_out_temp_buffer_index = feedback_out_temp_index,
+            .delay_index = delay_index,
+        },
+    });
+
+    return x.result;
 }
 
 // generate bytecode instructions for an expression.
@@ -499,275 +735,19 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, resul
             return coerce(self, sr, result_info, .{ .temp_buffer_weak = self.local_temps[local_index].? });
         },
         .self_param => |param_index| {
-            const module = self.modules[self.module_index];
-            if (module.params[param_index].param_type == .constant_or_buffer) {
-                // immediately turn constant_or_buffer into buffer (most of the rest of codegen
-                // isn't able to work with constant_or_buffer)
-                const temp_buffer_index = try self.temp_buffers.claim();
-                try self.instructions.append(.{
-                    .cob_to_buffer = .{
-                        // TODO look at result_info and use that output
-                        .out = .{ .temp_buffer_index = temp_buffer_index },
-                        .in_self_param = param_index,
-                    },
-                });
-                return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
-            } else {
-                return coerce(self, sr, result_info, .{ .self_param = param_index });
-            }
+            return genSelfParam(self, sr, result_info, param_index);
         },
         .negate => |expr| {
-            const ra = try genExpression(self, expr, .none, maybe_feedback_temp_index);
-            defer releaseExpressionResult(self, ra);
-
-            if (getFloatValue(self, ra)) |a| {
-                const temp_float_index = self.num_temp_floats;
-                self.num_temp_floats += 1;
-                try self.instructions.append(.{
-                    .negate_float_to_float = .{
-                        .out_temp_float_index = temp_float_index,
-                        .a = a,
-                    },
-                });
-                return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
-            }
-            if (getBufferValue(self, ra)) |a| {
-                const temp_buffer_index = try self.temp_buffers.claim();
-                try self.instructions.append(.{
-                    .negate_buffer_to_buffer = .{
-                        .out = .{ .temp_buffer_index = temp_buffer_index },
-                        .a = a,
-                    },
-                });
-                return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
-            }
-            return fail(self.source, expression.source_range, "invalid operand type", .{});
+            return genNegate(self, sr, result_info, expr, maybe_feedback_temp_index);
         },
         .bin_arith => |m| {
-            const ra = try genExpression(self, m.a, .none, maybe_feedback_temp_index);
-            defer releaseExpressionResult(self, ra);
-            const rb = try genExpression(self, m.b, .none, maybe_feedback_temp_index);
-            defer releaseExpressionResult(self, rb);
-
-            // float * float -> float
-            if (getFloatValue(self, ra)) |a| {
-                if (getFloatValue(self, rb)) |b| {
-                    // no result_loc shenanigans here because result_locs can't have float type (only buffer type)
-                    const temp_float_index = self.num_temp_floats;
-                    self.num_temp_floats += 1;
-                    try self.instructions.append(.{
-                        .arith_float_float = .{
-                            .out_temp_float_index = temp_float_index,
-                            .operator = m.op,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
-                }
-            }
-            // buffer * float -> buffer
-            if (getBufferValue(self, ra)) |a| {
-                if (getFloatValue(self, rb)) |b| {
-                    var result2: ExpressionResult = .nothing;
-                    const out: BufferDest = switch (result_info) {
-                        .none => null,
-                        .param_type => null,
-                        .result_loc => |result_loc| result_loc,
-                    } orelse blk: {
-                        const temp_buffer_index = try self.temp_buffers.claim();
-                        result2 = .{ .temp_buffer = temp_buffer_index };
-                        break :blk .{ .temp_buffer_index = temp_buffer_index };
-                    };
-                    try self.instructions.append(.{
-                        .arith_buffer_float = .{
-                            .out = out,
-                            .operator = m.op,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return result2;
-                }
-            }
-            // float * buffer -> buffer
-            if (getFloatValue(self, ra)) |a| {
-                if (getBufferValue(self, rb)) |b| {
-                    var result2: ExpressionResult = .nothing;
-                    const out: BufferDest = switch (result_info) {
-                        .none => null,
-                        .param_type => null,
-                        .result_loc => |result_loc| result_loc,
-                    } orelse blk: {
-                        const temp_buffer_index = try self.temp_buffers.claim();
-                        result2 = .{ .temp_buffer = temp_buffer_index };
-                        break :blk .{ .temp_buffer_index = temp_buffer_index };
-                    };
-                    try self.instructions.append(.{
-                        .arith_float_buffer = .{
-                            .out = out,
-                            .operator = m.op,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return result2;
-                }
-            }
-            // buffer * buffer -> buffer
-            if (getBufferValue(self, ra)) |a| {
-                if (getBufferValue(self, rb)) |b| {
-                    var result2: ExpressionResult = .nothing;
-                    const out: BufferDest = switch (result_info) {
-                        .none => null,
-                        .param_type => null,
-                        .result_loc => |result_loc| result_loc,
-                    } orelse blk: {
-                        const temp_buffer_index = try self.temp_buffers.claim();
-                        result2 = .{ .temp_buffer = temp_buffer_index };
-                        break :blk .{ .temp_buffer_index = temp_buffer_index };
-                    };
-                    try self.instructions.append(.{
-                        .arith_buffer_buffer = .{
-                            .out = out,
-                            .operator = m.op,
-                            .a = a,
-                            .b = b,
-                        },
-                    });
-                    return result2;
-                }
-            }
-            std.debug.warn("ra: {}\nrb: {}\n", .{ ra, rb });
-            return fail(self.source, expression.source_range, "invalid operand types", .{});
+            return genBinArith(self, sr, result_info, m.op, m.a, m.b, maybe_feedback_temp_index);
         },
         .call => |call| {
-            const module = self.modules[self.module_index];
-            const field_module_index = self.resolved_fields[call.field_index];
-
-            // the callee is guaranteed to have had its codegen done already, so its num_temps is known
-            const callee_num_temps = self.module_results[field_module_index].num_temps;
-
-            const callee_module = self.modules[field_module_index];
-
-            // pass params
-            for (call.args) |a| {
-                for (callee_module.params) |param| {
-                    if (std.mem.eql(u8, a.param_name, param.name)) break;
-                } else {
-                    return fail(self.source, a.param_name_token.source_range, "invalid param `<`", .{});
-                }
-            }
-            var args = try self.arena_allocator.alloc(ExpressionResult, callee_module.params.len);
-            for (callee_module.params) |param, i| {
-                // find this arg in the call node
-                var maybe_arg: ?CallArg = null;
-                for (call.args) |a| {
-                    if (std.mem.eql(u8, a.param_name, param.name)) {
-                        if (maybe_arg != null) {
-                            return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
-                        }
-                        maybe_arg = a;
-                    }
-                }
-                const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
-                args[i] = try genExpression(self, arg.value, .{ .param_type = param.param_type }, maybe_feedback_temp_index);
-            }
-
-            // the callee needs temps for its own internal use
-            var temps = try self.arena_allocator.alloc(usize, callee_num_temps);
-            for (temps) |*ptr| {
-                ptr.* = try self.temp_buffers.claim();
-            }
-            defer {
-                for (temps) |temp_buffer_index| {
-                    self.temp_buffers.release(temp_buffer_index);
-                }
-            }
-
-            var result2: ExpressionResult = .nothing;
-            const out: BufferDest = switch (result_info) {
-                .none => null,
-                .param_type => null,
-                .result_loc => |result_loc| result_loc,
-            } orelse blk: {
-                const temp_buffer_index = try self.temp_buffers.claim();
-                result2 = .{ .temp_buffer = temp_buffer_index };
-                break :blk .{ .temp_buffer_index = temp_buffer_index };
-            };
-            try self.instructions.append(.{
-                .call = .{
-                    .out = out,
-                    .field_index = call.field_index,
-                    .temps = temps,
-                    .args = args,
-                },
-            });
-            for (callee_module.params) |param, i| {
-                releaseExpressionResult(self, args[i]);
-            }
-            return result2;
+            return genCall(self, sr, result_info, call.field_index, call.args, maybe_feedback_temp_index);
         },
         .delay => |delay| {
-            if (maybe_feedback_temp_index != null) {
-                // i might be able to support this, but why?
-                return fail(self.source, expression.source_range, "you cannot nest delay operations", .{});
-            }
-
-            const delay_index = self.delays.items.len;
-            try self.delays.append(.{ .num_samples = delay.num_samples });
-
-            const feedback_temp_index = try self.temp_buffers.claim();
-            defer self.temp_buffers.release(feedback_temp_index);
-
-            var result2: ExpressionResult = .nothing;
-            const out: BufferDest = switch (result_info) {
-                .none => null,
-                .param_type => null,
-                .result_loc => |result_loc| result_loc,
-            } orelse blk: {
-                const temp_buffer_index = try self.temp_buffers.claim();
-                result2 = .{ .temp_buffer = temp_buffer_index };
-                break :blk .{ .temp_buffer_index = temp_buffer_index };
-            };
-
-            const feedback_out_temp_index = try self.temp_buffers.claim();
-            defer self.temp_buffers.release(feedback_out_temp_index);
-
-            try self.instructions.append(.{
-                .delay_begin = .{
-                    .out = out,
-                    .delay_index = delay_index,
-                    .feedback_out_temp_buffer_index = feedback_out_temp_index,
-                    .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
-                },
-            });
-
-            for (delay.scope.statements.items) |statement| {
-                switch (statement) {
-                    .let_assignment => |x| {
-                        try genLetAssignment(self, x, feedback_temp_index);
-                    },
-                    .output => |expr| {
-                        const result = try genExpression(self, expr, .{ .result_loc = out }, feedback_temp_index);
-                        defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
-                    },
-                    .feedback => |expr| {
-                        const result = try genExpression(self, expr, .{ .result_loc = .{ .temp_buffer_index = feedback_out_temp_index } }, feedback_temp_index);
-                        defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
-                    },
-                }
-            }
-
-            try self.instructions.append(.{
-                .delay_end = .{
-                    .out = out,
-                    .feedback_out_temp_buffer_index = feedback_out_temp_index,
-                    .delay_index = delay_index,
-                },
-            });
-
-            return result2;
+            return genDelay(self, sr, result_info, delay, maybe_feedback_temp_index);
         },
         .feedback => {
             const feedback_temp_index = maybe_feedback_temp_index orelse {
@@ -778,19 +758,35 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, resul
     }
 }
 
-fn genLetAssignment(self: *CodegenModuleState, x: LetAssignment, maybe_feedback_temp_index: ?usize) GenError!void {
+fn genLetAssignment(self: *CodegenModuleState, local_index: usize, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!void {
     // for now, only buffer type is supported for let-assignments
     // create a "temp" to hold the value
     const temp_buffer_index = try self.temp_buffers.claim();
 
     // mark the temp to be released at the end of all codegen
-    self.local_temps[x.local_index] = temp_buffer_index;
+    self.local_temps[local_index] = temp_buffer_index;
 
     const result_info: ResultInfo = .{
         .result_loc = .{ .temp_buffer_index = temp_buffer_index },
     };
-    const result = try genExpression(self, x.expression, result_info, maybe_feedback_temp_index);
+    const result = try genExpression(self, expression, result_info, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+}
+
+fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
+    switch (statement) {
+        .let_assignment => |x| {
+            try genLetAssignment(self, x.local_index, x.expression, null);
+        },
+        .output => |expression| {
+            const result_info: ResultInfo = .{ .result_loc = .{ .output_index = 0 } };
+            const result = try genExpression(self, expression, result_info, null);
+            defer releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
+        },
+        .feedback => |expression| {
+            return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+        },
+    }
 }
 
 pub const CodeGenModuleResult = struct {
@@ -927,19 +923,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     std.mem.set(?usize, state.local_temps, null);
 
     for (module_info.scope.statements.items) |statement| {
-        switch (statement) {
-            .let_assignment => |x| {
-                try genLetAssignment(&state, x, null);
-            },
-            .output => |expression| {
-                const result_info: ResultInfo = .{ .result_loc = .{ .output_index = 0 } };
-                const result = try genExpression(&state, expression, result_info, null);
-                defer releaseExpressionResult(&state, result); // this should do nothing (because we passed a result loc)
-            },
-            .feedback => |expression| {
-                return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
-            },
-        }
+        try genTopLevelStatement(&state, statement);
     }
 
     for (state.local_temps) |maybe_temp_buffer_index| {

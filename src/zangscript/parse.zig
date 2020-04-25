@@ -101,13 +101,8 @@ pub const Expression = struct {
     inner: ExpressionInner,
 };
 
-pub const LetAssignment = struct {
-    local_index: usize,
-    expression: *const Expression,
-};
-
 pub const Statement = union(enum) {
-    let_assignment: LetAssignment,
+    let_assignment: struct { local_index: usize, expression: *const Expression },
     output: *const Expression,
     feedback: *const Expression,
 };
