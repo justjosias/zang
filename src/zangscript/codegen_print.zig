@@ -5,6 +5,7 @@ const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
+const FloatDest = @import("codegen.zig").FloatDest;
 
 const State = struct {
     codegen_state: *const CodegenModuleState,
@@ -21,6 +22,8 @@ const State = struct {
             try self.printBufferDest(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
             try self.printFloatValue(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "float_dest")) {
+            try self.printFloatDest(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
             try self.printExpressionResult(arg);
         } else {
@@ -43,6 +46,10 @@ const State = struct {
                 try self.print("params.{str}", .{module.params[i].name});
             },
         }
+    }
+
+    fn printFloatDest(self: *State, dest: FloatDest) !void {
+        try self.print("temp_float{usize}", .{dest.temp_float_index});
     }
 
     fn printFloatValue(self: *State, value: FloatValue) !void {
@@ -105,22 +112,22 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
                 try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
             },
             .negate_float_to_float => |x| {
-                try self.print("temp_float{usize} = NEGATE_FLOAT_TO_FLOAT {float_value}\n", .{ x.out_temp_float_index, x.a });
+                try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {float_value}\n", .{ x.out, x.a });
             },
             .negate_buffer_to_buffer => |x| {
                 try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {buffer_value}\n", .{ x.out, x.a });
             },
             .arith_float_float => |x| {
-                try self.print("temp_float{usize} = ARITH_FLOAT_FLOAT({auto}) {float_value} {float_value}\n", .{ x.out_temp_float_index, x.operator, x.a, x.b });
+                try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {float_value} {float_value}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_float_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {float_value} {buffer_value}\n", .{ x.out, x.operator, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {float_value} {buffer_value}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_buffer_float => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {buffer_value} {float_value}\n", .{ x.out, x.operator, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {buffer_value} {float_value}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_buffer_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {buffer_value} {buffer_value}\n", .{ x.out, x.operator, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {buffer_value} {buffer_value}\n", .{ x.out, x.op, x.a, x.b });
             },
             .call => |call| {
                 const field_module_index = codegen_state.resolved_fields[call.field_index];

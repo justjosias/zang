@@ -24,6 +24,16 @@ fn printErrorMessage(out: *std.fs.File.OutStream, maybe_source_range: ?SourceRan
             } else {
                 try out.writeByte('?');
             }
+        } else if (ch == '|') {
+            // list of enum values
+            const values: []const []const u8 = args[arg_index];
+            for (values) |value, i| {
+                if (i > 0) try out.writeAll(", ");
+                try out.writeByte('\'');
+                try out.writeAll(value);
+                try out.writeByte('\'');
+            }
+            arg_index += 1;
         } else {
             try out.writeByte(ch);
         }
@@ -100,4 +110,9 @@ pub fn fail(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []co
 
 pub fn info(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []const u8, args: var) void {
     printError(source, maybe_source_range, fmt, args) catch {};
+}
+
+pub fn panic(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []const u8, args: var) noreturn {
+    printError(source, maybe_source_range, fmt, args) catch {};
+    @panic("zangscript panic");
 }

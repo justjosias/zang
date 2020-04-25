@@ -179,7 +179,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("}}\n", {});
                 },
                 .negate_float_to_float => |x| {
-                    try self.print("const temp_float{usize}: f32 = -{float_value};\n", .{ x.out_temp_float_index, x.a });
+                    try self.print("const temp_float{usize}: f32 = -{float_value};\n", .{ x.out.temp_float_index, x.a });
                 },
                 .negate_buffer_to_buffer => |x| {
                     try self.print("{{\n", .{});
@@ -190,15 +190,15 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("}}\n", .{});
                 },
                 .arith_float_float => |x| {
-                    try self.print("const temp_float{usize}: f32 = ", .{x.out_temp_float_index});
-                    switch (x.operator) {
+                    try self.print("const temp_float{usize}: f32 = ", .{x.out.temp_float_index});
+                    switch (x.op) {
                         .add => try self.print("{float_value} + {float_value};\n", .{ x.a, x.b }),
                         .mul => try self.print("{float_value} * {float_value};\n", .{ x.a, x.b }),
                         .pow => try self.print("std.math.pow(f32, {float_value}, {float_value});\n", .{ x.a, x.b }),
                     }
                 },
                 .arith_float_buffer => |x| {
-                    if (x.operator == .pow) {
+                    if (x.op == .pow) {
                         try self.print("{{\n", .{});
                         try self.print("var i = {str}.start;\n", .{span});
                         try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
@@ -207,7 +207,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                         try self.print("}}\n", .{});
                     } else {
                         try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.operator) {
+                        switch (x.op) {
                             .add => try self.print("zang.addScalar", .{}),
                             .mul => try self.print("zang.multiplyScalar", .{}),
                             .pow => unreachable,
@@ -217,7 +217,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     }
                 },
                 .arith_buffer_float => |x| {
-                    if (x.operator == .pow) {
+                    if (x.op == .pow) {
                         try self.print("{{\n", .{});
                         try self.print("var i = {str}.start;\n", .{span});
                         try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
@@ -226,7 +226,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                         try self.print("}}\n", .{});
                     } else {
                         try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.operator) {
+                        switch (x.op) {
                             .add => try self.print("zang.addScalar", .{}),
                             .mul => try self.print("zang.multiplyScalar", .{}),
                             .pow => unreachable,
@@ -235,7 +235,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     }
                 },
                 .arith_buffer_buffer => |x| {
-                    if (x.operator == .pow) {
+                    if (x.op == .pow) {
                         try self.print("{{\n", .{});
                         try self.print("var i = {str}.start;\n", .{span});
                         try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
@@ -244,7 +244,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                         try self.print("}}\n", .{});
                     } else {
                         try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.operator) {
+                        switch (x.op) {
                             .add => try self.print("zang.add", .{}),
                             .mul => try self.print("zang.multiply", .{}),
                             .pow => unreachable,

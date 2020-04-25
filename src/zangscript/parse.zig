@@ -410,7 +410,11 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         },
         .enum_value => {
             const s = ps.tokenizer.source.getString(token.source_range);
-            return try createExpr(ps, loc0, .{ .literal_enum_value = s });
+            // hack to prevent the trailing '\'' character from being included in the expression source range
+            ps.tokenizer.loc.index -= 1;
+            const expr = try createExpr(ps, loc0, .{ .literal_enum_value = s });
+            ps.tokenizer.loc.index += 1;
+            return expr;
         },
         .kw_delay => {
             const delay = try parseDelay(ps, ps_mod, scope);

@@ -19,10 +19,9 @@ const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
 // expression will return how it stored its result.
-// if it's a temp, the caller needs to make sure to release it (by calling
-// releaseExpressionResult).
+// if it's a temp, the caller needs to make sure to release it (by calling releaseExpressionResult).
 pub const ExpressionResult = union(enum) {
-    nothing, // why does this exist? can't it be temp_buffer_weak?
+    nothing, // like `void`. this is the type of an assignment
     temp_buffer_weak: usize, // not freed by releaseExpressionResult
     temp_buffer: usize,
     temp_float: usize,
@@ -31,6 +30,10 @@ pub const ExpressionResult = union(enum) {
     literal_number: f32,
     literal_enum_value: []const u8,
     self_param: usize,
+};
+
+pub const FloatDest = struct {
+    temp_float_index: usize,
 };
 
 pub const FloatValue = union(enum) {
@@ -50,50 +53,15 @@ pub const BufferValue = union(enum) {
 };
 
 pub const Instruction = union(enum) {
-    copy_buffer: struct {
-        out: BufferDest,
-        in: BufferValue,
-    },
-    float_to_buffer: struct {
-        out: BufferDest,
-        in: FloatValue,
-    },
-    cob_to_buffer: struct {
-        out: BufferDest,
-        in_self_param: usize,
-    },
-    negate_float_to_float: struct {
-        out_temp_float_index: usize,
-        a: FloatValue,
-    },
-    negate_buffer_to_buffer: struct {
-        out: BufferDest,
-        a: BufferValue,
-    },
-    arith_float_float: struct {
-        out_temp_float_index: usize,
-        operator: BinArithOp,
-        a: FloatValue,
-        b: FloatValue,
-    },
-    arith_float_buffer: struct {
-        out: BufferDest,
-        operator: BinArithOp,
-        a: FloatValue,
-        b: BufferValue,
-    },
-    arith_buffer_float: struct {
-        out: BufferDest,
-        operator: BinArithOp,
-        a: BufferValue,
-        b: FloatValue,
-    },
-    arith_buffer_buffer: struct {
-        out: BufferDest,
-        operator: BinArithOp,
-        a: BufferValue,
-        b: BufferValue,
-    },
+    copy_buffer: struct { out: BufferDest, in: BufferValue },
+    float_to_buffer: struct { out: BufferDest, in: FloatValue },
+    cob_to_buffer: struct { out: BufferDest, in_self_param: usize },
+    negate_float_to_float: struct { out: FloatDest, a: FloatValue },
+    negate_buffer_to_buffer: struct { out: BufferDest, a: BufferValue },
+    arith_float_float: struct { out: FloatDest, op: BinArithOp, a: FloatValue, b: FloatValue },
+    arith_float_buffer: struct { out: BufferDest, op: BinArithOp, a: FloatValue, b: BufferValue },
+    arith_buffer_float: struct { out: BufferDest, op: BinArithOp, a: BufferValue, b: FloatValue },
+    arith_buffer_buffer: struct { out: BufferDest, op: BinArithOp, a: BufferValue, b: BufferValue },
     // call one of self's fields (paint the child module)
     call: struct {
         // paint always results in a buffer.
@@ -196,7 +164,7 @@ pub const GenError = error{
     OutOfMemory,
 };
 
-fn getFloatValue(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
+fn getResultAsFloat(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
     return switch (result) {
         .nothing => unreachable,
         .temp_float => |i| FloatValue{ .temp_float_index = i },
@@ -205,16 +173,11 @@ fn getFloatValue(self: *CodegenModuleState, result: ExpressionResult) ?FloatValu
         else
             null,
         .literal_number => |value| FloatValue{ .literal = value },
-        .literal_boolean,
-        .literal_enum_value,
-        .temp_buffer_weak,
-        .temp_buffer,
-        .temp_bool,
-        => null,
+        .literal_boolean, .literal_enum_value, .temp_buffer_weak, .temp_buffer, .temp_bool => null,
     };
 }
 
-fn getBufferValue(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
+fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
     return switch (result) {
         .nothing => unreachable,
         .temp_buffer_weak => |i| BufferValue{ .temp_buffer_index = i },
@@ -223,12 +186,7 @@ fn getBufferValue(self: *CodegenModuleState, result: ExpressionResult) ?BufferVa
             BufferValue{ .self_param = i }
         else
             null,
-        .temp_float,
-        .temp_bool,
-        .literal_boolean,
-        .literal_number,
-        .literal_enum_value,
-        => null,
+        .temp_float, .temp_bool, .literal_boolean, .literal_number, .literal_enum_value => null,
     };
 }
 
@@ -236,206 +194,6 @@ fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) 
     switch (result) {
         .temp_buffer => |i| self.temp_buffers.release(i),
         else => {},
-    }
-}
-
-// type-check and coerce a callee module's param.
-// generate a temp if necessary, but literals and self_params can be returned as is (avoid redundant copy)
-fn coerceCalleeParam(self: *CodegenModuleState, sr: SourceRange, param_type: ParamType, result: ExpressionResult) GenError!ExpressionResult {
-    const module = self.modules[self.module_index];
-
-    switch (param_type) {
-        .boolean => {
-            // the destination param is a boolean. we were given a `result` - ensure that it is a boolean
-            const ok = switch (result) {
-                .nothing => unreachable,
-                .temp_buffer_weak => false,
-                .temp_buffer => false,
-                .temp_float => false,
-                .temp_bool => true,
-                .literal_boolean => true,
-                .literal_number => false,
-                .literal_enum_value => false,
-                .self_param => |param_index| module.params[param_index].param_type == .boolean,
-            };
-            if (!ok) {
-                return fail(self.source, sr, "expected boolean value", .{});
-            }
-            return result;
-        },
-        .buffer => {
-            const Ok = union(enum) { valid, invalid, convert_from: FloatValue };
-            const ok: Ok = switch (result) {
-                .nothing => unreachable,
-                .temp_buffer_weak => .valid,
-                .temp_buffer => .valid,
-                .temp_float => |index| Ok{ .convert_from = FloatValue{ .temp_float_index = index } },
-                .temp_bool => .invalid,
-                .literal_boolean => .invalid,
-                .literal_number => |value| Ok{ .convert_from = FloatValue{ .literal = value } },
-                .literal_enum_value => .invalid,
-                .self_param => |param_index| switch (module.params[param_index].param_type) {
-                    .buffer => Ok{ .valid = {} },
-                    .constant => Ok{ .convert_from = FloatValue{ .self_param = param_index } },
-                    else => Ok{ .invalid = {} },
-                },
-            };
-            switch (ok) {
-                .valid => return result,
-                .invalid => return fail(self.source, sr, "expected waveform value", .{}),
-                .convert_from => |value| {
-                    const temp_buffer_index = try self.temp_buffers.claim();
-                    try self.instructions.append(.{
-                        .float_to_buffer = .{
-                            .out = .{ .temp_buffer_index = temp_buffer_index },
-                            .in = value,
-                        },
-                    });
-                    releaseExpressionResult(self, result);
-                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
-                },
-            }
-        },
-        .constant => {
-            const ok = switch (result) {
-                .nothing => unreachable,
-                .temp_buffer_weak => false,
-                .temp_buffer => false,
-                .temp_float => true,
-                .temp_bool => false,
-                .literal_boolean => false,
-                .literal_number => true,
-                .literal_enum_value => false,
-                .self_param => |param_index| module.params[param_index].param_type == .constant,
-            };
-            if (!ok) {
-                return fail(self.source, sr, "expected constant numerical value", .{});
-            }
-            return result;
-        },
-        .constant_or_buffer => {
-            // accept both constants and buffers. codegen_zig will take care of wrapping
-            // them in the correct way
-            const ok = switch (result) {
-                .nothing => unreachable,
-                .temp_buffer_weak => true,
-                .temp_buffer => true,
-                .temp_float => true,
-                .temp_bool => false,
-                .literal_boolean => false,
-                .literal_number => true,
-                .literal_enum_value => false,
-                .self_param => |param_index| switch (module.params[param_index].param_type) {
-                    .boolean => false,
-                    .constant => true,
-                    .buffer => true,
-                    .constant_or_buffer => unreachable, // these became buffers as soon as they came out of a self_param
-                    .one_of => unreachable, // ditto
-                },
-            };
-            if (!ok) {
-                return fail(self.source, sr, "expected constant numerical or waveform value", .{});
-            }
-            return result;
-        },
-        .one_of => |e| {
-            const ok = switch (result) {
-                // enum values can only exist as literals
-                .literal_enum_value => |str| for (e.values) |allowed_value| {
-                    if (std.mem.eql(u8, allowed_value, str)) {
-                        break true;
-                    }
-                } else {
-                    // TODO list the allowed enum values
-                    return fail(self.source, sr, "not one of the allowed enum values", .{});
-                },
-                else => false,
-            };
-            if (!ok) {
-                // TODO list the allowed enum values
-                return fail(self.source, sr, "expected enum value", .{});
-            }
-            return result;
-        },
-    }
-}
-
-// like the above, but destination is always of buffer type, and we always write to it.
-// (so if the value is a self_param, we copy it)
-fn coerceAssignment(self: *CodegenModuleState, sr: SourceRange, result_loc: BufferDest, result: ExpressionResult) GenError!void {
-    defer releaseExpressionResult(self, result);
-
-    switch (result) {
-        .nothing => unreachable,
-        .temp_buffer_weak => |temp_buffer_index| {
-            try self.instructions.append(.{
-                .copy_buffer = .{
-                    .out = result_loc,
-                    .in = .{ .temp_buffer_index = temp_buffer_index },
-                },
-            });
-        },
-        .temp_buffer => |temp_buffer_index| {
-            try self.instructions.append(.{
-                .copy_buffer = .{
-                    .out = result_loc,
-                    .in = .{ .temp_buffer_index = temp_buffer_index },
-                },
-            });
-        },
-        .temp_float => |temp_float_index| {
-            try self.instructions.append(.{
-                .float_to_buffer = .{
-                    .out = result_loc,
-                    .in = .{ .temp_float_index = temp_float_index },
-                },
-            });
-        },
-        .temp_bool => {
-            return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
-        },
-        .literal_boolean => {
-            return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
-        },
-        .literal_number => |value| {
-            try self.instructions.append(.{
-                .float_to_buffer = .{
-                    .out = result_loc,
-                    .in = .{ .literal = value },
-                },
-            });
-        },
-        .literal_enum_value => {
-            return fail(self.source, sr, "buffer-typed result loc cannot accept enum value", .{});
-        },
-        .self_param => |param_index| {
-            const module = self.modules[self.module_index];
-            const param_type = module.params[param_index].param_type;
-
-            switch (param_type) {
-                .boolean => {
-                    return fail(self.source, sr, "buffer-typed result loc cannot accept boolean", .{});
-                },
-                .buffer => {
-                    try self.instructions.append(.{
-                        .copy_buffer = .{
-                            .out = result_loc,
-                            .in = .{ .self_param = param_index },
-                        },
-                    });
-                },
-                .constant => {
-                    try self.instructions.append(.{
-                        .float_to_buffer = .{
-                            .out = result_loc,
-                            .in = .{ .self_param = param_index },
-                        },
-                    });
-                },
-                .constant_or_buffer => unreachable, // these became buffers as soon as they came out of a self_param
-                .one_of => unreachable, // only builtin params are allowed to use this
-            }
-        },
     }
 }
 
@@ -451,37 +209,189 @@ const ResultInfo = union(enum) {
     result_loc: BufferDest,
 };
 
-fn coerce(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, result: ExpressionResult) !ExpressionResult {
+fn genLiteralBoolean(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, value: bool) !ExpressionResult {
     switch (result_info) {
-        .none => {
-            return result;
+        .none => return ExpressionResult{ .literal_boolean = value },
+        .callee_param => |callee_param_type| {
+            switch (callee_param_type) {
+                .boolean => return ExpressionResult{ .literal_boolean = value },
+                .buffer => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
+                .constant_or_buffer => return fail(self.source, sr, "expected float or buffer value, found boolean", .{}),
+                .constant => return fail(self.source, sr, "expected float value, found boolean", .{}),
+                .one_of => |e| return fail(self.source, sr, "expected one of |, found boolean", .{e.values}),
+            }
         },
-        .callee_param => |param_type| {
-            return try coerceCalleeParam(self, sr, param_type, result);
+        .result_loc => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
+    }
+}
+
+fn genLiteralNumber(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, value: f32) !ExpressionResult {
+    switch (result_info) {
+        .none => return ExpressionResult{ .literal_number = value },
+        .callee_param => |callee_param_type| {
+            switch (callee_param_type) {
+                .boolean => return fail(self.source, sr, "expected boolean value, found number", .{}),
+                .buffer => {
+                    const temp_buffer_index = try self.temp_buffers.claim();
+                    try self.instructions.append(.{
+                        .float_to_buffer = .{
+                            .out = .{ .temp_buffer_index = temp_buffer_index },
+                            .in = .{ .literal = value },
+                        },
+                    });
+                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                },
+                .constant_or_buffer, .constant => { // codegen_zig will wrap for cob types
+                    return ExpressionResult{ .literal_number = value };
+                },
+                .one_of => |e| return fail(self.source, sr, "expected one of |, found number", .{e.values}),
+            }
         },
         .result_loc => |result_loc| {
-            try coerceAssignment(self, sr, result_loc, result);
+            try self.instructions.append(.{
+                .float_to_buffer = .{
+                    .out = result_loc,
+                    .in = .{ .literal = value },
+                },
+            });
+            return ExpressionResult.nothing;
+        },
+    }
+}
+
+fn genLiteralEnumValue(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, value: []const u8) !ExpressionResult {
+    switch (result_info) {
+        .none => return ExpressionResult{ .literal_enum_value = value },
+        .callee_param => |callee_param_type| {
+            switch (callee_param_type) {
+                .one_of => |e| {
+                    for (e.values) |allowed_value| {
+                        if (std.mem.eql(u8, allowed_value, value)) break;
+                    } else return fail(self.source, sr, "expected one of |", .{e.values});
+                    return ExpressionResult{ .literal_enum_value = value };
+                },
+                .boolean => return fail(self.source, sr, "expected boolean value, found enum value", .{}),
+                .buffer => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
+                .constant_or_buffer => return fail(self.source, sr, "expected float or buffer value, found enum value", .{}),
+                .constant => return fail(self.source, sr, "expected float value, found enum value", .{}),
+            }
+        },
+        .result_loc => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
+    }
+}
+
+fn genLocal(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, local_index: usize) !ExpressionResult {
+    const temp_buffer_index = self.local_temps[local_index].?;
+    switch (result_info) {
+        .none => {
+            return ExpressionResult{ .temp_buffer_weak = temp_buffer_index };
+        },
+        .callee_param => |callee_param_type| {
+            switch (callee_param_type) {
+                .boolean => return fail(self.source, sr, "expected boolean value, found buffer", .{}),
+                .buffer, .constant_or_buffer => { // codegen_zig will wrap for cob types
+                    return ExpressionResult{ .temp_buffer_weak = temp_buffer_index };
+                },
+                .constant => return fail(self.source, sr, "expected float value, found buffer", .{}),
+                .one_of => |e| return fail(self.source, sr, "expected one of |, found buffer", .{e.values}),
+            }
+        },
+        .result_loc => |result_loc| {
+            try self.instructions.append(.{
+                .copy_buffer = .{
+                    .out = result_loc,
+                    .in = .{ .temp_buffer_index = temp_buffer_index },
+                },
+            });
             return ExpressionResult.nothing;
         },
     }
 }
 
 fn genSelfParam(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, param_index: usize) !ExpressionResult {
-    const module = self.modules[self.module_index];
-    if (module.params[param_index].param_type == .constant_or_buffer) {
-        // immediately turn constant_or_buffer into buffer (most of the rest of codegen
-        // isn't able to work with constant_or_buffer)
-        const temp_buffer_index = try self.temp_buffers.claim();
-        try self.instructions.append(.{
-            .cob_to_buffer = .{
-                // TODO look at result_info and use that output
-                .out = .{ .temp_buffer_index = temp_buffer_index },
-                .in_self_param = param_index,
-            },
-        });
-        return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+    // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
+    if (self.modules[self.module_index].params[param_index].param_type == .constant_or_buffer) {
+        const buffer_dest = try requestBufferDest(self, result_info);
+        try self.instructions.append(.{ .cob_to_buffer = .{ .out = buffer_dest, .in_self_param = param_index } });
+        return try commitBufferDest(self, result_info, sr, buffer_dest);
     } else {
-        return coerce(self, sr, result_info, .{ .self_param = param_index });
+        return ExpressionResult{ .self_param = param_index };
+    }
+}
+
+// caller wants to return a float-typed result
+fn requestFloatDest(self: *CodegenModuleState, result_info: ResultInfo) FloatDest {
+    const temp_float_index = self.num_temp_floats;
+    self.num_temp_floats += 1;
+    return .{ .temp_float_index = temp_float_index };
+}
+fn commitFloatDest(self: *CodegenModuleState, result_info: ResultInfo, sr: SourceRange, fd: FloatDest) !ExpressionResult {
+    switch (result_info) {
+        .none => {
+            return ExpressionResult{ .temp_float = fd.temp_float_index };
+        },
+        .callee_param => |callee_param_type| {
+            switch (callee_param_type) {
+                .boolean => return fail(self.source, sr, "expected boolean value, found float", .{}),
+                .buffer => {
+                    const temp_buffer_index = try self.temp_buffers.claim();
+                    try self.instructions.append(.{
+                        .float_to_buffer = .{
+                            .out = .{ .temp_buffer_index = temp_buffer_index },
+                            .in = .{ .temp_float_index = fd.temp_float_index },
+                        },
+                    });
+                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                },
+                .constant, .constant_or_buffer => { // codegen_zig will wrap for cob types
+                    return ExpressionResult{ .temp_float = fd.temp_float_index };
+                },
+                .one_of => |e| return fail(self.source, sr, "expected one of |, found float", .{e.values}),
+            }
+        },
+        .result_loc => |buffer_dest| {
+            try self.instructions.append(.{
+                .float_to_buffer = .{
+                    .out = buffer_dest,
+                    .in = .{ .temp_float_index = fd.temp_float_index },
+                },
+            });
+            return ExpressionResult.nothing;
+        },
+    }
+}
+
+// caller wants to return a buffer-typed result
+fn requestBufferDest(self: *CodegenModuleState, result_info: ResultInfo) !BufferDest {
+    return switch (result_info) {
+        .none, .callee_param => .{ .temp_buffer_index = try self.temp_buffers.claim() },
+        .result_loc => |buffer_dest| buffer_dest,
+    };
+}
+fn commitBufferDest(self: *CodegenModuleState, result_info: ResultInfo, sr: SourceRange, buffer_dest: BufferDest) !ExpressionResult {
+    switch (result_info) {
+        .none => {
+            const temp_buffer_index = switch (buffer_dest) {
+                .temp_buffer_index => |i| i,
+                .output_index => unreachable,
+            };
+            return ExpressionResult{ .temp_buffer = temp_buffer_index };
+        },
+        .callee_param => |callee_param_type| {
+            const temp_buffer_index = switch (buffer_dest) {
+                .temp_buffer_index => |i| i,
+                .output_index => unreachable,
+            };
+            switch (callee_param_type) {
+                .boolean => return fail(self.source, sr, "expected boolean value, found buffer", .{}),
+                .buffer, .constant_or_buffer => { // codegen_zig will wrap for cob types
+                    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                },
+                .constant => return fail(self.source, sr, "expected float value, found buffer", .{}),
+                .one_of => |e| return fail(self.source, sr, "expected one of |, found buffer", .{e.values}),
+            }
+        },
+        .result_loc => return ExpressionResult.nothing,
     }
 }
 
@@ -489,49 +399,19 @@ fn genNegate(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo
     const ra = try genExpression(self, expr, .none, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, ra);
 
-    if (getFloatValue(self, ra)) |a| {
-        const temp_float_index = self.num_temp_floats;
-        self.num_temp_floats += 1;
-        try self.instructions.append(.{
-            .negate_float_to_float = .{
-                .out_temp_float_index = temp_float_index,
-                .a = a,
-            },
-        });
-        return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
+    if (getResultAsFloat(self, ra)) |a| {
+        // float -> float
+        const float_dest = requestFloatDest(self, result_info);
+        try self.instructions.append(.{ .negate_float_to_float = .{ .out = float_dest, .a = a } });
+        return commitFloatDest(self, result_info, sr, float_dest);
     }
-    if (getBufferValue(self, ra)) |a| {
-        const temp_buffer_index = try self.temp_buffers.claim();
-        try self.instructions.append(.{
-            .negate_buffer_to_buffer = .{
-                .out = .{ .temp_buffer_index = temp_buffer_index },
-                .a = a,
-            },
-        });
-        return coerce(self, sr, result_info, .{ .temp_buffer = temp_buffer_index });
+    if (getResultAsBuffer(self, ra)) |a| {
+        // buffer -> buffer
+        const buffer_dest = try requestBufferDest(self, result_info);
+        try self.instructions.append(.{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = a } });
+        return commitBufferDest(self, result_info, sr, buffer_dest);
     }
-    return fail(self.source, expr.source_range, "arithmetic can only be performed on numerical types", .{});
-}
-
-const ResultAndBufferDest = struct {
-    result: ExpressionResult,
-    buffer_dest: BufferDest,
-};
-
-// get a destination buffer to write to
-fn getBufferDest(self: *CodegenModuleState, result_info: ResultInfo) !ResultAndBufferDest {
-    switch (result_info) {
-        .none, .callee_param => {
-            const temp_buffer_index = try self.temp_buffers.claim();
-            return ResultAndBufferDest{
-                .result = .{ .temp_buffer = temp_buffer_index },
-                .buffer_dest = .{ .temp_buffer_index = temp_buffer_index },
-            };
-        },
-        .result_loc => |result_loc| {
-            return ResultAndBufferDest{ .result = .nothing, .buffer_dest = result_loc };
-        },
-    }
+    return fail(self.source, expr.source_range, "arithmetic can only be performed on numeric types", .{});
 }
 
 fn genBinArith(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, op: BinArithOp, ea: *const Expression, eb: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
@@ -540,73 +420,35 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, result_info: ResultIn
     const rb = try genExpression(self, eb, .none, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, rb);
 
-    // float * float -> float
-    if (getFloatValue(self, ra)) |a| {
-        if (getFloatValue(self, rb)) |b| {
-            switch (result_info) {
-                .none, .callee_param => {},
-                .result_loc => unreachable, // result_locs can't have float type (only buffer type)
-            }
-            // so we always generate a temp for the result
-            const temp_float_index = self.num_temp_floats;
-            self.num_temp_floats += 1;
-            try self.instructions.append(.{
-                .arith_float_float = .{
-                    .out_temp_float_index = temp_float_index,
-                    .operator = op,
-                    .a = a,
-                    .b = b,
-                },
-            });
-            return coerce(self, sr, result_info, .{ .temp_float = temp_float_index });
+    if (getResultAsFloat(self, ra)) |a| {
+        if (getResultAsFloat(self, rb)) |b| {
+            // float * float -> float
+            const float_dest = requestFloatDest(self, result_info);
+            try self.instructions.append(.{ .arith_float_float = .{ .out = float_dest, .op = op, .a = a, .b = b } });
+            return commitFloatDest(self, result_info, sr, float_dest);
+        }
+        if (getResultAsBuffer(self, rb)) |b| {
+            // float * buffer -> buffer
+            const buffer_dest = try requestBufferDest(self, result_info);
+            try self.instructions.append(.{ .arith_float_buffer = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            return commitBufferDest(self, result_info, sr, buffer_dest);
         }
     }
-    // buffer * float -> buffer
-    if (getBufferValue(self, ra)) |a| {
-        if (getFloatValue(self, rb)) |b| {
-            const x = try getBufferDest(self, result_info);
-            try self.instructions.append(.{
-                .arith_buffer_float = .{
-                    .out = x.buffer_dest,
-                    .operator = op,
-                    .a = a,
-                    .b = b,
-                },
-            });
-            return x.result;
+    if (getResultAsBuffer(self, ra)) |a| {
+        if (getResultAsFloat(self, rb)) |b| {
+            // buffer * float -> buffer
+            const buffer_dest = try requestBufferDest(self, result_info);
+            try self.instructions.append(.{ .arith_buffer_float = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            return commitBufferDest(self, result_info, sr, buffer_dest);
+        }
+        if (getResultAsBuffer(self, rb)) |b| {
+            // buffer * buffer -> buffer
+            const buffer_dest = try requestBufferDest(self, result_info);
+            try self.instructions.append(.{ .arith_buffer_buffer = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            return commitBufferDest(self, result_info, sr, buffer_dest);
         }
     }
-    // float * buffer -> buffer
-    if (getFloatValue(self, ra)) |a| {
-        if (getBufferValue(self, rb)) |b| {
-            const x = try getBufferDest(self, result_info);
-            try self.instructions.append(.{
-                .arith_float_buffer = .{
-                    .out = x.buffer_dest,
-                    .operator = op,
-                    .a = a,
-                    .b = b,
-                },
-            });
-            return x.result;
-        }
-    }
-    // buffer * buffer -> buffer
-    if (getBufferValue(self, ra)) |a| {
-        if (getBufferValue(self, rb)) |b| {
-            const x = try getBufferDest(self, result_info);
-            try self.instructions.append(.{
-                .arith_buffer_buffer = .{
-                    .out = x.buffer_dest,
-                    .operator = op,
-                    .a = a,
-                    .b = b,
-                },
-            });
-            return x.result;
-        }
-    }
-    return fail(self.source, sr, "arithmetic can only be performed on numerical types", .{});
+    return fail(self.source, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
 fn genCall(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, field_index: usize, args: []const CallArg, maybe_feedback_temp_index: ?usize) !ExpressionResult {
@@ -649,16 +491,16 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo, 
     }
     defer for (temps) |temp_buffer_index| self.temp_buffers.release(temp_buffer_index);
 
-    const x = try getBufferDest(self, result_info);
+    const buffer_dest = try requestBufferDest(self, result_info);
     try self.instructions.append(.{
         .call = .{
-            .out = x.buffer_dest,
+            .out = buffer_dest,
             .field_index = field_index,
             .temps = temps,
             .args = arg_results,
         },
     });
-    return x.result;
+    return commitBufferDest(self, result_info, sr, buffer_dest);
 }
 
 fn genDelayLevelStatement(self: *CodegenModuleState, statement: Statement, out: BufferDest, feedback_out_temp_index: usize, feedback_temp_index: usize) !void {
@@ -688,14 +530,14 @@ fn genDelay(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo,
     const feedback_temp_index = try self.temp_buffers.claim();
     defer self.temp_buffers.release(feedback_temp_index);
 
-    const x = try getBufferDest(self, result_info);
+    const buffer_dest = try requestBufferDest(self, result_info);
 
     const feedback_out_temp_index = try self.temp_buffers.claim();
     defer self.temp_buffers.release(feedback_out_temp_index);
 
     try self.instructions.append(.{
         .delay_begin = .{
-            .out = x.buffer_dest,
+            .out = buffer_dest,
             .delay_index = delay_index,
             .feedback_out_temp_buffer_index = feedback_out_temp_index,
             .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
@@ -703,57 +545,39 @@ fn genDelay(self: *CodegenModuleState, sr: SourceRange, result_info: ResultInfo,
     });
 
     for (delay.scope.statements.items) |statement| {
-        try genDelayLevelStatement(self, statement, x.buffer_dest, feedback_out_temp_index, feedback_temp_index);
+        try genDelayLevelStatement(self, statement, buffer_dest, feedback_out_temp_index, feedback_temp_index);
     }
 
     try self.instructions.append(.{
         .delay_end = .{
-            .out = x.buffer_dest,
+            .out = buffer_dest,
             .feedback_out_temp_buffer_index = feedback_out_temp_index,
             .delay_index = delay_index,
         },
     });
 
-    return x.result;
+    return commitBufferDest(self, result_info, sr, buffer_dest);
 }
 
-// generate bytecode instructions for an expression.
+// generate bytecode instructions for an expression
 fn genExpression(self: *CodegenModuleState, expression: *const Expression, result_info: ResultInfo, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
     const sr = expression.source_range;
 
     switch (expression.inner) {
-        .literal_boolean => |value| {
-            return coerce(self, sr, result_info, .{ .literal_boolean = value });
-        },
-        .literal_number => |value| {
-            return coerce(self, sr, result_info, .{ .literal_number = value });
-        },
-        .literal_enum_value => |value| {
-            return coerce(self, sr, result_info, .{ .literal_enum_value = value });
-        },
-        .local => |local_index| {
-            return coerce(self, sr, result_info, .{ .temp_buffer_weak = self.local_temps[local_index].? });
-        },
-        .self_param => |param_index| {
-            return genSelfParam(self, sr, result_info, param_index);
-        },
-        .negate => |expr| {
-            return genNegate(self, sr, result_info, expr, maybe_feedback_temp_index);
-        },
-        .bin_arith => |m| {
-            return genBinArith(self, sr, result_info, m.op, m.a, m.b, maybe_feedback_temp_index);
-        },
-        .call => |call| {
-            return genCall(self, sr, result_info, call.field_index, call.args, maybe_feedback_temp_index);
-        },
-        .delay => |delay| {
-            return genDelay(self, sr, result_info, delay, maybe_feedback_temp_index);
-        },
+        .literal_boolean => |value| return try genLiteralBoolean(self, sr, result_info, value),
+        .literal_number => |value| return try genLiteralNumber(self, sr, result_info, value),
+        .literal_enum_value => |value| return try genLiteralEnumValue(self, sr, result_info, value),
+        .local => |local_index| return try genLocal(self, sr, result_info, local_index),
+        .self_param => |param_index| return try genSelfParam(self, sr, result_info, param_index),
+        .negate => |expr| return try genNegate(self, sr, result_info, expr, maybe_feedback_temp_index),
+        .bin_arith => |m| return try genBinArith(self, sr, result_info, m.op, m.a, m.b, maybe_feedback_temp_index),
+        .call => |call| return try genCall(self, sr, result_info, call.field_index, call.args, maybe_feedback_temp_index),
+        .delay => |delay| return try genDelay(self, sr, result_info, delay, maybe_feedback_temp_index),
         .feedback => {
             const feedback_temp_index = maybe_feedback_temp_index orelse {
                 return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
             };
-            return coerce(self, sr, result_info, .{ .temp_buffer_weak = feedback_temp_index });
+            return ExpressionResult{ .temp_buffer_weak = feedback_temp_index };
         },
     }
 }
