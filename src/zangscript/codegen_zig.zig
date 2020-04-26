@@ -56,9 +56,8 @@ const State = struct {
         const module = self.module orelse return error.NoModule;
         switch (result) {
             .nothing => unreachable,
-            .temp_buffer_weak => |i| try self.print("temps[{usize}]", .{i}),
-            .temp_buffer => |i| try self.print("temps[{usize}]", .{i}),
-            .temp_float => |i| try self.print("temp_float{usize}", .{i}),
+            .temp_buffer => |temp_ref| try self.print("temps[{usize}]", .{temp_ref.index}),
+            .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
             .literal_number => |value| try self.print("{f32}", .{value}),
             .literal_enum_value => |str| try self.print(".{identifier}", .{str}),
@@ -273,9 +272,8 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                             // coerce to ConstantOrBuffer?
                             switch (arg) {
                                 .nothing => {},
-                                .temp_buffer_weak => |index| try self.print("zang.buffer(temps[{usize}])", .{index}),
-                                .temp_buffer => |index| try self.print("zang.buffer(temps[{usize}])", .{index}),
-                                .temp_float => |index| try self.print("zang.constant(temp_float{usize})", .{index}),
+                                .temp_buffer => |temp_ref| try self.print("zang.buffer(temps[{usize}])", .{temp_ref.index}),
+                                .temp_float => |temp_ref| try self.print("zang.constant(temp_float{usize})", .{temp_ref.index}),
                                 .literal_boolean => unreachable,
                                 .literal_number => |value| try self.print("zang.constant({f32})", .{value}),
                                 .literal_enum_value => unreachable,

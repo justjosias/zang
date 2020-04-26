@@ -34,9 +34,8 @@ const State = struct {
     fn printExpressionResult(self: *State, result: ExpressionResult) !void {
         switch (result) {
             .nothing => unreachable,
-            .temp_buffer_weak => |i| try self.print("temp{usize}", .{i}),
-            .temp_buffer => |i| try self.print("temp{usize}", .{i}),
-            .temp_float => |i| try self.print("temp_float{usize}", .{i}),
+            .temp_buffer => |temp_ref| try self.print("temp{usize}", .{temp_ref.index}),
+            .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
             .literal_number => |value| try self.print("{f32}", .{value}),
             .literal_enum_value => |str| try self.print("'{str}'", .{str}),

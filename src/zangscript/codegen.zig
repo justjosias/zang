@@ -18,13 +18,25 @@ const Scope = @import("parse.zig").Scope;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
+pub const TempRef = struct {
+    index: usize, // temp index
+    is_weak: bool, // if true, someone else owns the temp, so don't release it
+
+    fn strong(index: usize) TempRef {
+        return .{ .index = index, .is_weak = false };
+    }
+
+    fn weak(index: usize) TempRef {
+        return .{ .index = index, .is_weak = true };
+    }
+};
+
 // expression will return how it stored its result.
 // caller needs to make sure to release it (by calling releaseExpressionResult), which will release any temps that were being used.
 pub const ExpressionResult = union(enum) {
     nothing, // this means the result was already written into a result location
-    temp_buffer_weak: usize, // weak reference (someone else owns the temp): won't be released
-    temp_buffer: usize,
-    temp_float: usize,
+    temp_buffer: TempRef,
+    temp_float: TempRef,
     literal_boolean: bool,
     literal_number: f32,
     literal_enum_value: []const u8,
@@ -107,7 +119,7 @@ pub const CodegenModuleState = struct {
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
     temp_floats: TempManager,
-    local_temps: []?usize,
+    local_results: []?ExpressionResult,
     delays: std.ArrayList(DelayDecl),
 };
 
@@ -164,8 +176,12 @@ const TempManager = struct {
 
 fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) void {
     switch (result) {
-        .temp_buffer => |i| self.temp_buffers.release(i),
-        .temp_float => |i| self.temp_floats.release(i),
+        .temp_buffer => |temp_ref| {
+            if (!temp_ref.is_weak) self.temp_buffers.release(temp_ref.index);
+        },
+        .temp_float => |temp_ref| {
+            if (!temp_ref.is_weak) self.temp_floats.release(temp_ref.index);
+        },
         else => {},
     }
 }
@@ -178,28 +194,27 @@ fn getResultAsBoolean(self: *CodegenModuleState, result: ExpressionResult) ?Bool
             BooleanValue{ .self_param = i }
         else
             null,
-        .literal_number, .literal_enum_value, .temp_buffer_weak, .temp_buffer, .temp_float => null,
+        .literal_number, .literal_enum_value, .temp_buffer, .temp_float => null,
     };
 }
 
 fn getResultAsFloat(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
     return switch (result) {
         .nothing => unreachable,
-        .temp_float => |i| FloatValue{ .temp_float_index = i },
+        .temp_float => |temp_ref| FloatValue{ .temp_float_index = temp_ref.index },
         .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .constant)
             FloatValue{ .self_param = i }
         else
             null,
         .literal_number => |value| FloatValue{ .literal = value },
-        .literal_boolean, .literal_enum_value, .temp_buffer_weak, .temp_buffer => null,
+        .literal_boolean, .literal_enum_value, .temp_buffer => null,
     };
 }
 
 fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
     return switch (result) {
         .nothing => unreachable,
-        .temp_buffer_weak => |i| BufferValue{ .temp_buffer_index = i },
-        .temp_buffer => |i| BufferValue{ .temp_buffer_index = i },
+        .temp_buffer => |temp_ref| BufferValue{ .temp_buffer_index = temp_ref.index },
         .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .buffer)
             BufferValue{ .self_param = i }
         else
@@ -217,7 +232,7 @@ fn requestFloatDest(self: *CodegenModuleState) !FloatDest {
 
 fn commitFloatDest(self: *CodegenModuleState, fd: FloatDest) !ExpressionResult {
     // since result_loc can never be float-typed, just do the simple thing
-    return ExpressionResult{ .temp_float = fd.temp_float_index };
+    return ExpressionResult{ .temp_float = TempRef.strong(fd.temp_float_index) };
 }
 
 // caller wants to return a buffer-typed result
@@ -237,7 +252,7 @@ fn commitBufferDest(self: *CodegenModuleState, maybe_result_loc: ?BufferDest, bu
         .temp_buffer_index => |i| i,
         .output_index => unreachable,
     };
-    return ExpressionResult{ .temp_buffer = temp_buffer_index };
+    return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
 }
 
 fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, expr: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
@@ -308,7 +323,7 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
             if (getResultAsFloat(self, result)) |float_value| {
                 const temp_buffer_index = try self.temp_buffers.claim();
                 try self.instructions.append(.{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = float_value } });
-                return ExpressionResult{ .temp_buffer = temp_buffer_index };
+                return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
             }
             return fail(self.source, sr, "expected buffer value", .{});
         },
@@ -409,7 +424,7 @@ fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffe
     for (delay.scope.statements.items) |statement| {
         switch (statement) {
             .let_assignment => |x| {
-                try genLetAssignment(self, x.local_index, x.expression, feedback_temp_index);
+                self.local_results[x.local_index] = try genExpression(self, x.expression, null, feedback_temp_index);
             },
             .output => |expr| {
                 const result = try genExpression(self, expr, buffer_dest, feedback_temp_index);
@@ -449,7 +464,15 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |value| return ExpressionResult{ .literal_enum_value = value },
-        .local => |local_index| return ExpressionResult{ .temp_buffer_weak = self.local_temps[local_index].? },
+        .local => |local_index| {
+            // a local is just a saved ExpressionResult. make a weak-reference version of it
+            const result = self.local_results[local_index].?;
+            switch (result) {
+                .temp_buffer => |temp_ref| return ExpressionResult{ .temp_buffer = TempRef.weak(temp_ref.index) },
+                .temp_float => |temp_ref| return ExpressionResult{ .temp_float = TempRef.weak(temp_ref.index) },
+                else => return result,
+            }
+        },
         .self_param => |param_index| {
             // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
             if (self.modules[self.module_index].params[param_index].param_type == .constant_or_buffer) {
@@ -468,23 +491,9 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
             const feedback_temp_index = maybe_feedback_temp_index orelse {
                 return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
             };
-            return ExpressionResult{ .temp_buffer_weak = feedback_temp_index };
+            return ExpressionResult{ .temp_buffer = TempRef.weak(feedback_temp_index) };
         },
     }
-}
-
-fn genLetAssignment(self: *CodegenModuleState, local_index: usize, expression: *const Expression, maybe_feedback_temp_index: ?usize) GenError!void {
-    // for now, only buffer type is supported for let-assignments
-    // create a "temp" to hold the value
-    const temp_buffer_index = try self.temp_buffers.claim();
-
-    // mark the temp to be released at the end of all codegen
-    self.local_temps[local_index] = temp_buffer_index;
-
-    const result_loc: BufferDest = .{ .temp_buffer_index = temp_buffer_index };
-    const result = try genExpression(self, expression, result_loc, maybe_feedback_temp_index);
-    try commitAssignment(self, expression.source_range, result, result_loc);
-    releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
 }
 
 // typecheck and make sure that the expression result is written into buffer_dest.
@@ -494,14 +503,11 @@ fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: Expressi
         .nothing => {
             // value has already been written into the result location
         },
-        .temp_buffer_weak => |temp_buffer_index| {
-            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .temp_buffer_index = temp_buffer_index } } });
+        .temp_buffer => |temp_ref| {
+            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .temp_buffer_index = temp_ref.index } } });
         },
-        .temp_buffer => |temp_buffer_index| {
-            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .temp_buffer_index = temp_buffer_index } } });
-        },
-        .temp_float => |temp_float_index| {
-            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .temp_float_index = temp_float_index } } });
+        .temp_float => |temp_ref| {
+            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .temp_float_index = temp_ref.index } } });
         },
         .literal_number => |value| {
             try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .literal = value } } });
@@ -526,7 +532,7 @@ fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: Expressi
 fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
     switch (statement) {
         .let_assignment => |x| {
-            try genLetAssignment(self, x.local_index, x.expression, null);
+            self.local_results[x.local_index] = try genExpression(self, x.expression, null, null);
         },
         .output => |expression| {
             const result_loc: BufferDest = .{ .output_index = 0 };
@@ -665,21 +671,21 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
         .temp_buffers = TempManager.init(self.inner_allocator, true),
         .temp_floats = TempManager.init(self.inner_allocator, false), // don't reuse temp floats slots (they become `const` in zig)
-        .local_temps = try self.arena_allocator.alloc(?usize, module_info.locals.len),
+        .local_results = try self.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
     };
     defer state.temp_buffers.deinit();
     defer state.temp_floats.deinit();
 
-    std.mem.set(?usize, state.local_temps, null);
+    std.mem.set(?ExpressionResult, state.local_results, null);
 
     for (module_info.scope.statements.items) |statement| {
         try genTopLevelStatement(&state, statement);
     }
 
-    for (state.local_temps) |maybe_temp_buffer_index| {
-        const temp_buffer_index = maybe_temp_buffer_index orelse continue;
-        state.temp_buffers.release(temp_buffer_index);
+    for (state.local_results) |maybe_result| {
+        const result = maybe_result orelse continue;
+        releaseExpressionResult(&state, result);
     }
 
     state.temp_buffers.reportLeaks();
