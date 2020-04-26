@@ -39,13 +39,13 @@ pub fn main() u8 {
     };
 
     var parse_result = zangscript.parse(source, &builtin_packages, allocator) catch |err| {
-        std.debug.warn("parse failed: {}\n", .{err});
+        if (err != error.Failed) std.debug.warn("parse failed: {}\n", .{err});
         return 1;
     };
     defer parse_result.deinit();
 
     var codegen_result = zangscript.codegen(source, parse_result, allocator) catch |err| {
-        std.debug.warn("codegen failed: {}\n", .{err});
+        if (err != error.Failed) std.debug.warn("codegen failed: {}\n", .{err});
         return 1;
     };
     defer codegen_result.deinit();
