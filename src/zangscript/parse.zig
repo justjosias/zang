@@ -241,8 +241,7 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
                     // shorthand param passing: `val` expands to `val=val`
                     const inner = parseLocalOrParam(ps_mod, scope, identifier) orelse
                         return fail(ps.tokenizer.source, token.source_range, "no param or local called `<`", .{});
-                    const loc0 = token.source_range.loc0;
-                    const subexpr = try createExpr(ps, loc0, inner);
+                    const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
                     try args.append(.{
                         .param_name = identifier,
                         .param_name_token = token,
@@ -282,15 +281,19 @@ fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     };
 }
 
-fn createExpr(ps: *ParseState, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
-    // you pass the location of the start of the expression. this function will use the tokenizer's
-    // current location to set the expression's end location
+fn createExprWithSourceRange(ps: *ParseState, source_range: SourceRange, inner: ExpressionInner) !*const Expression {
     const expr = try ps.arena_allocator.create(Expression);
     expr.* = .{
-        .source_range = .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc },
+        .source_range = source_range,
         .inner = inner,
     };
     return expr;
+}
+
+fn createExpr(ps: *ParseState, loc0: SourceLocation, inner: ExpressionInner) !*const Expression {
+    // you pass the location of the start of the expression. this function will use the tokenizer's
+    // current location to set the expression's end location
+    return createExprWithSourceRange(ps, .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc }, inner);
 }
 
 fn parseLocalOrParam(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?ExpressionInner {
@@ -410,11 +413,7 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         },
         .enum_value => {
             const s = ps.tokenizer.source.getString(token.source_range);
-            // hack to prevent the trailing '\'' character from being included in the expression source range
-            ps.tokenizer.loc.index -= 1;
-            const expr = try createExpr(ps, loc0, .{ .literal_enum_value = s });
-            ps.tokenizer.loc.index += 1;
-            return expr;
+            return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = s });
         },
         .kw_delay => {
             const delay = try parseDelay(ps, ps_mod, scope);

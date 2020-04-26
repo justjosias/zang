@@ -375,7 +375,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
         }
         const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
         const result = try genExpression(self, arg.value, null, maybe_feedback_temp_index);
-        arg_results[i] = try commitCalleeParam(self, sr, result, param.param_type);
+        arg_results[i] = try commitCalleeParam(self, arg.value.source_range, result, param.param_type);
     }
     defer for (callee_module.params) |param, i| releaseExpressionResult(self, arg_results[i]);
 
@@ -428,13 +428,13 @@ fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffe
             },
             .output => |expr| {
                 const result = try genExpression(self, expr, buffer_dest, feedback_temp_index);
-                try commitAssignment(self, expr.source_range, result, buffer_dest);
+                try commitOutput(self, expr.source_range, result, buffer_dest);
                 releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
             },
             .feedback => |expr| {
                 const result_loc: BufferDest = .{ .temp_buffer_index = feedback_out_temp_index };
                 const result = try genExpression(self, expr, result_loc, feedback_temp_index);
-                try commitAssignment(self, expr.source_range, result, result_loc);
+                try commitOutput(self, expr.source_range, result, result_loc);
                 releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
             },
         }
@@ -497,8 +497,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
 }
 
 // typecheck and make sure that the expression result is written into buffer_dest.
-// (it may already have been if the inner expression used request/commitBufferDest)
-fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: ExpressionResult, buffer_dest: BufferDest) !void {
+fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionResult, buffer_dest: BufferDest) !void {
     switch (result) {
         .nothing => {
             // value has already been written into the result location
@@ -537,7 +536,7 @@ fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
         .output => |expression| {
             const result_loc: BufferDest = .{ .output_index = 0 };
             const result = try genExpression(self, expression, result_loc, null);
-            try commitAssignment(self, expression.source_range, result, result_loc);
+            try commitOutput(self, expression.source_range, result, result_loc);
             releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
         },
         .feedback => |expression| {
