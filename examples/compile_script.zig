@@ -21,7 +21,11 @@ pub fn main() u8 {
 
     var allocator = &leak_count_allocator.allocator;
 
-    const filename = "examples/script.txt";
+    if (std.os.argv.len != 2) {
+        std.debug.warn("requires 1 argument (script filename)\n", .{});
+        return 1;
+    }
+    const filename = std.mem.spanZ(std.os.argv[1]);
 
     const contents = std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
         std.debug.warn("failed to load {}: {}\n", .{ filename, err });

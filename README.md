@@ -75,3 +75,12 @@ My goals for the core library:
 * Lean inner loops
 * Overall small and simple codebase
 * Documentation
+
+## Zangscript
+This is WIP. It's a DSL that can be compiled into Zig code. Writing Zangscript will be a lot terser and more expressive than writing Zig code by hand using the zang API. It's totally optional, the core zang library has no dependency on it. I'll document it more when I make more progress. You can try it out by running:
+
+```
+zig build zangscript
+zig-cache/zangscript examples/script.txt > examples/scriptgen.zig
+zig build script
+```
