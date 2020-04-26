@@ -72,12 +72,12 @@ const NoiseModule = struct {
         self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{});
         self.flt.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .input = temps[1],
-            .filter_type = .low_pass,
+            .type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
                 params.cutoff_frequency,
                 params.sample_rate,
             )),
-            .resonance = 0.4,
+            .res = 0.4,
         });
 
         // increase volume
@@ -131,14 +131,14 @@ pub const MainModule = struct {
         });
 
         // paint two noise voices
-        self.noisem0.paint(span, outputs, .{temps[1], temps[2], temps[3]}, false, .{
+        self.noisem0.paint(span, outputs, .{ temps[1], temps[2], temps[3] }, false, .{
             .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.0,
             .max = 0.5,
             .cutoff_frequency = 320.0,
         });
-        self.noisem1.paint(span, outputs, .{temps[1], temps[2], temps[3]}, false, .{
+        self.noisem1.paint(span, outputs, .{ temps[1], temps[2], temps[3] }, false, .{
             .sample_rate = sample_rate,
             .pan = temps[0],
             .min = 0.5,

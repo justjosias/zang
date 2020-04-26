@@ -227,12 +227,12 @@ pub const NiceInstrument = struct {
         zang.zero(span, temps[1]);
         self.flt.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .input = temps[0],
-            .filter_type = .low_pass,
+            .type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
                 params.freq * 8.0,
                 params.sample_rate,
             )),
-            .resonance = 0.7,
+            .res = 0.7,
         });
         zang.zero(span, temps[0]);
         self.env.paint(span, .{temps[0]}, .{}, note_id_changed, .{
@@ -440,9 +440,9 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
                 zang.zero(span1, temp1);
                 self.filter.paint(span1, .{temp1}, .{}, note_id_changed, .{
                     .input = temp0,
-                    .filter_type = .low_pass,
+                    .type = .low_pass,
                     .cutoff = zang.constant(params.cutoff),
-                    .resonance = 0.0,
+                    .res = 0.0,
                 });
 
                 // output it

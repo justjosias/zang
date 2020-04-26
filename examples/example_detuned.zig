@@ -86,13 +86,13 @@ pub const Instrument = struct {
         // add main filter
         self.main_filter.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .input = temps[2],
-            .filter_type = .low_pass,
+            .type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
                 //params.freq + 400.0,
                 880.0,
                 params.sample_rate,
             )),
-            .resonance = 0.8,
+            .res = 0.8,
         });
     }
 };
@@ -138,12 +138,12 @@ pub const OuterInstrument = struct {
         zang.zero(span, temps[0]);
         self.noise_filter.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .input = temps[1],
-            .filter_type = .low_pass,
+            .type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
                 4.0,
                 params.sample_rate,
             )),
-            .resonance = 0.0,
+            .res = 0.0,
         });
 
         if ((params.mode & 1) == 0) {

@@ -37,7 +37,7 @@ pub const Distortion = struct {
 
         const gain1 = std.math.pow(f32, 2.0, params.ingain * 8.0 - 2.0);
 
-        switch (params.distortion_type) {
+        switch (params.type) {
             .overdrive => {
                 const gain2 = params.outgain / std.math.atan(gain1);
                 const offs = gain1 * params.offset;
