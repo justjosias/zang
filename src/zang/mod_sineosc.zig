@@ -28,6 +28,7 @@ pub const SineOsc = struct {
         span: Span,
         outputs: [num_outputs][]f32,
         temps: [num_temps][]f32,
+        note_id_changed: bool,
         params: Params,
     ) void {
         const output = outputs[0][span.start..span.end];

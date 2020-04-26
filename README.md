@@ -1,16 +1,16 @@
 # zang
-Audio library written in [Zig](https://ziglang.org/).
+Audio library written in [Zig](https://ziglang.org/) 0.6.0.
 
 This library provides functions to "paint" audio (generators and effects) into buffers. (How the buffers get sent to the audio device is out of the scope of the library, but can be seen in the provided examples.)
 
 The library is very low-level. There are no dynamic allocations and the API is on the level of assembly programming (check out the "paint" functions in the examples). If I add higher level features, they will be in separate libraries.
 
 ## Examples
-The library is frequently updated to use the latest (master) version of Zig. Also, the examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed.
+The examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed.
 
 Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. All drawing can be toggled by hitting the F1 key (this is useful for profiling the audio code).
 
-Before building the examples, you need to initialize git submodules, as some of the examples use an external dependency ([zig-wav](https://github.com/dbandstra/zig-wav)).
+Before building the examples, you will need to initialize git submodules, as some of the examples use an external dependency ([zig-wav](https://github.com/dbandstra/zig-wav)).
 
 ```
 git submodule init
@@ -75,3 +75,12 @@ My goals for the core library:
 * Lean inner loops
 * Overall small and simple codebase
 * Documentation
+
+## Zangscript
+This is WIP. It's a DSL that can be compiled into Zig code. Writing Zangscript will be a lot terser and more expressive than writing Zig code by hand using the zang API. It's totally optional, the core zang library has no dependency on it. I'll document it more when I make more progress. You can try it out by running:
+
+```
+zig build zangscript
+zig-cache/zangscript examples/script.txt > examples/scriptgen.zig
+zig build script
+```

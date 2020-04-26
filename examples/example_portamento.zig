@@ -50,6 +50,7 @@ pub const Instrument = struct {
         defer self.prev_note_on = params.note_on;
 
         zang.zero(span, temps[0]);
+        // update portamento if note changes
         self.porta.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .curve = .{ .cubed = 0.5 },
@@ -59,6 +60,7 @@ pub const Instrument = struct {
         });
 
         zang.zero(span, temps[1]);
+        // only reset envelope if all keys are released
         const new_note = !self.prev_note_on and params.note_on;
         self.env.paint(span, .{temps[1]}, .{}, new_note, .{
             .sample_rate = params.sample_rate,
@@ -70,7 +72,7 @@ pub const Instrument = struct {
         });
 
         zang.zero(span, temps[2]);
-        self.osc.paint(span, .{temps[2]}, .{}, .{
+        self.osc.paint(span, .{temps[2]}, .{}, false, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),

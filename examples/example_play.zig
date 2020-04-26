@@ -87,7 +87,7 @@ pub const MainModule = struct {
         if (key == c.SDLK_SPACE) {
             self.iq1.push(impulse_frame, self.idgen1.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = a4 * note_frequencies.c4 / 4.0,
+                .freq = zang.constant(a4 * note_frequencies.c4 / 4.0),
                 .note_on = down,
             });
         } else if (common.getKeyRelFreq(key)) |rel_freq| {

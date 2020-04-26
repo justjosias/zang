@@ -106,6 +106,7 @@ pub const MainModule = struct {
                     inner_span,
                     .{temps[0]},
                     .{},
+                    false,
                     .{
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = zang.constant(result0.params.freq),

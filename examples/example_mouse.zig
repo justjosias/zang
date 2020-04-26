@@ -51,7 +51,7 @@ const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, .{
+        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,

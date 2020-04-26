@@ -16,22 +16,6 @@ Updated: I added decimator, which lets you change the sample rate, but doesn't d
 ## Alternate noise types
 Zig's standard library has functions to generate random numbers with different distributions (`floatNorm` and `floatExp`), do those correspond to any "colors" of noise?
 
-## Load configurations from text files
-Drawbacks to creating sounds in the Zig API:
-* verbose
-* you have to manage temp buffers yourself
-* have to recompile and reload to change something other than params (and params can only be changed on the fly if you've specifically programmed something to control it)
-
-Making a text config format would solve these issues. I have these apprehensions:
-* don't want to reinvent or compete with "music programming languages"
-* lose the type safety of interacting with the configuration in Zig code
-
-These can probably be dealt with. Against the first point, if I just stick to a declarative/functional config rather than a full programming language. Certainly no imperative stuff. Against the second point, I could generate Zig code for integration.
-
-I could even compile the whole text config into Zig code, to continue to allow allocator-less usage. However this would mean maintaining two versions of the config compiler: one for on-the-fly usage, one to compile to Zig code.
-
-What would the config look like? (I'm still calling it a config, but it may end up being more like a mini functional programming language.) I think similar to the how code using the Zig API looks, except reduced as much as possible.
-
 ## Delay length can't be chosen at runtime
 Right now the delay effect uses a comptime sample count. This was to avoid having to dynamically allocate/reallocate the delay buffer. This was convenient while developing the other parts of the delay code, but now that that's all done, I need to address this.
 

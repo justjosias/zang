@@ -31,7 +31,7 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
 
     // don't call Loader.load because we're working on a slice, so we can just
     // take a subslice of it
-    return zang.Sample {
+    return zang.Sample{
         .num_channels = preloaded.num_channels,
         .sample_rate = preloaded.sample_rate,
         .format = switch (preloaded.format) {
@@ -40,7 +40,7 @@ fn readWav(comptime filename: []const u8) !zang.Sample {
             .signed24_lsb => .signed24_lsb,
             .signed32_lsb => .signed32_lsb,
         },
-        .data = buf[fbs.pos..fbs.pos + preloaded.getNumBytes()],
+        .data = buf[fbs.pos .. fbs.pos + preloaded.getNumBytes()],
     };
 }
 
@@ -103,9 +103,9 @@ pub const MainModule = struct {
         zang.multiplyWithScalar(span, temps[0], 2.5);
 
         if (self.distort) {
-            self.distortion.paint(span, .{outputs[0]}, .{}, .{
+            self.distortion.paint(span, .{outputs[0]}, .{}, false, .{
                 .input = temps[0],
-                .distortion_type = .overdrive,
+                .type = .overdrive,
                 .ingain = 0.9,
                 .outgain = 0.5,
                 .offset = 0.0,

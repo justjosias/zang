@@ -48,7 +48,7 @@ const InnerInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{}, .{
+        self.osc.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.constant(params.freq),
             .color = 0.0,
@@ -101,12 +101,11 @@ const SubtrackPlayer = struct {
     trigger: zang.Trigger(MyNoteParams),
 
     fn init() SubtrackPlayer {
-        const SongEvent = zang.Notes(MyNoteParams).SongEvent;
+        const Notes = zang.Notes(MyNoteParams);
         const f = note_frequencies;
-        const t = 0.1;
 
         return .{
-            .tracker = zang.Notes(MyNoteParams).NoteTracker.init(&[_]SongEvent {
+            .tracker = Notes.NoteTracker.init(&[_]Notes.SongEvent {
                 comptime makeNote(0.0, 1, a4 * f.c4, true),
                 comptime makeNote(1.0, 2, a4 * f.ab3, true),
                 comptime makeNote(2.0, 3, a4 * f.g3, true),

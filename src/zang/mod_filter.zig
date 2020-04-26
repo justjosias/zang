@@ -31,9 +31,9 @@ pub const Filter = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         input: []const f32,
-        filter_type: FilterType,
+        type: FilterType,
         cutoff: ConstantOrBuffer, // 0-1
-        resonance: f32, // 0-1
+        res: f32, // 0-1
     };
 
     l: f32,
@@ -51,9 +51,10 @@ pub const Filter = struct {
         span: Span,
         outputs: [num_outputs][]f32,
         temps: [num_temps][]f32,
+        note_id_changed: bool,
         params: Params,
     ) void {
-        // TODO make resonance a ConstantOrBuffer as well
+        // TODO make res a ConstantOrBuffer as well
         const output = outputs[0][span.start..span.end];
         const input = params.input[span.start..span.end];
 
@@ -62,18 +63,18 @@ pub const Filter = struct {
                 self.paintSimple(
                     output,
                     input,
-                    params.filter_type,
+                    params.type,
                     cutoff,
-                    params.resonance,
+                    params.res,
                 );
             },
             .buffer => |cutoff| {
                 self.paintControlledCutoff(
                     output,
                     input,
-                    params.filter_type,
+                    params.type,
                     cutoff[span.start..span.end],
-                    params.resonance,
+                    params.res,
                 );
             },
         }

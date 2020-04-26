@@ -1,0 +1,33 @@
+def Instrument:
+    sample_rate: constant,
+    freq: cob,
+    color: constant,
+    note_on: boolean,
+begin
+    let freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
+
+    //out Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
+    out FilteredSawtoothInstrument(sample_rate, freq, note_on)
+end
+
+def Echoes:
+    input: waveform,
+    echo_volume: constant,
+begin
+    out delay 11025 begin
+        let result = input + feedback * echo_volume
+
+        out result
+        feedback Filter(input=result, type='low_pass', cutoff=0.8, res=0)
+    end
+end
+
+def OuterInstrument:
+    sample_rate: constant,
+    freq: cob,
+    note_on: boolean,
+begin
+    let input = Instrument(sample_rate, freq=freq*0.5, color=0.7, note_on)
+
+    out Echoes(input, echo_volume=0.5)
+end
