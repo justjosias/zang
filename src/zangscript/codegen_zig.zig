@@ -116,13 +116,14 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
     };
 
     for (parse_result.modules) |module, i| {
-        if (i < num_builtins) {
-            continue;
-        }
+        const module_result = codegen_result.module_results[i];
+        const inner = switch (module_result.inner) {
+            .builtin => continue,
+            .custom => |x| x,
+        };
 
         self.module = module;
 
-        const module_result = codegen_result.module_results[i];
         try self.print("\n", .{});
         try self.print("pub const {identifier} = struct {{\n", .{module.name});
         try self.print("pub const num_outputs = {usize};\n", .{module_result.num_outputs});
@@ -140,21 +141,22 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
         }
         try self.print("}};\n", .{});
         try self.print("\n", .{});
-        for (module_result.resolved_fields) |field_module_index, j| {
+
+        for (inner.resolved_fields) |field_module_index, j| {
             const field_module = parse_result.modules[field_module_index];
             try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field_module_index });
         }
-        for (module_result.delays) |delay_decl, j| {
+        for (inner.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
         }
         try self.print("\n", .{});
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
-        for (module_result.resolved_fields) |field_module_index, j| {
+        for (inner.resolved_fields) |field_module_index, j| {
             const field_module = parse_result.modules[field_module_index];
             try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field_module_index });
         }
-        for (module_result.delays) |delay_decl, j| {
+        for (inner.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
         }
         try self.print("}};\n", .{});
@@ -162,7 +164,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
         try self.print("\n", .{});
         try self.print("pub fn paint(self: *{identifier}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
         var span: []const u8 = "span";
-        for (module_result.instructions) |instr| {
+        for (inner.instructions) |instr| {
             switch (instr) {
                 .copy_buffer => |x| {
                     try self.print("zang.copy({str}, {buffer_dest}, {buffer_value});\n", .{ span, x.out, x.in });
@@ -251,7 +253,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     }
                 },
                 .call => |call| {
-                    const field_module_index = module_result.resolved_fields[call.field_index];
+                    const field_module_index = inner.resolved_fields[call.field_index];
                     const callee_module = parse_result.modules[field_module_index];
                     try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
                     try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });

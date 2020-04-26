@@ -546,13 +546,16 @@ fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
 }
 
 pub const CodeGenModuleResult = struct {
-    is_builtin: bool,
     num_outputs: usize,
     num_temps: usize,
-    // if is_builtin is true, the following are undefined
-    resolved_fields: []const usize, // owned slice
-    delays: []const DelayDecl, // owned slice
-    instructions: []const Instruction, // owned slice
+    inner: union(enum) {
+        builtin,
+        custom: struct {
+            resolved_fields: []const usize, // owned slice
+            delays: []const DelayDecl, // owned slice
+            instructions: []const Instruction, // owned slice
+        },
+    },
 };
 
 pub const CodeGenResult = struct {
@@ -591,12 +594,9 @@ pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.
     for (parse_result.builtin_packages) |pkg| {
         for (pkg.builtins) |builtin| {
             module_results[builtin_index] = .{
-                .is_builtin = true,
-                .instructions = undefined, // FIXME - should be null
                 .num_outputs = builtin.num_outputs,
                 .num_temps = builtin.num_temps,
-                .resolved_fields = undefined, // FIXME - should be null?
-                .delays = undefined, // FIXME - should be null?
+                .inner = .builtin,
             };
             module_visited[builtin_index] = true;
             builtin_index += 1;
@@ -694,11 +694,14 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     printBytecode(&state) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
 
     return CodeGenModuleResult{
-        .is_builtin = false,
         .num_outputs = 1,
         .num_temps = state.temp_buffers.finalCount(),
-        .resolved_fields = resolved_fields,
-        .delays = state.delays.toOwnedSlice(),
-        .instructions = state.instructions.toOwnedSlice(),
+        .inner = .{
+            .custom = .{
+                .resolved_fields = resolved_fields,
+                .delays = state.delays.toOwnedSlice(),
+                .instructions = state.instructions.toOwnedSlice(),
+            },
+        },
     };
 }
