@@ -37,7 +37,6 @@ const State = struct {
             .temp_buffer_weak => |i| try self.print("temp{usize}", .{i}),
             .temp_buffer => |i| try self.print("temp{usize}", .{i}),
             .temp_float => |i| try self.print("temp_float{usize}", .{i}),
-            .temp_bool => |i| try self.print("temp_bool{usize}", .{i}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
             .literal_number => |value| try self.print("{f32}", .{value}),
             .literal_enum_value => |str| try self.print("'{str}'", .{str}),
@@ -94,9 +93,8 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
     const self_module = codegen_state.modules[codegen_state.module_index];
 
     try self.print("module '{str}'\n", .{self_module.name});
-    try self.print("    num_temps: {usize}\n", .{codegen_state.temp_buffers.finalCount()});
-    try self.print("    num_temp_floats: {usize}\n", .{codegen_state.num_temp_floats});
-    try self.print("    num_temp_bools: {usize}\n", .{codegen_state.num_temp_bools});
+    try self.print("    num_temp_buffers: {usize}\n", .{codegen_state.temp_buffers.finalCount()});
+    try self.print("    num_temp_floats: {usize}\n", .{codegen_state.temp_floats.finalCount()});
     try self.print("bytecode:\n", .{});
     for (codegen_state.instructions.items) |instr| {
         try self.print("    ", .{});

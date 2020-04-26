@@ -19,13 +19,12 @@ const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
 // expression will return how it stored its result.
-// if it's a temp, the caller needs to make sure to release it (by calling releaseExpressionResult).
+// caller needs to make sure to release it (by calling releaseExpressionResult), which will release any temps that were being used.
 pub const ExpressionResult = union(enum) {
-    nothing, // like `void`. this is the type of an assignment
-    temp_buffer_weak: usize, // not freed by releaseExpressionResult
+    nothing, // this means the result was already written into a result location
+    temp_buffer_weak: usize, // weak reference (someone else owns the temp): won't be released
     temp_buffer: usize,
     temp_float: usize,
-    temp_bool: usize,
     literal_boolean: bool,
     literal_number: f32,
     literal_enum_value: []const u8,
@@ -33,7 +32,6 @@ pub const ExpressionResult = union(enum) {
 };
 
 pub const BooleanValue = union(enum) {
-    temp_boolean_index: usize,
     self_param: usize, // guaranteed to be of type `boolean`
     literal: bool,
 };
@@ -74,7 +72,7 @@ pub const Instruction = union(enum) {
         out: BufferDest,
         // which field of the "self" module we are calling
         field_index: usize,
-        // list of temp buffers passed along for the callee's internal use, dependency injection style
+        // list of temp buffers passed along for the callee's internal use
         temps: []const usize,
         // list of argument param values (in the order of the callee module's params)
         args: []const ExpressionResult,
@@ -108,18 +106,18 @@ pub const CodegenModuleState = struct {
     locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
-    // temp floats and bools are just consts in zig code so they can't be reused
-    num_temp_floats: usize,
-    num_temp_bools: usize,
+    temp_floats: TempManager,
     local_temps: []?usize,
     delays: std.ArrayList(DelayDecl),
 };
 
 const TempManager = struct {
+    reuse_slots: bool,
     slot_claimed: std.ArrayList(bool),
 
-    fn init(allocator: *std.mem.Allocator) TempManager {
+    fn init(allocator: *std.mem.Allocator, reuse_slots: bool) TempManager {
         return .{
+            .reuse_slots = reuse_slots,
             .slot_claimed = std.ArrayList(bool).init(allocator),
         };
     }
@@ -134,9 +132,7 @@ const TempManager = struct {
         // error situation.
         var num_leaked: usize = 0;
         for (self.slot_claimed.items) |in_use| {
-            if (in_use) {
-                num_leaked += 1;
-            }
+            if (in_use) num_leaked += 1;
         }
         if (num_leaked > 0) {
             std.debug.warn("error - {} temp(s) leaked in codegen\n", .{num_leaked});
@@ -144,8 +140,9 @@ const TempManager = struct {
     }
 
     fn claim(self: *TempManager) !usize {
-        for (self.slot_claimed.items) |*in_use, index| {
-            if (!in_use.*) {
+        if (self.reuse_slots) {
+            for (self.slot_claimed.items) |*in_use, index| {
+                if (in_use.*) continue;
                 in_use.* = true;
                 return index;
             }
@@ -168,6 +165,7 @@ const TempManager = struct {
 fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) void {
     switch (result) {
         .temp_buffer => |i| self.temp_buffers.release(i),
+        .temp_float => |i| self.temp_floats.release(i),
         else => {},
     }
 }
@@ -180,7 +178,7 @@ fn getResultAsBoolean(self: *CodegenModuleState, result: ExpressionResult) ?Bool
             BooleanValue{ .self_param = i }
         else
             null,
-        .literal_number, .literal_enum_value, .temp_buffer_weak, .temp_buffer, .temp_float, .temp_bool => null,
+        .literal_number, .literal_enum_value, .temp_buffer_weak, .temp_buffer, .temp_float => null,
     };
 }
 
@@ -193,7 +191,7 @@ fn getResultAsFloat(self: *CodegenModuleState, result: ExpressionResult) ?FloatV
         else
             null,
         .literal_number => |value| FloatValue{ .literal = value },
-        .literal_boolean, .literal_enum_value, .temp_buffer_weak, .temp_buffer, .temp_bool => null,
+        .literal_boolean, .literal_enum_value, .temp_buffer_weak, .temp_buffer => null,
     };
 }
 
@@ -206,16 +204,15 @@ fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?Buffe
             BufferValue{ .self_param = i }
         else
             null,
-        .temp_float, .temp_bool, .literal_boolean, .literal_number, .literal_enum_value => null,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value => null,
     };
 }
 
 // caller wants to return a float-typed result
-fn requestFloatDest(self: *CodegenModuleState) FloatDest {
+fn requestFloatDest(self: *CodegenModuleState) !FloatDest {
     // float-typed result locs don't exist for now
-    const temp_float_index = self.num_temp_floats;
-    self.num_temp_floats += 1;
-    return .{ .temp_float_index = temp_float_index };
+    const temp_float_index = try self.temp_floats.claim();
+    return FloatDest{ .temp_float_index = temp_float_index };
 }
 
 fn commitFloatDest(self: *CodegenModuleState, fd: FloatDest) !ExpressionResult {
@@ -249,7 +246,7 @@ fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buff
 
     if (getResultAsFloat(self, ra)) |a| {
         // float -> float
-        const float_dest = requestFloatDest(self);
+        const float_dest = try requestFloatDest(self);
         try self.instructions.append(.{ .negate_float_to_float = .{ .out = float_dest, .a = a } });
         return commitFloatDest(self, float_dest);
     }
@@ -271,7 +268,7 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
     if (getResultAsFloat(self, ra)) |a| {
         if (getResultAsFloat(self, rb)) |b| {
             // float * float -> float
-            const float_dest = requestFloatDest(self);
+            const float_dest = try requestFloatDest(self);
             try self.instructions.append(.{ .arith_float_float = .{ .out = float_dest, .op = op, .a = a, .b = b } });
             return commitFloatDest(self, float_dest);
         }
@@ -509,7 +506,7 @@ fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: Expressi
         .literal_number => |value| {
             try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .literal = value } } });
         },
-        .temp_bool, .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
+        .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
         .self_param => |param_index| {
             switch (self.modules[self.module_index].params[param_index].param_type) {
@@ -666,13 +663,13 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .resolved_fields = resolved_fields,
         .locals = module_info.locals,
         .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
-        .temp_buffers = TempManager.init(self.inner_allocator), // frees its own memory in deinit
-        .num_temp_floats = 0,
-        .num_temp_bools = 0,
+        .temp_buffers = TempManager.init(self.inner_allocator, true),
+        .temp_floats = TempManager.init(self.inner_allocator, false), // don't reuse temp floats slots (they become `const` in zig)
         .local_temps = try self.arena_allocator.alloc(?usize, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
     };
     defer state.temp_buffers.deinit();
+    defer state.temp_floats.deinit();
 
     std.mem.set(?usize, state.local_temps, null);
 
@@ -686,6 +683,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     }
 
     state.temp_buffers.reportLeaks();
+    state.temp_floats.reportLeaks();
 
     // diagnostic print
     printBytecode(&state) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
