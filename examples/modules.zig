@@ -63,10 +63,8 @@ pub const PhaseModOscillator = struct {
         });
         zang.zero(span, temps[1]);
         switch (params.multiplier) {
-            .constant => |multiplier|
-                zang.multiplyScalar(span, temps[1], temps[2], multiplier),
-            .buffer => |multiplier|
-                zang.multiply(span, temps[1], temps[2], multiplier),
+            .constant => |multiplier| zang.multiplyScalar(span, temps[1], temps[2], multiplier),
+            .buffer => |multiplier| zang.multiply(span, temps[1], temps[2], multiplier),
         }
         zang.zero(span, temps[2]);
         self.carrier.paint(span, .{temps[2]}, .{}, note_id_changed, .{
@@ -109,7 +107,7 @@ pub const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, note_id_changed, .{
+        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2], temps[3] }, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = true,
@@ -178,12 +176,12 @@ pub const FilteredSawtoothInstrument = struct {
         zang.multiply(span, temps[2], temps[0], temps[1]);
         self.flt.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .input = temps[2],
-            .filter_type = .low_pass,
+            .type = .low_pass,
             .cutoff = zang.constant(zang.cutoffFromFrequency(
                 440.0 * note_frequencies.c5,
                 params.sample_rate,
             )),
-            .resonance = 0.7,
+            .res = 0.7,
         });
     }
 };
@@ -372,10 +370,9 @@ pub fn SimpleDelay(comptime DELAY_SAMPLES: usize) type {
             const end = span.end;
 
             while (start < end) {
-                const samples_read =
-                    self.delay.readDelayBuffer(outputs[0][start..end]);
+                const samples_read = self.delay.readDelayBuffer(outputs[0][start..end]);
                 self.delay.writeDelayBuffer(
-                    params.input[start..start + samples_read],
+                    params.input[start .. start + samples_read],
                 );
                 start += samples_read;
             }
@@ -429,8 +426,7 @@ pub fn FilteredEchoes(comptime DELAY_SAMPLES: usize) type {
                 // get delay buffer (this is the feedback)
                 zang.zero(zang.Span.init(start, end), temp0);
 
-                const samples_read =
-                    self.delay.readDelayBuffer(temp0[start..end]);
+                const samples_read = self.delay.readDelayBuffer(temp0[start..end]);
 
                 const span1 = zang.Span.init(start, start + samples_read);
 
@@ -511,7 +507,7 @@ pub fn StereoEchoes(comptime MAIN_DELAY: usize) type {
             });
             // filtered echoes to the left
             zang.zero(span, temps[1]);
-            self.echoes.paint(span, .{temps[1]}, .{temps[2], temps[3]}, note_id_changed, .{
+            self.echoes.paint(span, .{temps[1]}, .{ temps[2], temps[3] }, note_id_changed, .{
                 .input = temps[0],
                 .feedback_volume = params.feedback_volume,
                 .cutoff = params.cutoff,

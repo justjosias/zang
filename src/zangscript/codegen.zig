@@ -299,9 +299,8 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
     return fail(self.source, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
-// type check and return a value that can be passed as the param
+// typecheck (coercing if possible) and return a value that matches the callee param's type
 fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: ExpressionResult, callee_param_type: ParamType) !ExpressionResult {
-    // differ by never copying, and it would return an ExpressionResult.
     switch (callee_param_type) {
         .boolean => {
             if (getResultAsBoolean(self, result) != null) return result;
@@ -329,46 +328,38 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
         .one_of => |e| {
             switch (result) {
                 .literal_enum_value => |value| {
-                    if (for (e.values) |allowed_value| {
-                        if (std.mem.eql(u8, allowed_value, value)) break true;
-                    } else false) {
-                        return ExpressionResult{ .literal_enum_value = value };
+                    for (e.values) |allowed_value| {
+                        if (std.mem.eql(u8, allowed_value, value)) {
+                            return ExpressionResult{ .literal_enum_value = value };
+                        }
                     }
                 },
                 else => {},
             }
-            return fail(self.source, sr, "expected one of | ", .{e.values});
+            return fail(self.source, sr, "expected one of |", .{e.values});
         },
     }
 }
 
 fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, field_index: usize, args: []const CallArg, maybe_feedback_temp_index: ?usize) !ExpressionResult {
     const field_module_index = self.resolved_fields[field_index];
-
-    // the callee is guaranteed to have had its codegen done already, so its num_temps is known
-    const callee_num_temps = self.module_results[field_module_index].num_temps;
-
     const callee_module = self.modules[field_module_index];
+    const callee_num_temps = self.module_results[field_module_index].num_temps;
 
     // pass params
     for (args) |a| {
         for (callee_module.params) |param| {
             if (std.mem.eql(u8, a.param_name, param.name)) break;
-        } else {
-            return fail(self.source, a.param_name_token.source_range, "invalid param `<`", .{});
-        }
+        } else return fail(self.source, a.param_name_token.source_range, "module `#` has no param called `<`", .{callee_module.name});
     }
     var arg_results = try self.arena_allocator.alloc(ExpressionResult, callee_module.params.len);
     for (callee_module.params) |param, i| {
         // find this arg in the call node
         var maybe_arg: ?CallArg = null;
         for (args) |a| {
-            if (std.mem.eql(u8, a.param_name, param.name)) {
-                if (maybe_arg != null) {
-                    return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
-                }
-                maybe_arg = a;
-            }
+            if (!std.mem.eql(u8, a.param_name, param.name)) continue;
+            if (maybe_arg != null) return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
+            maybe_arg = a;
         }
         const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
         const result = try genExpression(self, arg.value, null, maybe_feedback_temp_index);
@@ -378,9 +369,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
 
     // the callee needs temps for its own internal use
     var temps = try self.arena_allocator.alloc(usize, callee_num_temps);
-    for (temps) |*ptr| {
-        ptr.* = try self.temp_buffers.claim();
-    }
+    for (temps) |*ptr| ptr.* = try self.temp_buffers.claim();
     defer for (temps) |temp_buffer_index| self.temp_buffers.release(temp_buffer_index);
 
     const buffer_dest = try requestBufferDest(self, maybe_result_loc);
@@ -501,8 +490,9 @@ fn genLetAssignment(self: *CodegenModuleState, local_index: usize, expression: *
     releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
 }
 
+// typecheck and make sure that the expression result is written into buffer_dest.
+// (it may already have been if the inner expression used request/commitBufferDest)
 fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: ExpressionResult, buffer_dest: BufferDest) !void {
-    // result loc is known to be of buffer type so this is simpler than commitCalleeParam
     switch (result) {
         .nothing => {
             // value has already been written into the result location
@@ -516,15 +506,11 @@ fn commitAssignment(self: *CodegenModuleState, sr: SourceRange, result: Expressi
         .temp_float => |temp_float_index| {
             try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .temp_float_index = temp_float_index } } });
         },
-        .temp_bool, .literal_boolean => {
-            return fail(self.source, sr, "expected buffer value, found boolean", .{});
-        },
         .literal_number => |value| {
             try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .literal = value } } });
         },
-        .literal_enum_value => {
-            return fail(self.source, sr, "expected buffer value, found enum value", .{});
-        },
+        .temp_bool, .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
+        .literal_enum_value => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
         .self_param => |param_index| {
             switch (self.modules[self.module_index].params[param_index].param_type) {
                 .boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),

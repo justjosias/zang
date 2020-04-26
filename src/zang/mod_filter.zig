@@ -54,7 +54,7 @@ pub const Filter = struct {
         note_id_changed: bool,
         params: Params,
     ) void {
-        // TODO make resonance a ConstantOrBuffer as well
+        // TODO make res a ConstantOrBuffer as well
         const output = outputs[0][span.start..span.end];
         const input = params.input[span.start..span.end];
 
@@ -63,18 +63,18 @@ pub const Filter = struct {
                 self.paintSimple(
                     output,
                     input,
-                    params.filter_type,
+                    params.type,
                     cutoff,
-                    params.resonance,
+                    params.res,
                 );
             },
             .buffer => |cutoff| {
                 self.paintControlledCutoff(
                     output,
                     input,
-                    params.filter_type,
+                    params.type,
                     cutoff[span.start..span.end],
-                    params.resonance,
+                    params.res,
                 );
             },
         }
