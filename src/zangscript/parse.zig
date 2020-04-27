@@ -508,7 +508,6 @@ pub fn parse(
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
-    // first pass: parse top level, skipping over module implementations
     var ps: ParseState = .{
         .arena_allocator = &arena.allocator,
         .tokenizer = Tokenizer.init(source),
