@@ -423,10 +423,7 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
 }
 
 fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope) !void {
-    const name_token = try ps.tokenizer.next();
-    if (name_token.tt != .identifier) {
-        return ps.tokenizer.failExpected("identifier", name_token);
-    }
+    const name_token = try ps.tokenizer.expectIdentifier("local name");
     const name = ps.tokenizer.source.getString(name_token.source_range);
     if (name[0] < 'a' or name[0] > 'z') {
         return fail(ps.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
