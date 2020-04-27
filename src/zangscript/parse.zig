@@ -2,6 +2,7 @@ const std = @import("std");
 const Source = @import("tokenize.zig").Source;
 const SourceLocation = @import("tokenize.zig").SourceLocation;
 const SourceRange = @import("tokenize.zig").SourceRange;
+const Symbol = @import("tokenize.zig").Symbol;
 const Token = @import("tokenize.zig").Token;
 const TokenType = @import("tokenize.zig").TokenType;
 const Tokenizer = @import("tokenize.zig").Tokenizer;
@@ -134,7 +135,7 @@ fn expectParamType(ps: *ParseState) !ParamType {
     if (std.mem.eql(u8, type_name, "cob")) {
         return .constant_or_buffer;
     }
-    return ps.tokenizer.failExpected("param_type", type_token.source_range);
+    return ps.tokenizer.failExpected("param_type", type_token);
 }
 
 fn defineModule(ps: *ParseState) !void {
@@ -143,35 +144,36 @@ fn defineModule(ps: *ParseState) !void {
     if (module_name[0] < 'A' or module_name[0] > 'Z') {
         return fail(ps.tokenizer.source, module_name_token.source_range, "module name must start with a capital letter", .{});
     }
-    _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_colon});
+    try ps.tokenizer.expectSymbol(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
 
     while (true) {
-        const token = try ps.tokenizer.expectOneOf(&[_]TokenType{ .kw_begin, .identifier });
-        switch (token.tt) {
-            else => unreachable,
-            .kw_begin => break,
-            .identifier => {
-                // param declaration
-                const param_name = ps.tokenizer.source.getString(token.source_range);
-                if (param_name[0] < 'a' or param_name[0] > 'z') {
-                    return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{});
-                }
-                for (params.items) |param| {
-                    if (std.mem.eql(u8, param.name, param_name)) {
-                        return fail(ps.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
-                    }
-                }
-                _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_colon});
-                const param_type = try expectParamType(ps);
-                _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_comma});
-                try params.append(.{
-                    .name = param_name,
-                    .param_type = param_type,
-                });
-            },
+        const token = try ps.tokenizer.next();
+        if (token.tt.isKeyword(.kw_begin)) {
+            break;
         }
+        if (token.tt == .identifier) {
+            // param declaration
+            const param_name = ps.tokenizer.source.getString(token.source_range);
+            if (param_name[0] < 'a' or param_name[0] > 'z') {
+                return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{});
+            }
+            for (params.items) |param| {
+                if (std.mem.eql(u8, param.name, param_name)) {
+                    return fail(ps.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
+                }
+            }
+            try ps.tokenizer.expectSymbol(.sym_colon);
+            const param_type = try expectParamType(ps);
+            try ps.tokenizer.expectSymbol(.sym_comma);
+            try params.append(.{
+                .name = param_name,
+                .param_type = param_type,
+            });
+            continue;
+        }
+        return ps.tokenizer.failExpected("param declaration or `begin`", token);
     }
 
     // parse paint block
@@ -211,48 +213,40 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
         .type_token = field_name_token,
     });
 
-    _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_left_paren});
+    try ps.tokenizer.expectSymbol(.sym_left_paren);
     var args = std.ArrayList(CallArg).init(ps.arena_allocator);
-    var first = true;
-    var token = try ps.tokenizer.expect("`)` or arg name");
-    while (token.tt != .sym_right_paren) {
-        if (first) {
-            first = false;
-        } else {
-            if (token.tt == .sym_comma) {
-                token = try ps.tokenizer.expect("`)` or arg name");
-            } else {
-                return ps.tokenizer.failExpected("`,` or `)`", token.source_range);
+    var token = try ps.tokenizer.next();
+    while (!token.tt.isSymbol(.sym_right_paren)) {
+        if (args.items.len > 0) {
+            if (!token.tt.isSymbol(.sym_comma)) {
+                return ps.tokenizer.failExpected("`,` or `)`", token);
             }
+            token = try ps.tokenizer.next();
         }
-        switch (token.tt) {
-            .identifier => {
-                const identifier = ps.tokenizer.source.getString(token.source_range);
-                const equals_token = try ps.tokenizer.expect("`=`, `,` or `)`");
-                if (equals_token.tt == .sym_equals) {
-                    const subexpr = try expectExpression(ps, ps_mod, scope);
-                    try args.append(.{
-                        .param_name = identifier,
-                        .param_name_token = token,
-                        .value = subexpr,
-                    });
-                    token = try ps.tokenizer.expect("`)` or arg name");
-                } else {
-                    // shorthand param passing: `val` expands to `val=val`
-                    const inner = parseLocalOrParam(ps_mod, scope, identifier) orelse
-                        return fail(ps.tokenizer.source, token.source_range, "no param or local called `<`", .{});
-                    const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
-                    try args.append(.{
-                        .param_name = identifier,
-                        .param_name_token = token,
-                        .value = subexpr,
-                    });
-                    token = equals_token;
-                }
-            },
-            else => {
-                return ps.tokenizer.failExpected("`)` or arg name", token.source_range);
-            },
+        if (token.tt != .identifier) {
+            return ps.tokenizer.failExpected("arg name", token);
+        }
+        const identifier = ps.tokenizer.source.getString(token.source_range);
+        const equals_token = try ps.tokenizer.next();
+        if (equals_token.tt.isSymbol(.sym_equals)) {
+            const subexpr = try expectExpression(ps, ps_mod, scope);
+            try args.append(.{
+                .param_name = identifier,
+                .param_name_token = token,
+                .value = subexpr,
+            });
+            token = try ps.tokenizer.next();
+        } else {
+            // shorthand param passing: `val` expands to `val=val`
+            const inner = parseLocalOrParam(ps_mod, scope, identifier) orelse
+                return fail(ps.tokenizer.source, token.source_range, "no param or local called `<`", .{});
+            const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
+            try args.append(.{
+                .param_name = identifier,
+                .param_name_token = token,
+                .value = subexpr,
+            });
+            token = equals_token;
         }
     }
     return Call{
@@ -264,7 +258,10 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
 fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!Delay {
     // constant number for the number of delay samples (this is a limitation of my current delay implementation)
     const num_samples = blk: {
-        const token = try ps.tokenizer.expectOneOf(&[_]TokenType{.number});
+        const token = try ps.tokenizer.next();
+        if (token.tt != .number) {
+            return ps.tokenizer.failExpected("number", token);
+        }
         const s = ps.tokenizer.source.getString(token.source_range);
         const n = std.fmt.parseInt(usize, s, 10) catch {
             return fail(ps.tokenizer.source, token.source_range, "malformatted integer", .{});
@@ -272,7 +269,7 @@ fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         break :blk n;
     };
     // keyword `begin`
-    _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.kw_begin});
+    try ps.tokenizer.expectKeyword(.kw_begin);
     // inner statements
     const inner_scope = try parseStatements(ps, ps_mod, scope);
     return Delay{
@@ -329,7 +326,7 @@ fn parseLocalOrParam(ps_mod: *ParseModuleState, scope: *const Scope, name: []con
 }
 
 const BinaryOperator = struct {
-    symbol: TokenType,
+    symbol: Symbol,
     priority: usize,
     op: BinArithOp,
 };
@@ -350,7 +347,7 @@ fn expectExpression(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Sc
 fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, priority: usize) ParseError!*const Expression {
     var negate = false;
     const peeked_token = try ps.tokenizer.peek();
-    if (if (peeked_token) |token| token.tt == .sym_minus else false) {
+    if (peeked_token.tt.isSymbol(.sym_minus)) {
         _ = try ps.tokenizer.next(); // skip the peeked token
         negate = true;
     }
@@ -362,9 +359,10 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
         a = try createExpr(ps, loc0, .{ .negate = a });
     }
 
-    while (try ps.tokenizer.peek()) |token| {
+    while (true) {
+        const token = try ps.tokenizer.peek();
         for (binary_operators) |bo| {
-            if (token.tt == bo.symbol and priority <= bo.priority) {
+            if (token.tt.isSymbol(bo.symbol) and priority <= bo.priority) {
                 _ = try ps.tokenizer.next(); // skip the peeked token
                 const b = try expectExpression2(ps, ps_mod, scope, bo.priority);
                 a = try createExpr(ps, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
@@ -379,62 +377,61 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
 }
 
 fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!*const Expression {
-    const token = try ps.tokenizer.expect("expression");
+    const token = try ps.tokenizer.next();
     const loc0 = token.source_range.loc0;
 
-    switch (token.tt) {
-        .sym_left_paren => {
-            const a = try expectExpression(ps, ps_mod, scope);
-            _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_right_paren});
-            return a;
-        },
-        .identifier => {
-            const s = ps.tokenizer.source.getString(token.source_range);
-            if (s[0] >= 'A' and s[0] <= 'Z') {
-                const call = try parseCall(ps, ps_mod, scope, token, s);
-                return try createExpr(ps, loc0, .{ .call = call });
-            }
-            const inner = parseLocalOrParam(ps_mod, scope, s) orelse
-                return fail(ps.tokenizer.source, token.source_range, "no local or param called `<`", .{});
-            return try createExpr(ps, loc0, inner);
-        },
-        .kw_false => {
-            return try createExpr(ps, loc0, .{ .literal_boolean = false });
-        },
-        .kw_true => {
-            return try createExpr(ps, loc0, .{ .literal_boolean = true });
-        },
-        .number => {
-            const s = ps.tokenizer.source.getString(token.source_range);
-            const n = std.fmt.parseFloat(f32, s) catch {
-                return fail(ps.tokenizer.source, token.source_range, "malformatted number", .{});
-            };
-            return try createExpr(ps, loc0, .{ .literal_number = n });
-        },
-        .enum_value => {
-            const s = ps.tokenizer.source.getString(token.source_range);
-            return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = s });
-        },
-        .kw_delay => {
-            const delay = try parseDelay(ps, ps_mod, scope);
-            return try createExpr(ps, loc0, .{ .delay = delay });
-        },
-        .kw_feedback => {
-            return try createExpr(ps, loc0, .feedback);
-        },
-        else => {
-            return ps.tokenizer.failExpected("expression", token.source_range);
-        },
+    if (token.tt.isSymbol(.sym_left_paren)) {
+        const a = try expectExpression(ps, ps_mod, scope);
+        try ps.tokenizer.expectSymbol(.sym_right_paren);
+        return a;
     }
+    if (token.tt == .identifier) {
+        const s = ps.tokenizer.source.getString(token.source_range);
+        if (s[0] >= 'A' and s[0] <= 'Z') {
+            const call = try parseCall(ps, ps_mod, scope, token, s);
+            return try createExpr(ps, loc0, .{ .call = call });
+        }
+        const inner = parseLocalOrParam(ps_mod, scope, s) orelse
+            return fail(ps.tokenizer.source, token.source_range, "no local or param called `<`", .{});
+        return try createExpr(ps, loc0, inner);
+    }
+    if (token.tt.isKeyword(.kw_false)) {
+        return try createExpr(ps, loc0, .{ .literal_boolean = false });
+    }
+    if (token.tt.isKeyword(.kw_true)) {
+        return try createExpr(ps, loc0, .{ .literal_boolean = true });
+    }
+    if (token.tt == .number) {
+        const s = ps.tokenizer.source.getString(token.source_range);
+        const n = std.fmt.parseFloat(f32, s) catch {
+            return fail(ps.tokenizer.source, token.source_range, "malformatted number", .{});
+        };
+        return try createExpr(ps, loc0, .{ .literal_number = n });
+    }
+    if (token.tt == .enum_value) {
+        const s = ps.tokenizer.source.getString(token.source_range);
+        return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = s });
+    }
+    if (token.tt.isKeyword(.kw_delay)) {
+        const delay = try parseDelay(ps, ps_mod, scope);
+        return try createExpr(ps, loc0, .{ .delay = delay });
+    }
+    if (token.tt.isKeyword(.kw_feedback)) {
+        return try createExpr(ps, loc0, .feedback);
+    }
+    return ps.tokenizer.failExpected("expression", token);
 }
 
 fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope) !void {
-    const name_token = try ps.tokenizer.expectOneOf(&[_]TokenType{.identifier});
+    const name_token = try ps.tokenizer.next();
+    if (name_token.tt != .identifier) {
+        return ps.tokenizer.failExpected("identifier", name_token);
+    }
     const name = ps.tokenizer.source.getString(name_token.source_range);
     if (name[0] < 'a' or name[0] > 'z') {
         return fail(ps.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
     }
-    _ = try ps.tokenizer.expectOneOf(&[_]TokenType{.sym_equals});
+    try ps.tokenizer.expectSymbol(.sym_equals);
     // note: locals are allowed to shadow params
     var maybe_s: ?*const Scope = scope;
     while (maybe_s) |s| : (maybe_s = s.parent) {
@@ -471,24 +468,26 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
         .statements = std.ArrayList(Statement).init(ps.arena_allocator),
     };
 
-    while (try ps.tokenizer.next()) |token| {
-        switch (token.tt) {
-            .kw_end => break,
-            .kw_let => {
-                try parseLetAssignment(ps, ps_mod, scope);
-            },
-            .kw_out => {
-                const expr = try expectExpression(ps, ps_mod, scope);
-                try scope.statements.append(.{ .output = expr });
-            },
-            .kw_feedback => {
-                const expr = try expectExpression(ps, ps_mod, scope);
-                try scope.statements.append(.{ .feedback = expr });
-            },
-            else => {
-                return ps.tokenizer.failExpected("`let`, `out`, `feedback` or `end`", token.source_range);
-            },
+    while (true) {
+        const token = try ps.tokenizer.next();
+        if (token.tt.isKeyword(.kw_end)) {
+            break;
         }
+        if (token.tt.isKeyword(.kw_let)) {
+            try parseLetAssignment(ps, ps_mod, scope);
+            continue;
+        }
+        if (token.tt.isKeyword(.kw_out)) {
+            const expr = try expectExpression(ps, ps_mod, scope);
+            try scope.statements.append(.{ .output = expr });
+            continue;
+        }
+        if (token.tt.isKeyword(.kw_feedback)) {
+            const expr = try expectExpression(ps, ps_mod, scope);
+            try scope.statements.append(.{ .feedback = expr });
+            continue;
+        }
+        return ps.tokenizer.failExpected("`let`, `out`, `feedback` or `end`", token);
     }
 
     return scope;
@@ -532,10 +531,14 @@ pub fn parse(
     }
 
     // parse the file
-    while (try ps.tokenizer.next()) |token| {
-        switch (token.tt) {
-            .kw_def => try defineModule(&ps),
-            else => return ps.tokenizer.failExpected("`def` or end of file", token.source_range),
+    while (true) {
+        const token = try ps.tokenizer.next();
+        if (token.tt == .end_of_file) {
+            break;
+        } else if (token.tt.isKeyword(.kw_def)) {
+            try defineModule(&ps);
+        } else {
+            return ps.tokenizer.failExpected("`def` or end of file", token);
         }
     }
 

@@ -23,8 +23,7 @@ pub const SourceRange = struct {
     loc1: SourceLocation,
 };
 
-pub const TokenType = enum {
-    illegal,
+pub const Symbol = enum {
     sym_asterisk,
     sym_colon,
     sym_comma,
@@ -34,6 +33,9 @@ pub const TokenType = enum {
     sym_minus,
     sym_plus,
     sym_right_paren,
+};
+
+pub const Keyword = enum {
     kw_begin,
     kw_def,
     kw_delay,
@@ -43,9 +45,30 @@ pub const TokenType = enum {
     kw_let,
     kw_out,
     kw_true,
+};
+
+pub const TokenType = union(enum) {
+    illegal,
+    end_of_file,
+    symbol: Symbol,
+    keyword: Keyword,
     identifier,
     enum_value,
     number,
+
+    pub fn isSymbol(tt: TokenType, symbol: Symbol) bool {
+        return switch (tt) {
+            .symbol => |sym| sym == symbol,
+            else => false,
+        };
+    }
+
+    pub fn isKeyword(tt: TokenType, keyword: Keyword) bool {
+        return switch (tt) {
+            .keyword => |kw| kw == keyword,
+            else => false,
+        };
+    }
 };
 
 pub const Token = struct {
@@ -71,7 +94,7 @@ pub const Tokenizer = struct {
         };
     }
 
-    pub fn next(self: *Tokenizer) !?Token {
+    pub fn next(self: *Tokenizer) !Token {
         const src = self.source.contents;
 
         var loc = self.loc;
@@ -98,12 +121,16 @@ pub const Tokenizer = struct {
                 continue;
             }
             if (loc.index == src.len) {
-                break;
+                return makeToken(loc, loc, .end_of_file);
             }
             const start = loc;
-            if (getSymbol(src[loc.index..])) |result| {
-                loc.index += result.len;
-                return makeToken(start, loc, result.tt);
+            inline for (@typeInfo(Symbol).Enum.fields) |_, i| {
+                const symbol = @intToEnum(Symbol, i);
+                const symbol_string = getSymbolString(symbol);
+                if (std.mem.startsWith(u8, src[loc.index..], symbol_string)) {
+                    loc.index += symbol_string.len;
+                    return makeToken(start, loc, .{ .symbol = symbol });
+                }
             }
             if (src[loc.index] == '\'') {
                 loc.index += 1;
@@ -138,52 +165,56 @@ pub const Tokenizer = struct {
             if (getIdentifier(src[loc.index..])) |len| {
                 loc.index += len;
                 const string = src[start.index..loc.index];
-                const tt = getKeyword(string) orelse .identifier;
-                return makeToken(start, loc, tt);
+                inline for (@typeInfo(Keyword).Enum.fields) |_, i| {
+                    const keyword = @intToEnum(Keyword, i);
+                    if (std.mem.eql(u8, string, getKeywordString(keyword))) {
+                        return makeToken(start, loc, .{ .keyword = keyword });
+                    }
+                }
+                return makeToken(start, loc, .identifier);
             }
             loc.index += 1;
             return makeToken(start, loc, .illegal);
         }
-        return null;
     }
 
-    pub fn peek(self: *Tokenizer) !?Token {
+    pub fn peek(self: *Tokenizer) !Token {
         const loc = self.loc;
         defer self.loc = loc;
 
         return try self.next();
     }
 
-    pub fn failExpected(self: *Tokenizer, desc: []const u8, found: SourceRange) error{Failed} {
-        return fail(self.source, found, "expected #, found `<`", .{desc});
-    }
-
-    pub fn expect(self: *Tokenizer, desc: []const u8) !Token {
-        const token = try self.next();
-        return token orelse fail(self.source, null, "expected #, found end of file", .{desc});
+    pub fn failExpected(self: *Tokenizer, desc: []const u8, found: Token) error{Failed} {
+        if (found.tt == .end_of_file) {
+            return fail(self.source, found.source_range, "expected #, found end of file", .{desc});
+        } else {
+            return fail(self.source, found.source_range, "expected #, found `<`", .{desc});
+        }
     }
 
     pub fn expectIdentifier(self: *Tokenizer, desc: []const u8) !Token {
-        const token = try self.expect(desc);
+        const token = try self.next();
         if (token.tt != .identifier) {
-            return self.failExpected(desc, token.source_range);
+            return self.failExpected(desc, token);
         }
         return token;
     }
 
-    pub fn expectOneOf(self: *Tokenizer, comptime tts: []const TokenType) !Token {
-        comptime var desc: []const u8 = "";
-        inline for (tts) |tt, i| {
-            if (i > 0) desc = desc ++ ", ";
-            desc = desc ++ describeTokenType(tt);
+    pub fn expectSymbol(self: *Tokenizer, comptime symbol: Symbol) !void {
+        const token = try self.next();
+        if (!token.tt.isSymbol(symbol)) {
+            const desc = "`" ++ getSymbolString(symbol) ++ "`";
+            return self.failExpected(desc, token);
         }
-        const token = try self.expect(desc);
-        for (tts) |tt| {
-            if (token.tt == tt) {
-                return token;
-            }
+    }
+
+    pub fn expectKeyword(self: *Tokenizer, comptime keyword: Keyword) !void {
+        const token = try self.next();
+        if (!token.tt.isKeyword(keyword)) {
+            const desc = "`" ++ getKeywordString(keyword) ++ "`";
+            return self.failExpected(desc, token);
         }
-        return self.failExpected(desc, token.source_range);
     }
 };
 
@@ -222,71 +253,30 @@ fn getNumber(string: []const u8) ?usize {
     return null;
 }
 
-const GetSymbolResult = struct { tt: TokenType, len: usize };
-
-fn getSymbol(string: []const u8) ?GetSymbolResult {
-    const symbols = [_]struct { string: []const u8, tt: TokenType }{
-        .{ .string = "**", .tt = .sym_dbl_asterisk },
-        .{ .string = "*", .tt = .sym_asterisk },
-        .{ .string = ":", .tt = .sym_colon },
-        .{ .string = ",", .tt = .sym_comma },
-        .{ .string = "=", .tt = .sym_equals },
-        .{ .string = "(", .tt = .sym_left_paren },
-        .{ .string = "-", .tt = .sym_minus },
-        .{ .string = "+", .tt = .sym_plus },
-        .{ .string = ")", .tt = .sym_right_paren },
-    };
-    for (symbols) |symbol| {
-        if (std.mem.startsWith(u8, string, symbol.string)) {
-            return GetSymbolResult{ .tt = symbol.tt, .len = symbol.string.len };
-        }
+fn getSymbolString(symbol: Symbol) []const u8 {
+    switch (symbol) {
+        .sym_dbl_asterisk => return "**",
+        .sym_asterisk => return "*",
+        .sym_colon => return ":",
+        .sym_comma => return ",",
+        .sym_equals => return "=",
+        .sym_left_paren => return "(",
+        .sym_minus => return "-",
+        .sym_plus => return "+",
+        .sym_right_paren => return ")",
     }
-    return null;
 }
 
-fn getKeyword(string: []const u8) ?TokenType {
-    const keywords = [_]struct { string: []const u8, tt: TokenType }{
-        .{ .string = "begin", .tt = .kw_begin },
-        .{ .string = "def", .tt = .kw_def },
-        .{ .string = "delay", .tt = .kw_delay },
-        .{ .string = "end", .tt = .kw_end },
-        .{ .string = "false", .tt = .kw_false },
-        .{ .string = "feedback", .tt = .kw_feedback },
-        .{ .string = "let", .tt = .kw_let },
-        .{ .string = "out", .tt = .kw_out },
-        .{ .string = "true", .tt = .kw_true },
-    };
-    for (keywords) |keyword| {
-        if (std.mem.eql(u8, string, keyword.string)) {
-            return keyword.tt;
-        }
+fn getKeywordString(keyword: Keyword) []const u8 {
+    switch (keyword) {
+        .kw_begin => return "begin",
+        .kw_def => return "def",
+        .kw_delay => return "delay",
+        .kw_end => return "end",
+        .kw_false => return "false",
+        .kw_feedback => return "feedback",
+        .kw_let => return "let",
+        .kw_out => return "out",
+        .kw_true => return "true",
     }
-    return null;
-}
-
-fn describeTokenType(tt: TokenType) []const u8 {
-    return switch (tt) {
-        .illegal => "(illegal)",
-        .sym_asterisk => "`*`",
-        .sym_colon => "`:`",
-        .sym_comma => "`,`",
-        .sym_dbl_asterisk => "`**`",
-        .sym_equals => "`=`",
-        .sym_left_paren => "`(`",
-        .sym_minus => "`-`",
-        .sym_plus => "`+`",
-        .sym_right_paren => "`)`",
-        .kw_begin => "`begin`",
-        .kw_def => "`def`",
-        .kw_delay => "`delay`",
-        .kw_end => "`end`",
-        .kw_false => "`false`",
-        .kw_feedback => "`feedback`",
-        .kw_let => "`let`",
-        .kw_out => "`out`",
-        .kw_true => "`true`",
-        .identifier => "identifier",
-        .enum_value => "enum value",
-        .number => "number",
-    };
 }

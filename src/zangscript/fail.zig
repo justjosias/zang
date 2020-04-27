@@ -54,7 +54,7 @@ fn printError(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []
     const source_range = maybe_source_range orelse {
         // we don't know where in the source file the error occurred
         try out.print(KYEL ++ KBOLD ++ "{}: " ++ KWHITE, .{source.filename});
-        try printErrorMessage(out, maybe_source_range, source.contents, fmt, args);
+        try printErrorMessage(out, null, source.contents, fmt, args);
         try out.print(KNRM ++ "\n\n", .{});
         return;
     };
@@ -86,6 +86,12 @@ fn printError(source: Source, maybe_source_range: ?SourceRange, comptime fmt: []
     // print the error message
     try printErrorMessage(out, maybe_source_range, source.contents, fmt, args);
     try out.print(KNRM ++ "\n\n", .{});
+
+    if (source_range.loc0.index == source_range.loc1.index) {
+        // if there's no span, it's probably an "expected X, found end of file" error.
+        // there's nothing to echo (but we still want to show the line number)
+        return;
+    }
 
     // echo the source line
     try out.print("{}\n", .{source.contents[start..end]});
