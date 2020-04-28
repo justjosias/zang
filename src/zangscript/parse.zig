@@ -238,8 +238,7 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
             token = try ps.tokenizer.next();
         } else {
             // shorthand param passing: `val` expands to `val=val`
-            const inner = parseLocalOrParam(ps_mod, scope, identifier) orelse
-                return fail(ps.tokenizer.source, token.source_range, "no param or local called `<`", .{});
+            const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
             const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
             try args.append(.{
                 .param_name = identifier,
@@ -293,36 +292,41 @@ fn createExpr(ps: *ParseState, loc0: SourceLocation, inner: ExpressionInner) !*c
     return createExprWithSourceRange(ps, .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc }, inner);
 }
 
-fn parseLocalOrParam(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?ExpressionInner {
-    const maybe_local_index = blk: {
-        var maybe_s: ?*const Scope = scope;
-        while (maybe_s) |sc| : (maybe_s = sc.parent) {
-            for (sc.statements.items) |statement| {
-                switch (statement) {
-                    .let_assignment => |x| {
-                        const local = ps_mod.locals.items[x.local_index];
-                        if (std.mem.eql(u8, local.name, name)) {
-                            break :blk x.local_index;
-                        }
-                    },
-                    else => {},
-                }
+fn findLocal(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?usize {
+    var maybe_s: ?*const Scope = scope;
+    while (maybe_s) |sc| : (maybe_s = sc.parent) {
+        for (sc.statements.items) |statement| {
+            switch (statement) {
+                .let_assignment => |x| {
+                    if (std.mem.eql(u8, ps_mod.locals.items[x.local_index].name, name)) {
+                        return x.local_index;
+                    }
+                },
+                else => {},
             }
         }
-        break :blk null;
-    };
-    if (maybe_local_index) |local_index| {
-        return ExpressionInner{ .local = local_index };
-    }
-    const maybe_param_index = for (ps_mod.params) |param, i| {
-        if (std.mem.eql(u8, param.name, name)) {
-            break i;
-        }
-    } else null;
-    if (maybe_param_index) |param_index| {
-        return ExpressionInner{ .self_param = param_index };
     }
     return null;
+}
+
+fn findParam(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?usize {
+    for (ps_mod.params) |param, i| {
+        if (std.mem.eql(u8, param.name, name)) {
+            return i;
+        }
+    }
+    return null;
+}
+
+fn requireLocalOrParam(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, name_source_range: SourceRange) !ExpressionInner {
+    const name = ps.tokenizer.source.getString(name_source_range);
+    if (findLocal(ps_mod, scope, name)) |local_index| {
+        return ExpressionInner{ .local = local_index };
+    }
+    if (findParam(ps_mod, scope, name)) |param_index| {
+        return ExpressionInner{ .self_param = param_index };
+    }
+    return fail(ps.tokenizer.source, name_source_range, "no local or param called `<`", .{});
 }
 
 const BinaryOperator = struct {
@@ -390,10 +394,10 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         if (s[0] >= 'A' and s[0] <= 'Z') {
             const call = try parseCall(ps, ps_mod, scope, token, s);
             return try createExpr(ps, loc0, .{ .call = call });
+        } else {
+            const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
+            return try createExpr(ps, loc0, inner);
         }
-        const inner = parseLocalOrParam(ps_mod, scope, s) orelse
-            return fail(ps.tokenizer.source, token.source_range, "no local or param called `<`", .{});
-        return try createExpr(ps, loc0, inner);
     }
     if (token.tt.isKeyword(.kw_false)) {
         return try createExpr(ps, loc0, .{ .literal_boolean = false });
@@ -429,21 +433,9 @@ fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope)
         return fail(ps.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
     }
     try ps.tokenizer.expectSymbol(.sym_equals);
-    // note: locals are allowed to shadow params
-    var maybe_s: ?*const Scope = scope;
-    while (maybe_s) |s| : (maybe_s = s.parent) {
-        for (s.statements.items) |statement| {
-            switch (statement) {
-                .let_assignment => |x| {
-                    const local = ps_mod.locals.items[x.local_index];
-                    if (std.mem.eql(u8, local.name, name)) {
-                        return fail(ps.tokenizer.source, name_token.source_range, "redeclaration of local `<`", .{});
-                    }
-                },
-                .output => {},
-                .feedback => {},
-            }
-        }
+    // locals are allowed to shadow params, but not other locals
+    if (findLocal(ps_mod, scope, name) != null) {
+        return fail(ps.tokenizer.source, name_token.source_range, "redeclaration of local `<`", .{});
     }
     const expr = try expectExpression(ps, ps_mod, scope);
     const local_index = ps_mod.locals.items.len;
