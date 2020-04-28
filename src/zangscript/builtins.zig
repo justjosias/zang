@@ -16,7 +16,7 @@ pub const BuiltinEnum = struct {
     values: []const []const u8,
 };
 
-fn getBuiltinEnumFromTypeInfo(comptime typeName: []const u8, comptime enum_info: std.builtin.TypeInfo.Enum) BuiltinEnum {
+fn getBuiltinEnumFromEnumInfo(comptime typeName: []const u8, comptime enum_info: std.builtin.TypeInfo.Enum) BuiltinEnum {
     comptime var values: [enum_info.fields.len][]const u8 = undefined;
     inline for (enum_info.fields) |field, i| {
         values[i] = field.name;
@@ -29,9 +29,17 @@ fn getBuiltinEnumFromTypeInfo(comptime typeName: []const u8, comptime enum_info:
     };
 }
 
+fn getBuiltinEnumFromUnionInfo(comptime typeName: []const u8, comptime union_info: std.builtin.TypeInfo.Union) BuiltinEnum {
+    switch (@typeInfo(union_info.tag_type.?)) {
+        .Enum => |enum_info| return getBuiltinEnumFromEnumInfo(typeName, enum_info),
+        else => unreachable,
+    }
+}
+
 fn getBuiltinEnum(comptime T: type) BuiltinEnum {
     switch (@typeInfo(T)) {
-        .Enum => |enum_info| return getBuiltinEnumFromTypeInfo(@typeName(T), enum_info),
+        .Enum => |enum_info| return getBuiltinEnumFromEnumInfo(@typeName(T), enum_info),
+        .Union => |union_info| return getBuiltinEnumFromUnionInfo(@typeName(T), union_info),
         else => @compileError("getBuiltinEnum: not an enum: " ++ @typeName(T)),
     }
 }
@@ -42,16 +50,17 @@ fn getBuiltinEnum(comptime T: type) BuiltinEnum {
 // that uses enums with overlapping value names. not important now though because user-defined enums
 // are currently not supported, and so far no builtins have overlapping enums)
 fn getBuiltinParamType(comptime T: type) ParamType {
-    switch (@typeInfo(T)) {
-        .Enum => |enum_info| return .{ .one_of = getBuiltinEnumFromTypeInfo(@typeName(T), enum_info) },
-        else => return switch (T) {
-            bool => .boolean,
-            f32 => .constant,
-            []const f32 => .buffer,
-            zang.ConstantOrBuffer => .constant_or_buffer,
+    return switch (T) {
+        bool => .boolean,
+        f32 => .constant,
+        []const f32 => .buffer,
+        zang.ConstantOrBuffer => .constant_or_buffer,
+        else => switch (@typeInfo(T)) {
+            .Enum => |enum_info| return .{ .one_of = getBuiltinEnumFromEnumInfo(@typeName(T), enum_info) },
+            .Union => |union_info| return .{ .one_of = getBuiltinEnumFromUnionInfo(@typeName(T), union_info) },
             else => @compileError("unsupported builtin field type: " ++ @typeName(T)),
         },
-    }
+    };
 }
 
 pub fn getBuiltinModule(comptime T: type) BuiltinModule {
@@ -85,7 +94,7 @@ pub const zang_builtin_package = BuiltinPackage{
         // zang.Curve
         getBuiltinModule(zang.Decimator),
         getBuiltinModule(zang.Distortion),
-        // zang.Envelope
+        getBuiltinModule(zang.Envelope),
         getBuiltinModule(zang.Filter),
         getBuiltinModule(zang.Gate),
         getBuiltinModule(zang.Noise),
@@ -98,5 +107,6 @@ pub const zang_builtin_package = BuiltinPackage{
     .enums = &[_]BuiltinEnum{
         getBuiltinEnum(zang.DistortionType),
         getBuiltinEnum(zang.FilterType),
+        getBuiltinEnum(zang.Painter.Curve),
     },
 };
