@@ -52,7 +52,8 @@ pub const TokenType = union(enum) {
     end_of_file,
     symbol: Symbol,
     keyword: Keyword,
-    identifier,
+    uppercase_name,
+    lowercase_name,
     enum_value,
     number,
 
@@ -162,8 +163,18 @@ pub const Tokenizer = struct {
                 loc.index += len;
                 return makeToken(start, loc, .number);
             }
-            if (getIdentifier(src[loc.index..])) |len| {
-                loc.index += len;
+            if (isUppercase(src[loc.index])) {
+                loc.index += 1;
+                while (loc.index < src.len and isValidNameTailChar(src[loc.index])) {
+                    loc.index += 1;
+                }
+                return makeToken(start, loc, .uppercase_name);
+            }
+            if (isLowercase(src[loc.index])) {
+                loc.index += 1;
+                while (loc.index < src.len and isValidNameTailChar(src[loc.index])) {
+                    loc.index += 1;
+                }
                 const string = src[start.index..loc.index];
                 inline for (@typeInfo(Keyword).Enum.fields) |_, i| {
                     const keyword = @intToEnum(Keyword, i);
@@ -171,7 +182,7 @@ pub const Tokenizer = struct {
                         return makeToken(start, loc, .{ .keyword = keyword });
                     }
                 }
-                return makeToken(start, loc, .identifier);
+                return makeToken(start, loc, .lowercase_name);
             }
             loc.index += 1;
             return makeToken(start, loc, .illegal);
@@ -191,14 +202,6 @@ pub const Tokenizer = struct {
         } else {
             return fail(self.source, found.source_range, "expected #, found `<`", .{desc});
         }
-    }
-
-    pub fn expectIdentifier(self: *Tokenizer, desc: []const u8) !Token {
-        const token = try self.next();
-        if (token.tt != .identifier) {
-            return self.failExpected(desc, token);
-        }
-        return token;
     }
 
     pub fn expectSymbol(self: *Tokenizer, comptime symbol: Symbol) !void {
@@ -222,24 +225,16 @@ inline fn isWhitespace(ch: u8) bool {
     return ch == ' ' or ch == '\t' or ch == '\r' or ch == '\n';
 }
 
-inline fn isStartOfIdentifier(ch: u8) bool {
-    // note that unlike in C, identifiers cannot start with an underscore
-    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z');
+inline fn isLowercase(ch: u8) bool {
+    return ch >= 'a' and ch <= 'z';
 }
 
-inline fn isIdentifierInterior(ch: u8) bool {
-    return isStartOfIdentifier(ch) or (ch >= '0' and ch <= '9') or ch == '_';
+inline fn isUppercase(ch: u8) bool {
+    return ch >= 'A' and ch <= 'Z';
 }
 
-fn getIdentifier(string: []const u8) ?usize {
-    if (isStartOfIdentifier(string[0])) {
-        var i: usize = 1;
-        while (i < string.len and isIdentifierInterior(string[i])) {
-            i += 1;
-        }
-        return i;
-    }
-    return null;
+inline fn isValidNameTailChar(ch: u8) bool {
+    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9') or ch == '_';
 }
 
 fn getNumber(string: []const u8) ?usize {

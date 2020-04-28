@@ -121,29 +121,25 @@ const ParseModuleState = struct {
 };
 
 fn expectParamType(ps: *ParseState) !ParamType {
-    const type_token = try ps.tokenizer.expectIdentifier("param type");
-    const type_name = ps.tokenizer.source.getString(type_token.source_range);
-    if (std.mem.eql(u8, type_name, "boolean")) {
-        return .boolean;
+    const type_token = try ps.tokenizer.next();
+    if (type_token.tt == .lowercase_name) {
+        const type_name = ps.tokenizer.source.getString(type_token.source_range);
+        if (std.mem.eql(u8, type_name, "boolean")) return .boolean;
+        if (std.mem.eql(u8, type_name, "constant")) return .constant;
+        if (std.mem.eql(u8, type_name, "waveform")) return .buffer;
+        if (std.mem.eql(u8, type_name, "cob")) return .constant_or_buffer;
     }
-    if (std.mem.eql(u8, type_name, "constant")) {
-        return .constant;
-    }
-    if (std.mem.eql(u8, type_name, "waveform")) {
-        return .buffer;
-    }
-    if (std.mem.eql(u8, type_name, "cob")) {
-        return .constant_or_buffer;
-    }
-    return ps.tokenizer.failExpected("param_type", type_token);
+    return ps.tokenizer.failExpected("param type", type_token);
 }
 
 fn defineModule(ps: *ParseState) !void {
-    const module_name_token = try ps.tokenizer.expectIdentifier("module name");
-    const module_name = ps.tokenizer.source.getString(module_name_token.source_range);
-    if (module_name[0] < 'A' or module_name[0] > 'Z') {
+    const module_name_token = try ps.tokenizer.next();
+    if (module_name_token.tt == .lowercase_name) {
         return fail(ps.tokenizer.source, module_name_token.source_range, "module name must start with a capital letter", .{});
+    } else if (module_name_token.tt != .uppercase_name) {
+        return ps.tokenizer.failExpected("module name", module_name_token);
     }
+    const module_name = ps.tokenizer.source.getString(module_name_token.source_range);
     try ps.tokenizer.expectSymbol(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
@@ -153,12 +149,11 @@ fn defineModule(ps: *ParseState) !void {
         if (token.tt.isKeyword(.kw_begin)) {
             break;
         }
-        if (token.tt == .identifier) {
-            // param declaration
+        if (token.tt == .uppercase_name) {
+            return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{});
+        }
+        if (token.tt == .lowercase_name) {
             const param_name = ps.tokenizer.source.getString(token.source_range);
-            if (param_name[0] < 'a' or param_name[0] > 'z') {
-                return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{});
-            }
             for (params.items) |param| {
                 if (std.mem.eql(u8, param.name, param_name)) {
                     return fail(ps.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
@@ -207,7 +202,7 @@ const ParseError = error{
 };
 
 fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
-    // add a field
+    // each call implicitly adds a "field" (child module), since modules have state
     const field_index = ps_mod.fields.items.len;
     try ps_mod.fields.append(.{
         .type_token = field_name_token,
@@ -223,15 +218,15 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
             }
             token = try ps.tokenizer.next();
         }
-        if (token.tt != .identifier) {
-            return ps.tokenizer.failExpected("arg name", token);
+        if (token.tt != .lowercase_name) {
+            return ps.tokenizer.failExpected("callee param name", token);
         }
-        const identifier = ps.tokenizer.source.getString(token.source_range);
+        const param_name = ps.tokenizer.source.getString(token.source_range);
         const equals_token = try ps.tokenizer.next();
         if (equals_token.tt.isSymbol(.sym_equals)) {
             const subexpr = try expectExpression(ps, ps_mod, scope);
             try args.append(.{
-                .param_name = identifier,
+                .param_name = param_name,
                 .param_name_token = token,
                 .value = subexpr,
             });
@@ -241,7 +236,7 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
             const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
             const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
             try args.append(.{
-                .param_name = identifier,
+                .param_name = param_name,
                 .param_name_token = token,
                 .value = subexpr,
             });
@@ -309,7 +304,7 @@ fn findLocal(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?
     return null;
 }
 
-fn findParam(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?usize {
+fn findParam(ps_mod: *ParseModuleState, name: []const u8) ?usize {
     for (ps_mod.params) |param, i| {
         if (std.mem.eql(u8, param.name, name)) {
             return i;
@@ -323,7 +318,7 @@ fn requireLocalOrParam(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const
     if (findLocal(ps_mod, scope, name)) |local_index| {
         return ExpressionInner{ .local = local_index };
     }
-    if (findParam(ps_mod, scope, name)) |param_index| {
+    if (findParam(ps_mod, name)) |param_index| {
         return ExpressionInner{ .self_param = param_index };
     }
     return fail(ps.tokenizer.source, name_source_range, "no local or param called `<`", .{});
@@ -389,15 +384,15 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         try ps.tokenizer.expectSymbol(.sym_right_paren);
         return a;
     }
-    if (token.tt == .identifier) {
+    if (token.tt == .uppercase_name) {
         const s = ps.tokenizer.source.getString(token.source_range);
-        if (s[0] >= 'A' and s[0] <= 'Z') {
-            const call = try parseCall(ps, ps_mod, scope, token, s);
-            return try createExpr(ps, loc0, .{ .call = call });
-        } else {
-            const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
-            return try createExpr(ps, loc0, inner);
-        }
+        const call = try parseCall(ps, ps_mod, scope, token, s);
+        return try createExpr(ps, loc0, .{ .call = call });
+    }
+    if (token.tt == .lowercase_name) {
+        const s = ps.tokenizer.source.getString(token.source_range);
+        const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
+        return try createExpr(ps, loc0, inner);
     }
     if (token.tt.isKeyword(.kw_false)) {
         return try createExpr(ps, loc0, .{ .literal_boolean = false });
@@ -427,11 +422,14 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
 }
 
 fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope) !void {
-    const name_token = try ps.tokenizer.expectIdentifier("local name");
-    const name = ps.tokenizer.source.getString(name_token.source_range);
-    if (name[0] < 'a' or name[0] > 'z') {
+    const name_token = try ps.tokenizer.next();
+    if (name_token.tt == .uppercase_name) {
         return fail(ps.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
+    } else if (name_token.tt != .lowercase_name) {
+        return ps.tokenizer.failExpected("local name", name_token);
     }
+    const name = ps.tokenizer.source.getString(name_token.source_range);
+    if (name[0] < 'a' or name[0] > 'z') {}
     try ps.tokenizer.expectSymbol(.sym_equals);
     // locals are allowed to shadow params, but not other locals
     if (findLocal(ps_mod, scope, name) != null) {
@@ -523,11 +521,12 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         if (token.tt == .end_of_file) {
             break;
-        } else if (token.tt.isKeyword(.kw_def)) {
-            try defineModule(&ps);
-        } else {
-            return ps.tokenizer.failExpected("`def` or end of file", token);
         }
+        if (token.tt.isKeyword(.kw_def)) {
+            try defineModule(&ps);
+            continue;
+        }
+        return ps.tokenizer.failExpected("`def` or end of file", token);
     }
 
     const modules = ps.modules.toOwnedSlice();
