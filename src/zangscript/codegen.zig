@@ -68,6 +68,11 @@ pub const BufferValue = union(enum) {
     self_param: usize, // guaranteed to be of type `buffer`
 };
 
+pub const EnumValue = union(enum) {
+    self_param: usize, // guaranteed to be of an enum type that includes all possible values of the destination enum
+    literal: []const u8,
+};
+
 pub const Instruction = union(enum) {
     copy_buffer: struct { out: BufferDest, in: BufferValue },
     float_to_buffer: struct { out: BufferDest, in: FloatValue },
@@ -223,6 +228,42 @@ fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?Buffe
     };
 }
 
+fn enumAllowsValue(allowed_values: []const []const u8, value: []const u8) bool {
+    for (allowed_values) |v| {
+        if (std.mem.eql(u8, v, value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn enumAllowsValues(allowed_values: []const []const u8, values: []const []const u8) bool {
+    for (values) |value| {
+        if (!enumAllowsValue(allowed_values, value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn getResultAsEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowed_values: []const []const u8) ?EnumValue {
+    switch (result) {
+        .nothing => unreachable,
+        .literal_enum_value => |value| {
+            const ok = enumAllowsValue(allowed_values, value);
+            return if (ok) EnumValue{ .literal = value } else null;
+        },
+        .self_param => |i| {
+            const ok = switch (self.modules[self.module_index].params[i].param_type) {
+                .one_of => |e| enumAllowsValues(allowed_values, e.values),
+                else => false,
+            };
+            return if (ok) EnumValue{ .self_param = i } else null;
+        },
+        .literal_boolean, .literal_number, .temp_buffer, .temp_float => return null,
+    }
+}
+
 // caller wants to return a float-typed result
 fn requestFloatDest(self: *CodegenModuleState) !FloatDest {
     // float-typed result locs don't exist for now
@@ -338,16 +379,7 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
             return fail(self.source, sr, "expected float value", .{});
         },
         .one_of => |e| {
-            switch (result) {
-                .literal_enum_value => |value| {
-                    for (e.values) |allowed_value| {
-                        if (std.mem.eql(u8, allowed_value, value)) {
-                            return ExpressionResult{ .literal_enum_value = value };
-                        }
-                    }
-                },
-                else => {},
-            }
+            if (getResultAsEnumValue(self, result, e.values) != null) return result;
             return fail(self.source, sr, "expected one of |", .{e.values});
         },
     }

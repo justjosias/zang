@@ -8,6 +8,7 @@ const custom_builtin_package = zangscript.BuiltinPackage{
     .builtins = &[_]zangscript.BuiltinModule{
         zangscript.getBuiltinModule(modules.FilteredSawtoothInstrument),
     },
+    .enums = &[_]zangscript.BuiltinEnum{},
 };
 
 const builtin_packages = [_]zangscript.BuiltinPackage{

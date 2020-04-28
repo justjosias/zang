@@ -13,12 +13,13 @@ end
 def Echoes:
     input: waveform,
     echo_volume: constant,
+    filter_type: FilterType,
 begin
     out delay 11025 begin
         let result = input + feedback * echo_volume
 
         out result
-        feedback Filter(input=result, type='low_pass', cutoff=0.8, res=0)
+        feedback Filter(input=result, type=filter_type, cutoff=0.8, res=0)
     end
 end
 
@@ -29,5 +30,5 @@ def OuterInstrument:
 begin
     let input = Instrument(sample_rate, freq=freq*0.5, color=0.7, note_on)
 
-    out Echoes(input, echo_volume=0.5)
+    out Echoes(input, echo_volume=0.5, filter_type='low_pass')
 end

@@ -10,21 +10,40 @@ pub const BuiltinModule = struct {
     num_outputs: usize,
 };
 
+pub const BuiltinEnum = struct {
+    name: []const u8,
+    zig_name: []const u8,
+    values: []const []const u8,
+};
+
+fn getBuiltinEnumFromTypeInfo(comptime typeName: []const u8, comptime enum_info: std.builtin.TypeInfo.Enum) BuiltinEnum {
+    comptime var values: [enum_info.fields.len][]const u8 = undefined;
+    inline for (enum_info.fields) |field, i| {
+        values[i] = field.name;
+    }
+    return .{
+        // assume it's one of the public enums (e.g. zang.FilterType)
+        .name = typeName,
+        .zig_name = "zang." ++ typeName,
+        .values = &values,
+    };
+}
+
+fn getBuiltinEnum(comptime T: type) BuiltinEnum {
+    switch (@typeInfo(T)) {
+        .Enum => |enum_info| return getBuiltinEnumFromTypeInfo(@typeName(T), enum_info),
+        else => @compileError("getBuiltinEnum: not an enum: " ++ @typeName(T)),
+    }
+}
+
+// this also reads enums, separately from the global list of enums that we get for the builtin package.
+// but it's ok because zangscript compares enums "structurally".
+// (although i don't think zig does. so this might create zig errors if i try to codegen something
+// that uses enums with overlapping value names. not important now though because user-defined enums
+// are currently not supported, and so far no builtins have overlapping enums)
 fn getBuiltinParamType(comptime T: type) ParamType {
     switch (@typeInfo(T)) {
-        .Enum => |enum_info| {
-            comptime var values: [enum_info.fields.len][]const u8 = undefined;
-            inline for (enum_info.fields) |field, i| {
-                values[i] = field.name;
-            }
-            return .{
-                .one_of = .{
-                    // assume it's one of the public enums (e.g. zang.FilterType)
-                    .zig_name = "zang." ++ @typeName(T),
-                    .values = &values,
-                },
-            };
-        },
+        .Enum => |enum_info| return .{ .one_of = getBuiltinEnumFromTypeInfo(@typeName(T), enum_info) },
         else => return switch (T) {
             bool => .boolean,
             f32 => .constant,
@@ -56,6 +75,7 @@ pub const BuiltinPackage = struct {
     zig_package_name: []const u8,
     zig_import_path: []const u8,
     builtins: []const BuiltinModule,
+    enums: []const BuiltinEnum,
 };
 
 pub const zang_builtin_package = BuiltinPackage{
@@ -74,5 +94,9 @@ pub const zang_builtin_package = BuiltinPackage{
         // zang.Sampler
         getBuiltinModule(zang.SineOsc),
         getBuiltinModule(zang.TriSawOsc),
+    },
+    .enums = &[_]BuiltinEnum{
+        getBuiltinEnum(zang.DistortionType),
+        getBuiltinEnum(zang.FilterType),
     },
 };

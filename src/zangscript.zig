@@ -2,6 +2,7 @@ const tokenize = @import("zangscript/tokenize.zig");
 pub const Source = tokenize.Source;
 
 const builtins = @import("zangscript/builtins.zig");
+pub const BuiltinEnum = builtins.BuiltinEnum;
 pub const BuiltinModule = builtins.BuiltinModule;
 pub const BuiltinPackage = builtins.BuiltinPackage;
 pub const getBuiltinModule = builtins.getBuiltinModule;

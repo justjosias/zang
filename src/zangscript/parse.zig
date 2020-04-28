@@ -7,22 +7,16 @@ const Token = @import("tokenize.zig").Token;
 const TokenType = @import("tokenize.zig").TokenType;
 const Tokenizer = @import("tokenize.zig").Tokenizer;
 const fail = @import("fail.zig").fail;
+const BuiltinEnum = @import("builtins.zig").BuiltinEnum;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const parsePrintModule = @import("parse_print.zig").parsePrintModule;
-
-pub const ParamTypeEnum = struct {
-    zig_name: []const u8,
-    values: []const []const u8,
-};
 
 pub const ParamType = union(enum) {
     boolean,
     buffer,
     constant,
     constant_or_buffer,
-
-    // currently only builtin modules can define enum params
-    one_of: ParamTypeEnum,
+    one_of: BuiltinEnum,
 };
 
 pub const ModuleParam = struct {
@@ -111,6 +105,7 @@ pub const Statement = union(enum) {
 const ParseState = struct {
     arena_allocator: *std.mem.Allocator,
     tokenizer: Tokenizer,
+    enums: std.ArrayList(BuiltinEnum),
     modules: std.ArrayList(Module),
 };
 
@@ -122,12 +117,17 @@ const ParseModuleState = struct {
 
 fn expectParamType(ps: *ParseState) !ParamType {
     const type_token = try ps.tokenizer.next();
-    if (type_token.tt == .lowercase_name) {
-        const type_name = ps.tokenizer.source.getString(type_token.source_range);
+    const type_name = ps.tokenizer.source.getString(type_token.source_range);
+    if (type_token.tt == .lowercase_name or type_token.tt == .uppercase_name) {
         if (std.mem.eql(u8, type_name, "boolean")) return .boolean;
         if (std.mem.eql(u8, type_name, "constant")) return .constant;
         if (std.mem.eql(u8, type_name, "waveform")) return .buffer;
         if (std.mem.eql(u8, type_name, "cob")) return .constant_or_buffer;
+        for (ps.enums.items) |e| {
+            if (std.mem.eql(u8, e.name, type_name)) {
+                return ParamType{ .one_of = e };
+            }
+        }
     }
     return ps.tokenizer.failExpected("param type", type_token);
 }
@@ -501,11 +501,13 @@ pub fn parse(
     var ps: ParseState = .{
         .arena_allocator = &arena.allocator,
         .tokenizer = Tokenizer.init(source),
+        .enums = std.ArrayList(BuiltinEnum).init(&arena.allocator),
         .modules = std.ArrayList(Module).init(&arena.allocator),
     };
 
     // add builtins
     for (builtin_packages) |pkg| {
+        try ps.enums.appendSlice(pkg.enums);
         for (pkg.builtins) |builtin| {
             try ps.modules.append(.{
                 .name = builtin.name,
