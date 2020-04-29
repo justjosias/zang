@@ -190,6 +190,11 @@ fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) 
         .temp_float => |temp_ref| {
             if (!temp_ref.is_weak) self.temp_floats.release(temp_ref.index);
         },
+        .literal_enum_value => |literal| {
+            if (literal.payload) |payload| {
+                releaseExpressionResult(self, payload.*);
+            }
+        },
         else => {},
     }
 }
@@ -303,7 +308,7 @@ fn commitBufferDest(self: *CodegenModuleState, maybe_result_loc: ?BufferDest, bu
 fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
     if (payload) |payload_expr| {
         const payload_result = try genExpression(self, payload_expr, null, maybe_feedback_temp_index);
-        //defer releaseExpressionResult(self, payload_result); // ?
+        // the payload_result is now owned by the enum result, and will be released with it by releaseExpressionResult
         var payload_result_ptr = try self.arena_allocator.create(ExpressionResult);
         payload_result_ptr.* = payload_result;
         return ExpressionResult{ .literal_enum_value = .{ .label = label, .payload = payload_result_ptr } };
