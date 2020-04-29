@@ -1,5 +1,6 @@
 const std = @import("std");
 const Span = @import("basics.zig").Span;
+const PaintCurve = @import("painter.zig").PaintCurve;
 const PaintState = @import("painter.zig").PaintState;
 const Painter = @import("painter.zig").Painter;
 
@@ -8,9 +9,9 @@ pub const Envelope = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        attack: Painter.Curve,
-        decay: Painter.Curve,
-        release: Painter.Curve,
+        attack: PaintCurve,
+        decay: PaintCurve,
+        release: PaintCurve,
         sustain_volume: f32,
         note_on: bool,
     };

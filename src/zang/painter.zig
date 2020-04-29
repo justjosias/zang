@@ -16,15 +16,15 @@ pub const PaintState = struct {
     }
 };
 
+pub const PaintCurve = union(enum) {
+    instantaneous,
+    linear: f32, // duration (must be > 0)
+    squared: f32, // ditto
+    cubed: f32, // ditto
+};
+
 // this is a long-lived struct, which remembers progress between paints
 pub const Painter = struct {
-    pub const Curve = union(enum) {
-        instantaneous,
-        linear: f32, // duration (must be > 0)
-        squared: f32, // ditto
-        cubed: f32, // ditto
-    };
-
     t: f32,
     last_value: f32,
     start: f32,
@@ -71,9 +71,18 @@ pub const Painter = struct {
                 self.last_value = goal;
                 return true;
             },
-            .linear  => |dur| { curve_func = .linear;  duration = dur; },
-            .squared => |dur| { curve_func = .squared; duration = dur; },
-            .cubed   => |dur| { curve_func = .cubed;   duration = dur; },
+            .linear => |dur| {
+                curve_func = .linear;
+                duration = dur;
+            },
+            .squared => |dur| {
+                curve_func = .squared;
+                duration = dur;
+            },
+            .cubed => |dur| {
+                curve_func = .cubed;
+                duration = dur;
+            },
         }
 
         var i = state.i;
