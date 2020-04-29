@@ -199,63 +199,89 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("const temp_float{usize}: f32 = ", .{x.out.temp_float_index});
                     switch (x.op) {
                         .add => try self.print("{float_value} + {float_value};\n", .{ x.a, x.b }),
+                        .sub => try self.print("{float_value} - {float_value};\n", .{ x.a, x.b }),
                         .mul => try self.print("{float_value} * {float_value};\n", .{ x.a, x.b }),
+                        .div => try self.print("@as(f32, {float_value}) / @as(f32, {float_value});\n", .{ x.a, x.b }),
                         .pow => try self.print("std.math.pow(f32, {float_value}, {float_value});\n", .{ x.a, x.b }),
                     }
                 },
                 .arith_float_buffer => |x| {
-                    if (x.op == .pow) {
-                        try self.print("{{\n", .{});
-                        try self.print("var i = {str}.start;\n", .{span});
-                        try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                        try self.print("{buffer_dest}[i] = std.math.pow(f32, {float_value}, {buffer_value}[i]);\n", .{ x.out, x.a, x.b });
-                        try self.print("}}\n", .{});
-                        try self.print("}}\n", .{});
-                    } else {
-                        try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.op) {
-                            .add => try self.print("zang.addScalar", .{}),
-                            .mul => try self.print("zang.multiplyScalar", .{}),
-                            .pow => unreachable,
-                        }
-                        // swap order, since the supported operators are commutative
-                        try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.b, x.a });
+                    switch (x.op) {
+                        .sub, .div, .pow => {
+                            try self.print("{{\n", .{});
+                            try self.print("var i = {str}.start;\n", .{span});
+                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                            switch (x.op) {
+                                .sub => try self.print("{buffer_dest}[i] = {float_value} - {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {float_value} / {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {float_value}, {buffer_value}[i]);\n", .{ x.out, x.a, x.b }),
+                                else => unreachable,
+                            }
+                            try self.print("}}\n", .{});
+                            try self.print("}}\n", .{});
+                        },
+                        .add, .mul => {
+                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                            switch (x.op) {
+                                .add => try self.print("zang.addScalar", .{}),
+                                .mul => try self.print("zang.multiplyScalar", .{}),
+                                else => unreachable,
+                            }
+                            // swap order, since the supported operators are commutative
+                            try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.b, x.a });
+                        },
                     }
                 },
                 .arith_buffer_float => |x| {
-                    if (x.op == .pow) {
-                        try self.print("{{\n", .{});
-                        try self.print("var i = {str}.start;\n", .{span});
-                        try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                        try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {float_value});\n", .{ x.out, x.a, x.b });
-                        try self.print("}}\n", .{});
-                        try self.print("}}\n", .{});
-                    } else {
-                        try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.op) {
-                            .add => try self.print("zang.addScalar", .{}),
-                            .mul => try self.print("zang.multiplyScalar", .{}),
-                            .pow => unreachable,
-                        }
-                        try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.a, x.b });
+                    switch (x.op) {
+                        .sub, .div, .pow => {
+                            try self.print("{{\n", .{});
+                            try self.print("var i = {str}.start;\n", .{span});
+                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                            switch (x.op) {
+                                .sub => try self.print("{buffer_dest}[i] = {buffer_value}[i] - {float_value};\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {buffer_value}[i] / {float_value};\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {float_value});\n", .{ x.out, x.a, x.b }),
+                                else => unreachable,
+                            }
+                            try self.print("}}\n", .{});
+                            try self.print("}}\n", .{});
+                        },
+                        else => {
+                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                            switch (x.op) {
+                                .add => try self.print("zang.addScalar", .{}),
+                                .mul => try self.print("zang.multiplyScalar", .{}),
+                                else => unreachable,
+                            }
+                            try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.a, x.b });
+                        },
                     }
                 },
                 .arith_buffer_buffer => |x| {
-                    if (x.op == .pow) {
-                        try self.print("{{\n", .{});
-                        try self.print("var i = {str}.start;\n", .{span});
-                        try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                        try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {buffer_value}[i]);\n", .{ x.out, x.a, x.b });
-                        try self.print("}}\n", .{});
-                        try self.print("}}\n", .{});
-                    } else {
-                        try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                        switch (x.op) {
-                            .add => try self.print("zang.add", .{}),
-                            .mul => try self.print("zang.multiply", .{}),
-                            .pow => unreachable,
-                        }
-                        try self.print("({str}, {buffer_dest}, {buffer_value}, {buffer_value});\n", .{ span, x.out, x.a, x.b });
+                    switch (x.op) {
+                        .sub, .div, .pow => {
+                            try self.print("{{\n", .{});
+                            try self.print("var i = {str}.start;\n", .{span});
+                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                            switch (x.op) {
+                                .sub => try self.print("{buffer_dest}[i] = {buffer_value}[i] - {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {buffer_value}[i] / {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {buffer_value}[i]);\n", .{ x.out, x.a, x.b }),
+                                else => unreachable,
+                            }
+                            try self.print("}}\n", .{});
+                            try self.print("}}\n", .{});
+                        },
+                        else => {
+                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                            switch (x.op) {
+                                .add => try self.print("zang.add", .{}),
+                                .mul => try self.print("zang.multiply", .{}),
+                                else => unreachable,
+                            }
+                            try self.print("({str}, {buffer_dest}, {buffer_value}, {buffer_value});\n", .{ span, x.out, x.a, x.b });
+                        },
                     }
                 },
                 .call => |call| {

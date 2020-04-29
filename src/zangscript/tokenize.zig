@@ -33,6 +33,7 @@ pub const Symbol = enum {
     sym_minus,
     sym_plus,
     sym_right_paren,
+    sym_slash,
 };
 
 pub const Keyword = enum {
@@ -259,6 +260,7 @@ fn getSymbolString(symbol: Symbol) []const u8 {
         .sym_minus => return "-",
         .sym_plus => return "+",
         .sym_right_paren => return ")",
+        .sym_slash => return "/",
     }
 }
 

@@ -64,7 +64,9 @@ pub const Delay = struct {
 
 pub const BinArithOp = enum {
     add,
+    sub,
     mul,
+    div,
     pow,
 };
 
@@ -337,7 +339,9 @@ const BinaryOperator = struct {
 
 const binary_operators = [_]BinaryOperator{
     .{ .symbol = .sym_plus, .priority = 1, .op = .add },
+    .{ .symbol = .sym_minus, .priority = 1, .op = .sub },
     .{ .symbol = .sym_asterisk, .priority = 2, .op = .mul },
+    .{ .symbol = .sym_slash, .priority = 2, .op = .div },
     // note: exponentiation operator is not associative, unlike add and mul.
     // maybe i should make it an error to type `x**y**z` without putting one of
     // the pairs in parentheses.
