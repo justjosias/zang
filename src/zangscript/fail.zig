@@ -1,4 +1,5 @@
 const std = @import("std");
+const BuiltinEnumValue = @import("builtins.zig").BuiltinEnumValue;
 const Source = @import("tokenize.zig").Source;
 const SourceRange = @import("tokenize.zig").SourceRange;
 
@@ -26,12 +27,16 @@ fn printErrorMessage(out: *std.fs.File.OutStream, maybe_source_range: ?SourceRan
             }
         } else if (ch == '|') {
             // list of enum values
-            const values: []const []const u8 = args[arg_index];
+            const values: []const BuiltinEnumValue = args[arg_index];
             for (values) |value, i| {
                 if (i > 0) try out.writeAll(", ");
                 try out.writeByte('\'');
-                try out.writeAll(value);
+                try out.writeAll(value.label);
                 try out.writeByte('\'');
+                switch (value.payload_type) {
+                    .none => {},
+                    .f32 => try out.writeAll("(number)"),
+                }
             }
             arg_index += 1;
         } else {

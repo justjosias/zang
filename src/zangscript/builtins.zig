@@ -13,13 +13,19 @@ pub const BuiltinModule = struct {
 pub const BuiltinEnum = struct {
     name: []const u8,
     zig_name: []const u8,
-    values: []const []const u8,
+    values: []const BuiltinEnumValue,
+};
+
+pub const BuiltinEnumValue = struct {
+    label: []const u8,
+    payload_type: enum { none, f32 },
 };
 
 fn getBuiltinEnumFromEnumInfo(comptime typeName: []const u8, comptime enum_info: std.builtin.TypeInfo.Enum) BuiltinEnum {
-    comptime var values: [enum_info.fields.len][]const u8 = undefined;
+    comptime var values: [enum_info.fields.len]BuiltinEnumValue = undefined;
     inline for (enum_info.fields) |field, i| {
-        values[i] = field.name;
+        values[i].label = field.name;
+        values[i].payload_type = .none;
     }
     return .{
         // assume it's one of the public enums (e.g. zang.FilterType)
@@ -30,10 +36,21 @@ fn getBuiltinEnumFromEnumInfo(comptime typeName: []const u8, comptime enum_info:
 }
 
 fn getBuiltinEnumFromUnionInfo(comptime typeName: []const u8, comptime union_info: std.builtin.TypeInfo.Union) BuiltinEnum {
-    switch (@typeInfo(union_info.tag_type.?)) {
-        .Enum => |enum_info| return getBuiltinEnumFromEnumInfo(typeName, enum_info),
-        else => unreachable,
+    comptime var values: [union_info.fields.len]BuiltinEnumValue = undefined;
+    inline for (union_info.fields) |field, i| {
+        values[i].label = field.name;
+        values[i].payload_type = switch (field.field_type) {
+            void => .none,
+            f32 => .f32,
+            else => @compileError("getBuiltinEnumFromUnionInfo: unsupported field_type: " ++ @typeName(field.field_type)),
+        };
     }
+    return .{
+        // assume it's one of the public enums (e.g. zang.FilterType)
+        .name = typeName,
+        .zig_name = "zang." ++ typeName,
+        .values = &values,
+    };
 }
 
 fn getBuiltinEnum(comptime T: type) BuiltinEnum {
