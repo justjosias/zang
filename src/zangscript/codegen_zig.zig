@@ -31,6 +31,9 @@ const State = struct {
             try self.printFloatValue(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
             try self.printExpressionResult(arg);
+        } else if (comptime std.mem.eql(u8, arg_format, "zig_f32")) {
+            // TODO - just make sure there's a decimal point in the literal somehow
+            try self.helper.out.print("@as(f32, {d})", .{arg});
         } else {
             @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
         }
@@ -59,7 +62,7 @@ const State = struct {
             .temp_buffer => |temp_ref| try self.print("temps[{usize}]", .{temp_ref.index}),
             .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
-            .literal_number => |value| try self.print("{f32}", .{value}),
+            .literal_number => |value| try self.print("{zig_f32}", .{value}),
             .literal_enum_value => |v| {
                 if (v.payload) |payload| {
                     try self.print(".{{ .{identifier} = {expression_result} }}", .{ v.label, payload.* });
@@ -91,7 +94,7 @@ const State = struct {
         switch (value) {
             .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
             .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
-            .literal => |v| try self.print("{f32}", .{v}),
+            .literal => |v| try self.print("{zig_f32}", .{v}),
         }
     }
 };
@@ -185,7 +188,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("}}\n", {});
                 },
                 .negate_float_to_float => |x| {
-                    try self.print("const temp_float{usize}: f32 = -{float_value};\n", .{ x.out.temp_float_index, x.a });
+                    try self.print("const temp_float{usize} = -{float_value};\n", .{ x.out.temp_float_index, x.a });
                 },
                 .negate_buffer_to_buffer => |x| {
                     try self.print("{{\n", .{});
@@ -196,12 +199,12 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("}}\n", .{});
                 },
                 .arith_float_float => |x| {
-                    try self.print("const temp_float{usize}: f32 = ", .{x.out.temp_float_index});
+                    try self.print("const temp_float{usize} = ", .{x.out.temp_float_index});
                     switch (x.op) {
                         .add => try self.print("{float_value} + {float_value};\n", .{ x.a, x.b }),
                         .sub => try self.print("{float_value} - {float_value};\n", .{ x.a, x.b }),
                         .mul => try self.print("{float_value} * {float_value};\n", .{ x.a, x.b }),
-                        .div => try self.print("@as(f32, {float_value}) / @as(f32, {float_value});\n", .{ x.a, x.b }),
+                        .div => try self.print("{float_value} / {float_value};\n", .{ x.a, x.b }),
                         .pow => try self.print("std.math.pow(f32, {float_value}, {float_value});\n", .{ x.a, x.b }),
                     }
                 },
@@ -309,7 +312,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                                 .temp_buffer => |temp_ref| try self.print("zang.buffer(temps[{usize}])", .{temp_ref.index}),
                                 .temp_float => |temp_ref| try self.print("zang.constant(temp_float{usize})", .{temp_ref.index}),
                                 .literal_boolean => unreachable,
-                                .literal_number => |value| try self.print("zang.constant({f32})", .{value}),
+                                .literal_number => |value| try self.print("zang.constant({zig_f32})", .{value}),
                                 .literal_enum_value => unreachable,
                                 .self_param => |index| {
                                     const param = module.params[index];

@@ -64,9 +64,6 @@ pub const PrintHelper = struct {
                 } else if (comptime std.mem.eql(u8, arg_format, "bool")) {
                     try self.out.print("{}", .{@as(bool, arg)});
                 } else if (comptime std.mem.eql(u8, arg_format, "f32")) {
-                    // FIXME - make sure there's a decimal point in there, for zig generation
-                    // (so that something like `1 / 10` doesn't get evaluated as integer division)
-                    // then i could get rid of the `@as(f32, literal)` hack for division
                     try self.out.print("{d}", .{@as(f32, arg)});
                 } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
                     try self.out.print("{}", .{@as(usize, arg)});
