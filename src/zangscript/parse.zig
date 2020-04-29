@@ -78,12 +78,17 @@ pub const Local = struct {
     name: []const u8,
 };
 
+pub const EnumLiteral = struct {
+    label: []const u8,
+    payload: ?*const Expression,
+};
+
 pub const ExpressionInner = union(enum) {
     call: Call,
     delay: Delay,
     literal_boolean: bool,
     literal_number: f32,
-    literal_enum_value: []const u8,
+    literal_enum_value: EnumLiteral,
     self_param: usize,
     negate: *const Expression,
     bin_arith: BinArith,
@@ -409,7 +414,18 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     }
     if (token.tt == .enum_value) {
         const s = ps.tokenizer.source.getString(token.source_range);
-        return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = s });
+        const peeked_token = try ps.tokenizer.peek();
+        if (peeked_token.tt.isSymbol(.sym_left_paren)) {
+            _ = try ps.tokenizer.next();
+            const payload = try expectExpression(ps, ps_mod, scope);
+            try ps.tokenizer.expectSymbol(.sym_right_paren);
+
+            const enum_literal: EnumLiteral = .{ .label = s, .payload = payload };
+            return try createExpr(ps, loc0, .{ .literal_enum_value = enum_literal });
+        } else {
+            const enum_literal: EnumLiteral = .{ .label = s, .payload = null };
+            return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = enum_literal });
+        }
     }
     if (token.tt.isKeyword(.kw_delay)) {
         const delay = try parseDelay(ps, ps_mod, scope);

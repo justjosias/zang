@@ -28,6 +28,7 @@ pub const multiplyScalar = basics.multiplyScalar;
 pub const multiplyWithScalar = basics.multiplyWithScalar;
 
 const painter = @import("zang/painter.zig");
+pub const PaintCurve = painter.PaintCurve;
 pub const PaintState = painter.PaintState;
 pub const Painter = painter.Painter;
 

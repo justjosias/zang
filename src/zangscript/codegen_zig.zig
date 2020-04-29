@@ -52,7 +52,7 @@ const State = struct {
         try self.print("{identifier}", .{module.name});
     }
 
-    fn printExpressionResult(self: *State, result: ExpressionResult) !void {
+    fn printExpressionResult(self: *State, result: ExpressionResult) (error{NoModule} || std.os.WriteError)!void {
         const module = self.module orelse return error.NoModule;
         switch (result) {
             .nothing => unreachable,
@@ -60,7 +60,13 @@ const State = struct {
             .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
             .literal_number => |value| try self.print("{f32}", .{value}),
-            .literal_enum_value => |str| try self.print(".{identifier}", .{str}),
+            .literal_enum_value => |v| {
+                if (v.payload) |payload| {
+                    try self.print(".{{ .{identifier} = {expression_result} }}", .{ v.label, payload.* });
+                } else {
+                    try self.print(".{identifier}", .{v.label});
+                }
+            },
             .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
         }
     }

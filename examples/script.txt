@@ -7,7 +7,18 @@ begin
     let freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
 
     //out Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
-    out FilteredSawtoothInstrument(sample_rate, freq, note_on)
+
+    let f = Envelope(
+        sample_rate,
+        attack='cubed'(0.025),
+        decay='cubed'(0.1),
+        release='cubed'(1.0),
+        sustain_volume=0.5,
+        note_on
+    )
+    out f * Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0)
+
+    //out FilteredSawtoothInstrument(sample_rate, freq, note_on)
 end
 
 def Echoes:

@@ -15,6 +15,7 @@ const Local = @import("parse.zig").Local;
 const Expression = @import("parse.zig").Expression;
 const Statement = @import("parse.zig").Statement;
 const Scope = @import("parse.zig").Scope;
+const BuiltinEnumValue = @import("builtins.zig").BuiltinEnumValue;
 const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
@@ -39,10 +40,12 @@ pub const ExpressionResult = union(enum) {
     temp_float: TempRef,
     literal_boolean: bool,
     literal_number: f32,
-    literal_enum_value: []const u8,
+    literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
     self_param: usize,
 };
 
+// the `*Value` structs are basically just more specific copies of ExpressionResult.
+// they're created from ExpressionResult with no side effects.
 pub const BooleanValue = union(enum) {
     self_param: usize, // guaranteed to be of type `boolean`
     literal: bool,
@@ -70,7 +73,7 @@ pub const BufferValue = union(enum) {
 
 pub const EnumValue = union(enum) {
     self_param: usize, // guaranteed to be of an enum type that includes all possible values of the destination enum
-    literal: []const u8,
+    literal: struct { label: []const u8, payload: ?FloatValue }, // only float payloads are supported
 };
 
 pub const Instruction = union(enum) {
@@ -187,6 +190,11 @@ fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) 
         .temp_float => |temp_ref| {
             if (!temp_ref.is_weak) self.temp_floats.release(temp_ref.index);
         },
+        .literal_enum_value => |literal| {
+            if (literal.payload) |payload| {
+                releaseExpressionResult(self, payload.*);
+            }
+        },
         else => {},
     }
 }
@@ -228,37 +236,38 @@ fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?Buffe
     };
 }
 
-fn enumAllowsValue(allowed_values: []const []const u8, value: []const u8) bool {
-    for (allowed_values) |v| {
-        if (std.mem.eql(u8, v, value)) {
-            return true;
-        }
-    }
-    return false;
+fn enumAllowsValue(allowed_values: []const BuiltinEnumValue, label: []const u8, has_float_payload: bool) bool {
+    const allowed_value = for (allowed_values) |value| {
+        if (std.mem.eql(u8, label, value.label)) break value;
+    } else return false;
+    return switch (allowed_value.payload_type) {
+        .none => !has_float_payload,
+        .f32 => has_float_payload,
+    };
 }
 
-fn enumAllowsValues(allowed_values: []const []const u8, values: []const []const u8) bool {
-    for (values) |value| {
-        if (!enumAllowsValue(allowed_values, value)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-fn getResultAsEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowed_values: []const []const u8) ?EnumValue {
+fn getResultAsEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowed_values: []const BuiltinEnumValue) ?EnumValue {
     switch (result) {
         .nothing => unreachable,
-        .literal_enum_value => |value| {
-            const ok = enumAllowsValue(allowed_values, value);
-            return if (ok) EnumValue{ .literal = value } else null;
+        .literal_enum_value => |v| {
+            const payload = if (v.payload) |p| getResultAsFloat(self, p.*) else null;
+            if (!enumAllowsValue(allowed_values, v.label, payload != null)) return null;
+            return EnumValue{ .literal = .{ .label = v.label, .payload = payload } };
         },
         .self_param => |i| {
-            const ok = switch (self.modules[self.module_index].params[i].param_type) {
-                .one_of => |e| enumAllowsValues(allowed_values, e.values),
-                else => false,
+            const possible_values = switch (self.modules[self.module_index].params[i].param_type) {
+                .one_of => |e| e.values,
+                else => return null,
             };
-            return if (ok) EnumValue{ .self_param = i } else null;
+            // each of the possible values must be in the allowed_values
+            for (possible_values) |possible_value| {
+                const has_float_payload = switch (possible_value.payload_type) {
+                    .none => false,
+                    .f32 => true,
+                };
+                if (!enumAllowsValue(allowed_values, possible_value.label, has_float_payload)) return null;
+            }
+            return EnumValue{ .self_param = i };
         },
         .literal_boolean, .literal_number, .temp_buffer, .temp_float => return null,
     }
@@ -294,6 +303,18 @@ fn commitBufferDest(self: *CodegenModuleState, maybe_result_loc: ?BufferDest, bu
         .output_index => unreachable,
     };
     return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
+}
+
+fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+    if (payload) |payload_expr| {
+        const payload_result = try genExpression(self, payload_expr, null, maybe_feedback_temp_index);
+        // the payload_result is now owned by the enum result, and will be released with it by releaseExpressionResult
+        var payload_result_ptr = try self.arena_allocator.create(ExpressionResult);
+        payload_result_ptr.* = payload_result;
+        return ExpressionResult{ .literal_enum_value = .{ .label = label, .payload = payload_result_ptr } };
+    } else {
+        return ExpressionResult{ .literal_enum_value = .{ .label = label, .payload = null } };
+    }
 }
 
 fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, expr: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
@@ -495,7 +516,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
     switch (expression.inner) {
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
-        .literal_enum_value => |value| return ExpressionResult{ .literal_enum_value = value },
+        .literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload, maybe_feedback_temp_index),
         .local => |local_index| {
             // a local is just a saved ExpressionResult. make a weak-reference version of it
             const result = self.local_results[local_index].?;

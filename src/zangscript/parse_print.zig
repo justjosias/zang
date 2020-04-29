@@ -75,7 +75,12 @@ const State = struct {
             .feedback => try self.print("feedback\n", .{}),
             .literal_boolean => |v| try self.print("{bool}\n", .{v}),
             .literal_number => |v| try self.print("{f32}\n", .{v}),
-            .literal_enum_value => |str| try self.print("'{str}'\n", .{str}),
+            .literal_enum_value => |v| {
+                try self.print("'{str}'\n", .{v.label});
+                if (v.payload) |payload| {
+                    try self.printExpression(payload, indentation + 1);
+                }
+            },
             .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
             .negate => |expr| {
                 try self.print("negate\n", .{});
