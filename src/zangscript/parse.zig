@@ -370,7 +370,7 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
     while (true) {
         const token = try ps.tokenizer.peek();
         for (binary_operators) |bo| {
-            if (token.tt.isSymbol(bo.symbol) and priority <= bo.priority) {
+            if (token.tt.isSymbol(bo.symbol) and priority < bo.priority) {
                 _ = try ps.tokenizer.next(); // skip the peeked token
                 const b = try expectExpression2(ps, ps_mod, scope, bo.priority);
                 a = try createExpr(ps, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
