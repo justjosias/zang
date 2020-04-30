@@ -80,6 +80,12 @@ pub const Local = struct {
     name: []const u8,
 };
 
+pub const NumberLiteral = struct {
+    // copy the number literal verbatim from the script so we don't get things
+    // like 0.7 becoming 0.699999988079071
+    verbatim: []const u8,
+};
+
 pub const EnumLiteral = struct {
     label: []const u8,
     payload: ?*const Expression,
@@ -89,7 +95,7 @@ pub const ExpressionInner = union(enum) {
     call: Call,
     delay: Delay,
     literal_boolean: bool,
-    literal_number: f32,
+    literal_number: NumberLiteral,
     literal_enum_value: EnumLiteral,
     self_param: usize,
     negate: *const Expression,
@@ -411,10 +417,8 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     }
     if (token.tt == .number) {
         const s = ps.tokenizer.source.getString(token.source_range);
-        const n = std.fmt.parseFloat(f32, s) catch {
-            return fail(ps.tokenizer.source, token.source_range, "malformatted number", .{});
-        };
-        return try createExpr(ps, loc0, .{ .literal_number = n });
+        _ = std.fmt.parseFloat(f32, s) catch return fail(ps.tokenizer.source, token.source_range, "malformatted number", .{});
+        return try createExpr(ps, loc0, .{ .literal_number = .{ .verbatim = s } });
     }
     if (token.tt == .enum_value) {
         const s = ps.tokenizer.source.getString(token.source_range);

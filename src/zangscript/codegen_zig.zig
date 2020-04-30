@@ -27,9 +27,6 @@ const State = struct {
             try self.printBufferDest(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
             try self.printExpressionResult(arg);
-        } else if (comptime std.mem.eql(u8, arg_format, "zig_f32")) {
-            // TODO - just make sure there's a decimal point in the literal somehow
-            try self.helper.out.print("@as(f32, {d})", .{arg});
         } else {
             @compileError("unknown arg_format: \"" ++ arg_format ++ "\"");
         }
@@ -58,7 +55,7 @@ const State = struct {
             .temp_buffer => |temp_ref| try self.print("temps[{usize}]", .{temp_ref.index}),
             .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
-            .literal_number => |value| try self.print("{zig_f32}", .{value}),
+            .literal_number => |value| try self.print("{number_literal}", .{value}),
             .literal_enum_value => |v| {
                 if (v.payload) |payload| {
                     try self.print(".{{ .{identifier} = {expression_result} }}", .{ v.label, payload.* });
@@ -291,7 +288,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                                 .temp_buffer => |temp_ref| try self.print("zang.buffer(temps[{usize}])", .{temp_ref.index}),
                                 .temp_float => |temp_ref| try self.print("zang.constant(temp_float{usize})", .{temp_ref.index}),
                                 .literal_boolean => unreachable,
-                                .literal_number => |value| try self.print("zang.constant({zig_f32})", .{value}),
+                                .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
                                 .literal_enum_value => unreachable,
                                 .self_param => |index| {
                                     const param = module.params[index];

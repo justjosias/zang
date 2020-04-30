@@ -2,6 +2,7 @@ const std = @import("std");
 const Source = @import("tokenize.zig").Source;
 const SourceRange = @import("tokenize.zig").SourceRange;
 const fail = @import("fail.zig").fail;
+const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
 const Module = @import("parse.zig").Module;
@@ -39,7 +40,7 @@ pub const ExpressionResult = union(enum) {
     temp_buffer: TempRef,
     temp_float: TempRef,
     literal_boolean: bool,
-    literal_number: f32,
+    literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
     self_param: usize,
 };

@@ -31,7 +31,7 @@ const State = struct {
             .temp_buffer => |temp_ref| try self.print("temp{usize}", .{temp_ref.index}),
             .temp_float => |temp_ref| try self.print("temp_float{usize}", .{temp_ref.index}),
             .literal_boolean => |value| try self.print("{bool}", .{value}),
-            .literal_number => |value| try self.print("{f32}", .{value}),
+            .literal_number => |value| try self.print("{number_literal}", .{value}),
             .literal_enum_value => |v| {
                 try self.print("'{str}'", .{v.label});
                 if (v.payload) |payload| {

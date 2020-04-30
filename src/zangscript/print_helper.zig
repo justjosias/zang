@@ -63,12 +63,17 @@ pub const PrintHelper = struct {
                     try self.out.print("{}", .{arg});
                 } else if (comptime std.mem.eql(u8, arg_format, "bool")) {
                     try self.out.print("{}", .{@as(bool, arg)});
-                } else if (comptime std.mem.eql(u8, arg_format, "f32")) {
-                    try self.out.print("{d}", .{@as(f32, arg)});
                 } else if (comptime std.mem.eql(u8, arg_format, "usize")) {
                     try self.out.print("{}", .{@as(usize, arg)});
                 } else if (comptime std.mem.eql(u8, arg_format, "str")) {
                     try self.out.writeAll(arg);
+                } else if (comptime std.mem.eql(u8, arg_format, "number_literal")) {
+                    try self.out.writeAll(arg.verbatim);
+                    // ensure a decimal is present, so that in generated zig code it's interpreted as a float
+                    // (otherwise expressions like '1 / 10' would mistakenly do integer division)
+                    if (std.mem.indexOfScalar(u8, arg.verbatim, '.') == null) {
+                        try self.out.writeAll(".0");
+                    }
                 } else {
                     try outer_self.printArgValue(arg_format, arg);
                 }
