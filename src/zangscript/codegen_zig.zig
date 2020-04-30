@@ -23,12 +23,8 @@ const State = struct {
             try self.printIdentifier(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "module_name")) {
             try self.printModuleName(arg);
-        } else if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
-            try self.printBufferValue(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
             try self.printBufferDest(arg);
-        } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
-            try self.printFloatValue(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
             try self.printExpressionResult(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "zig_f32")) {
@@ -74,27 +70,10 @@ const State = struct {
         }
     }
 
-    fn printBufferValue(self: *State, value: BufferValue) !void {
-        const module = self.module orelse return error.NoModule;
-        switch (value) {
-            .temp_buffer_index => |i| try self.print("temps[{usize}]", .{i}),
-            .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
-        }
-    }
-
     fn printBufferDest(self: *State, value: BufferDest) !void {
         switch (value) {
             .temp_buffer_index => |i| try self.print("temps[{usize}]", .{i}),
             .output_index => |i| try self.print("outputs[{usize}]", .{i}),
-        }
-    }
-
-    fn printFloatValue(self: *State, value: FloatValue) !void {
-        const module = self.module orelse return error.NoModule;
-        switch (value) {
-            .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
-            .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
-            .literal => |v| try self.print("{zig_f32}", .{v}),
         }
     }
 };
@@ -176,10 +155,10 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
         for (inner.instructions) |instr| {
             switch (instr) {
                 .copy_buffer => |x| {
-                    try self.print("zang.copy({str}, {buffer_dest}, {buffer_value});\n", .{ span, x.out, x.in });
+                    try self.print("zang.copy({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
                 },
                 .float_to_buffer => |x| {
-                    try self.print("zang.set({str}, {buffer_dest}, {float_value});\n", .{ span, x.out, x.in });
+                    try self.print("zang.set({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
                 },
                 .cob_to_buffer => |x| {
                     try self.print("switch (params.{identifier}) {{\n", .{module.params[x.in_self_param].name});
@@ -188,24 +167,24 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                     try self.print("}}\n", {});
                 },
                 .negate_float_to_float => |x| {
-                    try self.print("const temp_float{usize} = -{float_value};\n", .{ x.out.temp_float_index, x.a });
+                    try self.print("const temp_float{usize} = -{expression_result};\n", .{ x.out.temp_float_index, x.a });
                 },
                 .negate_buffer_to_buffer => |x| {
                     try self.print("{{\n", .{});
                     try self.print("var i = {str}.start;\n", .{span});
                     try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                    try self.print("{buffer_dest}[i] = -{buffer_value}[i];\n", .{ x.out, x.a });
+                    try self.print("{buffer_dest}[i] = -{expression_result}[i];\n", .{ x.out, x.a });
                     try self.print("}}\n", .{});
                     try self.print("}}\n", .{});
                 },
                 .arith_float_float => |x| {
                     try self.print("const temp_float{usize} = ", .{x.out.temp_float_index});
                     switch (x.op) {
-                        .add => try self.print("{float_value} + {float_value};\n", .{ x.a, x.b }),
-                        .sub => try self.print("{float_value} - {float_value};\n", .{ x.a, x.b }),
-                        .mul => try self.print("{float_value} * {float_value};\n", .{ x.a, x.b }),
-                        .div => try self.print("{float_value} / {float_value};\n", .{ x.a, x.b }),
-                        .pow => try self.print("std.math.pow(f32, {float_value}, {float_value});\n", .{ x.a, x.b }),
+                        .add => try self.print("{expression_result} + {expression_result};\n", .{ x.a, x.b }),
+                        .sub => try self.print("{expression_result} - {expression_result};\n", .{ x.a, x.b }),
+                        .mul => try self.print("{expression_result} * {expression_result};\n", .{ x.a, x.b }),
+                        .div => try self.print("{expression_result} / {expression_result};\n", .{ x.a, x.b }),
+                        .pow => try self.print("std.math.pow(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
                     }
                 },
                 .arith_float_buffer => |x| {
@@ -215,9 +194,9 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                             try self.print("var i = {str}.start;\n", .{span});
                             try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
                             switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {float_value} - {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {float_value} / {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {float_value}, {buffer_value}[i]);\n", .{ x.out, x.a, x.b }),
+                                .sub => try self.print("{buffer_dest}[i] = {expression_result} - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {expression_result} / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
                                 else => unreachable,
                             }
                             try self.print("}}\n", .{});
@@ -231,7 +210,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                                 else => unreachable,
                             }
                             // swap order, since the supported operators are commutative
-                            try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.b, x.a });
+                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.b, x.a });
                         },
                     }
                 },
@@ -242,9 +221,9 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                             try self.print("var i = {str}.start;\n", .{span});
                             try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
                             switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {buffer_value}[i] - {float_value};\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {buffer_value}[i] / {float_value};\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {float_value});\n", .{ x.out, x.a, x.b }),
+                                .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result};\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result};\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
                                 else => unreachable,
                             }
                             try self.print("}}\n", .{});
@@ -257,7 +236,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                                 .mul => try self.print("zang.multiplyScalar", .{}),
                                 else => unreachable,
                             }
-                            try self.print("({str}, {buffer_dest}, {buffer_value}, {float_value});\n", .{ span, x.out, x.a, x.b });
+                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
                         },
                     }
                 },
@@ -268,9 +247,9 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                             try self.print("var i = {str}.start;\n", .{span});
                             try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
                             switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {buffer_value}[i] - {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {buffer_value}[i] / {buffer_value}[i];\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {buffer_value}[i], {buffer_value}[i]);\n", .{ x.out, x.a, x.b }),
+                                .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                                .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
                                 else => unreachable,
                             }
                             try self.print("}}\n", .{});
@@ -283,7 +262,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                                 .mul => try self.print("zang.multiply", .{}),
                                 else => unreachable,
                             }
-                            try self.print("({str}, {buffer_dest}, {buffer_value}, {buffer_value});\n", .{ span, x.out, x.a, x.b });
+                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
                         },
                     }
                 },

@@ -44,21 +44,8 @@ pub const ExpressionResult = union(enum) {
     self_param: usize,
 };
 
-// the `*Value` structs are basically just more specific copies of ExpressionResult.
-// they're created from ExpressionResult with no side effects.
-pub const BooleanValue = union(enum) {
-    self_param: usize, // guaranteed to be of type `boolean`
-    literal: bool,
-};
-
 pub const FloatDest = struct {
     temp_float_index: usize,
-};
-
-pub const FloatValue = union(enum) {
-    temp_float_index: usize,
-    self_param: usize, // guaranteed to be of type `constant`
-    literal: f32,
 };
 
 pub const BufferDest = union(enum) {
@@ -66,26 +53,16 @@ pub const BufferDest = union(enum) {
     output_index: usize,
 };
 
-pub const BufferValue = union(enum) {
-    temp_buffer_index: usize,
-    self_param: usize, // guaranteed to be of type `buffer`
-};
-
-pub const EnumValue = union(enum) {
-    self_param: usize, // guaranteed to be of an enum type that includes all possible values of the destination enum
-    literal: struct { label: []const u8, payload: ?FloatValue }, // only float payloads are supported
-};
-
 pub const Instruction = union(enum) {
-    copy_buffer: struct { out: BufferDest, in: BufferValue },
-    float_to_buffer: struct { out: BufferDest, in: FloatValue },
+    copy_buffer: struct { out: BufferDest, in: ExpressionResult },
+    float_to_buffer: struct { out: BufferDest, in: ExpressionResult },
     cob_to_buffer: struct { out: BufferDest, in_self_param: usize },
-    negate_float_to_float: struct { out: FloatDest, a: FloatValue },
-    negate_buffer_to_buffer: struct { out: BufferDest, a: BufferValue },
-    arith_float_float: struct { out: FloatDest, op: BinArithOp, a: FloatValue, b: FloatValue },
-    arith_float_buffer: struct { out: BufferDest, op: BinArithOp, a: FloatValue, b: BufferValue },
-    arith_buffer_float: struct { out: BufferDest, op: BinArithOp, a: BufferValue, b: FloatValue },
-    arith_buffer_buffer: struct { out: BufferDest, op: BinArithOp, a: BufferValue, b: BufferValue },
+    negate_float_to_float: struct { out: FloatDest, a: ExpressionResult },
+    negate_buffer_to_buffer: struct { out: BufferDest, a: ExpressionResult },
+    arith_float_float: struct { out: FloatDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
+    arith_float_buffer: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
+    arith_buffer_float: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
+    arith_buffer_buffer: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
     // call one of self's fields (paint the child module)
     call: struct {
         // paint always results in a buffer.
@@ -199,40 +176,30 @@ fn releaseExpressionResult(self: *CodegenModuleState, result: ExpressionResult) 
     }
 }
 
-fn getResultAsBoolean(self: *CodegenModuleState, result: ExpressionResult) ?BooleanValue {
+fn isResultBoolean(self: *CodegenModuleState, result: ExpressionResult) bool {
     return switch (result) {
         .nothing => unreachable,
-        .literal_boolean => |value| BooleanValue{ .literal = value },
-        .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .boolean)
-            BooleanValue{ .self_param = i }
-        else
-            null,
-        .literal_number, .literal_enum_value, .temp_buffer, .temp_float => null,
+        .literal_boolean => true,
+        .self_param => |i| self.modules[self.module_index].params[i].param_type == .boolean,
+        .literal_number, .literal_enum_value, .temp_buffer, .temp_float => false,
     };
 }
 
-fn getResultAsFloat(self: *CodegenModuleState, result: ExpressionResult) ?FloatValue {
+fn isResultFloat(self: *CodegenModuleState, result: ExpressionResult) bool {
     return switch (result) {
         .nothing => unreachable,
-        .temp_float => |temp_ref| FloatValue{ .temp_float_index = temp_ref.index },
-        .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .constant)
-            FloatValue{ .self_param = i }
-        else
-            null,
-        .literal_number => |value| FloatValue{ .literal = value },
-        .literal_boolean, .literal_enum_value, .temp_buffer => null,
+        .temp_float, .literal_number => true,
+        .self_param => |i| self.modules[self.module_index].params[i].param_type == .constant,
+        .literal_boolean, .literal_enum_value, .temp_buffer => false,
     };
 }
 
-fn getResultAsBuffer(self: *CodegenModuleState, result: ExpressionResult) ?BufferValue {
+fn isResultBuffer(self: *CodegenModuleState, result: ExpressionResult) bool {
     return switch (result) {
         .nothing => unreachable,
-        .temp_buffer => |temp_ref| BufferValue{ .temp_buffer_index = temp_ref.index },
-        .self_param => |i| if (self.modules[self.module_index].params[i].param_type == .buffer)
-            BufferValue{ .self_param = i }
-        else
-            null,
-        .temp_float, .literal_boolean, .literal_number, .literal_enum_value => null,
+        .temp_buffer => true,
+        .self_param => |i| self.modules[self.module_index].params[i].param_type == .buffer,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value => false,
     };
 }
 
@@ -246,18 +213,17 @@ fn enumAllowsValue(allowed_values: []const BuiltinEnumValue, label: []const u8, 
     };
 }
 
-fn getResultAsEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowed_values: []const BuiltinEnumValue) ?EnumValue {
+fn isResultEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowed_values: []const BuiltinEnumValue) bool {
     switch (result) {
         .nothing => unreachable,
         .literal_enum_value => |v| {
-            const payload = if (v.payload) |p| getResultAsFloat(self, p.*) else null;
-            if (!enumAllowsValue(allowed_values, v.label, payload != null)) return null;
-            return EnumValue{ .literal = .{ .label = v.label, .payload = payload } };
+            const has_float_payload = if (v.payload) |p| isResultFloat(self, p.*) else false;
+            return enumAllowsValue(allowed_values, v.label, has_float_payload);
         },
         .self_param => |i| {
             const possible_values = switch (self.modules[self.module_index].params[i].param_type) {
                 .one_of => |e| e.values,
-                else => return null,
+                else => return false,
             };
             // each of the possible values must be in the allowed_values
             for (possible_values) |possible_value| {
@@ -265,11 +231,11 @@ fn getResultAsEnumValue(self: *CodegenModuleState, result: ExpressionResult, all
                     .none => false,
                     .f32 => true,
                 };
-                if (!enumAllowsValue(allowed_values, possible_value.label, has_float_payload)) return null;
+                if (!enumAllowsValue(allowed_values, possible_value.label, has_float_payload)) return false;
             }
-            return EnumValue{ .self_param = i };
+            return true;
         },
-        .literal_boolean, .literal_number, .temp_buffer, .temp_float => return null,
+        .literal_boolean, .literal_number, .temp_buffer, .temp_float => return false,
     }
 }
 
@@ -321,16 +287,16 @@ fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buff
     const ra = try genExpression(self, expr, null, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, ra);
 
-    if (getResultAsFloat(self, ra)) |a| {
+    if (isResultFloat(self, ra)) {
         // float -> float
         const float_dest = try requestFloatDest(self);
-        try self.instructions.append(.{ .negate_float_to_float = .{ .out = float_dest, .a = a } });
+        try self.instructions.append(.{ .negate_float_to_float = .{ .out = float_dest, .a = ra } });
         return commitFloatDest(self, float_dest);
     }
-    if (getResultAsBuffer(self, ra)) |a| {
+    if (isResultBuffer(self, ra)) {
         // buffer -> buffer
         const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-        try self.instructions.append(.{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = a } });
+        try self.instructions.append(.{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = ra } });
         return commitBufferDest(self, maybe_result_loc, buffer_dest);
     }
     return fail(self.source, expr.source_range, "arithmetic can only be performed on numeric types", .{});
@@ -342,31 +308,31 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
     const rb = try genExpression(self, eb, null, maybe_feedback_temp_index);
     defer releaseExpressionResult(self, rb);
 
-    if (getResultAsFloat(self, ra)) |a| {
-        if (getResultAsFloat(self, rb)) |b| {
+    if (isResultFloat(self, ra)) {
+        if (isResultFloat(self, rb)) {
             // float * float -> float
             const float_dest = try requestFloatDest(self);
-            try self.instructions.append(.{ .arith_float_float = .{ .out = float_dest, .op = op, .a = a, .b = b } });
+            try self.instructions.append(.{ .arith_float_float = .{ .out = float_dest, .op = op, .a = ra, .b = rb } });
             return commitFloatDest(self, float_dest);
         }
-        if (getResultAsBuffer(self, rb)) |b| {
+        if (isResultBuffer(self, rb)) {
             // float * buffer -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_float_buffer = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            try self.instructions.append(.{ .arith_float_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
     }
-    if (getResultAsBuffer(self, ra)) |a| {
-        if (getResultAsFloat(self, rb)) |b| {
+    if (isResultBuffer(self, ra)) {
+        if (isResultFloat(self, rb)) {
             // buffer * float -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_buffer_float = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            try self.instructions.append(.{ .arith_buffer_float = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
-        if (getResultAsBuffer(self, rb)) |b| {
+        if (isResultBuffer(self, rb)) {
             // buffer * buffer -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_buffer_buffer = .{ .out = buffer_dest, .op = op, .a = a, .b = b } });
+            try self.instructions.append(.{ .arith_buffer_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
     }
@@ -377,30 +343,29 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
 fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: ExpressionResult, callee_param_type: ParamType) !ExpressionResult {
     switch (callee_param_type) {
         .boolean => {
-            if (getResultAsBoolean(self, result) != null) return result;
+            if (isResultBoolean(self, result)) return result;
             return fail(self.source, sr, "expected boolean value", .{});
         },
         .buffer => {
-            if (getResultAsBuffer(self, result) != null) return result;
-            if (getResultAsFloat(self, result)) |float_value| {
+            if (isResultBuffer(self, result)) return result;
+            if (isResultFloat(self, result)) {
                 const temp_buffer_index = try self.temp_buffers.claim();
-                try self.instructions.append(.{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = float_value } });
+                try self.instructions.append(.{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = result } });
                 return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
             }
             return fail(self.source, sr, "expected buffer value", .{});
         },
         .constant_or_buffer => {
-            // codegen_zig will wrap for cob types
-            if (getResultAsBuffer(self, result) != null) return result;
-            if (getResultAsFloat(self, result) != null) return result;
+            if (isResultBuffer(self, result)) return result;
+            if (isResultFloat(self, result)) return result;
             return fail(self.source, sr, "expected float or buffer value", .{});
         },
         .constant => {
-            if (getResultAsFloat(self, result) != null) return result;
+            if (isResultFloat(self, result)) return result;
             return fail(self.source, sr, "expected float value", .{});
         },
         .one_of => |e| {
-            if (getResultAsEnumValue(self, result, e.values) != null) return result;
+            if (isResultEnumValue(self, result, e.values)) return result;
             return fail(self.source, sr, "expected one of |", .{e.values});
         },
     }
@@ -555,21 +520,18 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
         .nothing => {
             // value has already been written into the result location
         },
-        .temp_buffer => |temp_ref| {
-            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .temp_buffer_index = temp_ref.index } } });
+        .temp_buffer => {
+            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = result } });
         },
-        .temp_float => |temp_ref| {
-            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .temp_float_index = temp_ref.index } } });
-        },
-        .literal_number => |value| {
-            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .literal = value } } });
+        .temp_float, .literal_number => {
+            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = result } });
         },
         .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
         .self_param => |param_index| {
             switch (self.modules[self.module_index].params[param_index].param_type) {
                 .boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
-                .buffer, .constant_or_buffer => { // codegen_zig will wrap for cob types
+                .buffer, .constant_or_buffer => { // constant_or_buffer are immediately unwrapped to buffers in codegen (for now)
                     try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
                 .constant => {

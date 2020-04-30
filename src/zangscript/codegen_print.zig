@@ -2,8 +2,6 @@ const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
 const CodegenModuleState = @import("codegen.zig").CodegenModuleState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
-const BufferValue = @import("codegen.zig").BufferValue;
-const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
 const FloatDest = @import("codegen.zig").FloatDest;
 
@@ -16,12 +14,8 @@ const State = struct {
     }
 
     pub fn printArgValue(self: *State, comptime arg_format: []const u8, arg: var) !void {
-        if (comptime std.mem.eql(u8, arg_format, "buffer_value")) {
-            try self.printBufferValue(arg);
-        } else if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
+        if (comptime std.mem.eql(u8, arg_format, "buffer_dest")) {
             try self.printBufferDest(arg);
-        } else if (comptime std.mem.eql(u8, arg_format, "float_value")) {
-            try self.printFloatValue(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "float_dest")) {
             try self.printFloatDest(arg);
         } else if (comptime std.mem.eql(u8, arg_format, "expression_result")) {
@@ -55,31 +49,10 @@ const State = struct {
         try self.print("temp_float{usize}", .{dest.temp_float_index});
     }
 
-    fn printFloatValue(self: *State, value: FloatValue) !void {
-        switch (value) {
-            .temp_float_index => |i| try self.print("temp_float{usize}", .{i}),
-            .self_param => |i| { // guaranteed to be of type `constant`
-                const module = self.codegen_state.modules[self.codegen_state.module_index];
-                try self.print("params.{str}", .{module.params[i].name});
-            },
-            .literal => |v| try self.print("{f32}", .{v}),
-        }
-    }
-
     fn printBufferDest(self: *State, dest: BufferDest) !void {
         switch (dest) {
             .temp_buffer_index => |i| try self.print("temp{usize}", .{i}),
             .output_index => |i| try self.print("output{usize}", .{i}),
-        }
-    }
-
-    fn printBufferValue(self: *State, value: BufferValue) !void {
-        switch (value) {
-            .temp_buffer_index => |i| try self.print("temp{usize}", .{i}),
-            .self_param => |i| { // guaranteed to be of type `buffer`
-                const module = self.codegen_state.modules[self.codegen_state.module_index];
-                try self.print("params.{str}", .{module.params[i].name});
-            },
         }
     }
 };
@@ -104,32 +77,32 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
         try self.print("    ", .{});
         switch (instr) {
             .copy_buffer => |x| {
-                try self.print("{buffer_dest} = {buffer_value}\n", .{ x.out, x.in });
+                try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
             },
             .float_to_buffer => |x| {
-                try self.print("{buffer_dest} = {float_value}\n", .{ x.out, x.in });
+                try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
             },
             .cob_to_buffer => |x| {
                 const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
             },
             .negate_float_to_float => |x| {
-                try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {float_value}\n", .{ x.out, x.a });
+                try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {expression_result}\n", .{ x.out, x.a });
             },
             .negate_buffer_to_buffer => |x| {
-                try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {buffer_value}\n", .{ x.out, x.a });
+                try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {expression_result}\n", .{ x.out, x.a });
             },
             .arith_float_float => |x| {
-                try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {float_value} {float_value}\n", .{ x.out, x.op, x.a, x.b });
+                try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_float_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {float_value} {buffer_value}\n", .{ x.out, x.op, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_buffer_float => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {buffer_value} {float_value}\n", .{ x.out, x.op, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
             },
             .arith_buffer_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {buffer_value} {buffer_value}\n", .{ x.out, x.op, x.a, x.b });
+                try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
             },
             .call => |call| {
                 const field_module_index = codegen_state.resolved_fields[call.field_index];
@@ -149,7 +122,7 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
                 try self.print("DELAY_BEGIN (feedback provided at temps[{usize}])\n", .{delay_begin.feedback_temp_buffer_index});
             },
             .delay_end => |delay_end| {
-                //try self.print("{buffer_dest} = DELAY_END {buffer_value}\n", .{delay_end.out,delay_end.inner_value}); // FIXME
+                //try self.print("{buffer_dest} = DELAY_END {expression_result}\n", .{delay_end.out,delay_end.inner_value}); // FIXME
                 try self.print("{buffer_dest} = DELAY_END\n", .{delay_end.out});
             },
         }
