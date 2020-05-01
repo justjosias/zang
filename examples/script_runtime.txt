@@ -1,0 +1,19 @@
+def Instrument:
+    sample_rate: constant,
+    freq: constant,
+    note_on: boolean,
+begin
+    let freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
+
+    let f = Envelope(
+        sample_rate,
+        attack='cubed'(0.025),
+        decay='cubed'(0.1),
+        release='cubed'(1.0),
+        sustain_volume=0.5,
+        note_on
+    )
+    //let f = Gate(note_on)
+    let in = PulseOsc(color=0.7, sample_rate, freq=freq*0.5)
+    out f * Filter(input=in, type='low_pass', cutoff=0.2, res=0.5)
+end

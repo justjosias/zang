@@ -17,3 +17,7 @@ pub const codegen = codegen_.codegen;
 
 const codegen_zig = @import("zangscript/codegen_zig.zig");
 pub const generateZig = codegen_zig.generateZig;
+
+const runtime = @import("zangscript/runtime.zig");
+pub const Script = runtime.Script;
+pub const ScriptModule = runtime.ScriptModule;

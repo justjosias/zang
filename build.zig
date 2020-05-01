@@ -18,6 +18,7 @@ const examples = [_][]const u8{
     "mouse",
     "two",
     "script",
+    "script_runtime",
 };
 
 pub fn build(b: *std.build.Builder) void {
@@ -39,6 +40,7 @@ fn example(
     o.addPackagePath("wav", "examples/zig-wav/wav.zig");
     o.addPackagePath("zang", "src/zang.zig");
     o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+    o.addPackagePath("zangscript", "src/zangscript.zig");
     o.addIncludeDir(".");
     o.addCSourceFile("examples/draw.c", &[_][]const u8{});
     o.addBuildOption([]const u8, "example", "\"example_" ++ name ++ ".zig\"");
