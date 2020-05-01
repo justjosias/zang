@@ -56,7 +56,7 @@ pub const TokenType = union(enum) {
     uppercase_name,
     lowercase_name,
     enum_value,
-    number,
+    number: f32,
 
     pub fn isSymbol(tt: TokenType, symbol: Symbol) bool {
         return switch (tt) {
@@ -69,6 +69,13 @@ pub const TokenType = union(enum) {
         return switch (tt) {
             .keyword => |kw| kw == keyword,
             else => false,
+        };
+    }
+
+    pub fn isNumber(tt: TokenType) ?f32 {
+        return switch (tt) {
+            .number => |n| n,
+            else => null,
         };
     }
 };
@@ -162,7 +169,11 @@ pub const Tokenizer = struct {
             }
             if (getNumber(src[loc.index..])) |len| {
                 loc.index += len;
-                return makeToken(start, loc, .number);
+                const n = std.fmt.parseFloat(f32, src[start.index..loc.index]) catch {
+                    const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
+                    return fail(self.source, sr, "malformatted number", .{});
+                };
+                return makeToken(start, loc, .{ .number = n });
             }
             if (isUppercase(src[loc.index])) {
                 loc.index += 1;

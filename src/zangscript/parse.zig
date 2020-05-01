@@ -81,6 +81,7 @@ pub const Local = struct {
 };
 
 pub const NumberLiteral = struct {
+    value: f32,
     // copy the number literal verbatim from the script so we don't get things
     // like 0.7 becoming 0.699999988079071
     verbatim: []const u8,
@@ -415,10 +416,13 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     if (token.tt.isKeyword(.kw_true)) {
         return try createExpr(ps, loc0, .{ .literal_boolean = true });
     }
-    if (token.tt == .number) {
-        const s = ps.tokenizer.source.getString(token.source_range);
-        _ = std.fmt.parseFloat(f32, s) catch return fail(ps.tokenizer.source, token.source_range, "malformatted number", .{});
-        return try createExpr(ps, loc0, .{ .literal_number = .{ .verbatim = s } });
+    if (token.tt.isNumber()) |n| {
+        return try createExpr(ps, loc0, .{
+            .literal_number = .{
+                .value = n,
+                .verbatim = ps.tokenizer.source.getString(token.source_range),
+            },
+        });
     }
     if (token.tt == .enum_value) {
         const s = ps.tokenizer.source.getString(token.source_range);
