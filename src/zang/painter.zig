@@ -56,7 +56,7 @@ pub const Painter = struct {
     pub fn paintToward(
         self: *Painter,
         state: *PaintState,
-        curve: Curve,
+        curve: PaintCurve,
         goal: f32,
     ) bool {
         if (self.t >= 1.0) {

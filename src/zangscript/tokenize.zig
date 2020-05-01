@@ -23,7 +23,13 @@ pub const SourceRange = struct {
     loc1: SourceLocation,
 };
 
-pub const Symbol = enum {
+pub const TokenType = union(enum) {
+    illegal,
+    end_of_file,
+    uppercase_name,
+    lowercase_name,
+    number: f32,
+    enum_value,
     sym_asterisk,
     sym_colon,
     sym_comma,
@@ -34,9 +40,6 @@ pub const Symbol = enum {
     sym_plus,
     sym_right_paren,
     sym_slash,
-};
-
-pub const Keyword = enum {
     kw_begin,
     kw_def,
     kw_delay,
@@ -46,38 +49,6 @@ pub const Keyword = enum {
     kw_let,
     kw_out,
     kw_true,
-};
-
-pub const TokenType = union(enum) {
-    illegal,
-    end_of_file,
-    symbol: Symbol,
-    keyword: Keyword,
-    uppercase_name,
-    lowercase_name,
-    enum_value,
-    number: f32,
-
-    pub fn isSymbol(tt: TokenType, symbol: Symbol) bool {
-        return switch (tt) {
-            .symbol => |sym| sym == symbol,
-            else => false,
-        };
-    }
-
-    pub fn isKeyword(tt: TokenType, keyword: Keyword) bool {
-        return switch (tt) {
-            .keyword => |kw| kw == keyword,
-            else => false,
-        };
-    }
-
-    pub fn isNumber(tt: TokenType) ?f32 {
-        return switch (tt) {
-            .number => |n| n,
-            else => null,
-        };
-    }
 };
 
 pub const Token = struct {
@@ -133,12 +104,14 @@ pub const Tokenizer = struct {
                 return makeToken(loc, loc, .end_of_file);
             }
             const start = loc;
-            inline for (@typeInfo(Symbol).Enum.fields) |_, i| {
-                const symbol = @intToEnum(Symbol, i);
-                const symbol_string = getSymbolString(symbol);
-                if (std.mem.startsWith(u8, src[loc.index..], symbol_string)) {
-                    loc.index += symbol_string.len;
-                    return makeToken(start, loc, .{ .symbol = symbol });
+            inline for (@typeInfo(TokenType).Union.fields) |field| {
+                if (comptime std.mem.startsWith(u8, field.name, "sym_")) {
+                    const tt = @unionInit(TokenType, field.name, {});
+                    const symbol_string = getSymbolString(tt);
+                    if (std.mem.startsWith(u8, src[loc.index..], symbol_string)) {
+                        loc.index += symbol_string.len;
+                        return makeToken(start, loc, tt);
+                    }
                 }
             }
             if (src[loc.index] == '\'') {
@@ -188,10 +161,12 @@ pub const Tokenizer = struct {
                     loc.index += 1;
                 }
                 const string = src[start.index..loc.index];
-                inline for (@typeInfo(Keyword).Enum.fields) |_, i| {
-                    const keyword = @intToEnum(Keyword, i);
-                    if (std.mem.eql(u8, string, getKeywordString(keyword))) {
-                        return makeToken(start, loc, .{ .keyword = keyword });
+                inline for (@typeInfo(TokenType).Union.fields) |field| {
+                    if (comptime std.mem.startsWith(u8, field.name, "kw_")) {
+                        const tt = @unionInit(TokenType, field.name, {});
+                        if (std.mem.eql(u8, string, getKeywordString(tt))) {
+                            return makeToken(start, loc, tt);
+                        }
                     }
                 }
                 return makeToken(start, loc, .lowercase_name);
@@ -216,20 +191,17 @@ pub const Tokenizer = struct {
         }
     }
 
-    pub fn expectSymbol(self: *Tokenizer, comptime symbol: Symbol) !void {
+    // use this for requiring the next token to be a specific symbol or keyword
+    pub fn expectNext(self: *Tokenizer, tt: var) !void {
         const token = try self.next();
-        if (!token.tt.isSymbol(symbol)) {
-            const desc = "`" ++ getSymbolString(symbol) ++ "`";
-            return self.failExpected(desc, token);
-        }
-    }
-
-    pub fn expectKeyword(self: *Tokenizer, comptime keyword: Keyword) !void {
-        const token = try self.next();
-        if (!token.tt.isKeyword(keyword)) {
-            const desc = "`" ++ getKeywordString(keyword) ++ "`";
-            return self.failExpected(desc, token);
-        }
+        if (token.tt == tt) return;
+        const desc = if (comptime std.mem.startsWith(u8, @tagName(tt), "sym_"))
+            "`" ++ getSymbolString(tt) ++ "`"
+        else if (comptime std.mem.startsWith(u8, @tagName(tt), "kw_"))
+            "`" ++ getKeywordString(tt) ++ "`"
+        else
+            unreachable;
+        return self.failExpected(desc, token);
     }
 };
 
@@ -260,8 +232,8 @@ fn getNumber(string: []const u8) ?usize {
     return null;
 }
 
-fn getSymbolString(symbol: Symbol) []const u8 {
-    switch (symbol) {
+fn getSymbolString(tt: TokenType) []const u8 {
+    switch (tt) {
         .sym_dbl_asterisk => return "**",
         .sym_asterisk => return "*",
         .sym_colon => return ":",
@@ -272,11 +244,12 @@ fn getSymbolString(symbol: Symbol) []const u8 {
         .sym_plus => return "+",
         .sym_right_paren => return ")",
         .sym_slash => return "/",
+        else => unreachable,
     }
 }
 
-fn getKeywordString(keyword: Keyword) []const u8 {
-    switch (keyword) {
+fn getKeywordString(tt: TokenType) []const u8 {
+    switch (tt) {
         .kw_begin => return "begin",
         .kw_def => return "def",
         .kw_delay => return "delay",
@@ -286,5 +259,6 @@ fn getKeywordString(keyword: Keyword) []const u8 {
         .kw_let => return "let",
         .kw_out => return "out",
         .kw_true => return "true",
+        else => unreachable,
     }
 }
