@@ -29,7 +29,7 @@ pub const ScriptModule = struct {
     pub const num_temps = 10;
     pub const Params = struct {
         sample_rate: f32,
-        freq: f32,
+        freq: zang.ConstantOrBuffer,
         note_on: bool,
         attack: zang.PaintCurve,
     };
@@ -102,42 +102,28 @@ pub const ScriptModule = struct {
         };
         for (inner.instructions) |instr| {
             switch (instr) {
-                //.copy_buffer => |x| {
-                //    try self.print("zang.copy({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
-                //},
-                //.float_to_buffer => |x| {
-                //    try self.print("zang.set({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
-                //},
+                .copy_buffer => |x| {
+                    zang.copy(span, getOut(p, x.out), self.getResultAsBuffer(p, x.in));
+                },
+                .float_to_buffer => |x| {
+                    zang.set(span, getOut(p, x.out), self.getResultAsFloat(p, x.in));
+                },
                 .cob_to_buffer => |x| {
-                    var out = switch (x.out) {
-                        .temp_buffer_index => |i| temps[i],
-                        .output_index => |i| outputs[i],
-                    };
-                    const cob = blk: {
-                        const param_name = self.script.parse_result.modules[self.module_index].params[x.in_self_param].name;
-                        inline for (@typeInfo(Params).Struct.fields) |field| {
-                            if (field.field_type != zang.ConstantOrBuffer) continue;
-                            if (std.mem.eql(u8, field.name, param_name)) {
-                                break :blk @field(params, field.name);
-                            }
-                        }
-                        unreachable;
-                    };
-                    switch (cob) {
+                    var out = getOut(p, x.out);
+                    switch (self.getParam(zang.ConstantOrBuffer, p.params, x.in_self_param).?) {
                         .constant => |v| zang.set(span, out, v),
                         .buffer => |v| zang.copy(span, out, v),
                     }
                 },
-                .call => |x| {
+                .negate_float_to_float => |x| {
+                    temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
+                },
+                .negate_buffer_to_buffer => |x| {
                     var out = getOut(p, x.out);
-                    const callee_module_index = inner.resolved_fields[x.field_index];
-                    switch (self.module_instances[x.field_index]) {
-                        .script_module => @panic("calling script_module not implemented"),
-                        .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
-                        .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
-                        .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
-                        .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
-                        .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
+                    const a = self.getResultAsBuffer(p, x.a);
+                    var i: usize = span.start;
+                    while (i < span.end) : (i += 1) {
+                        out[i] = -a[i];
                     }
                 },
                 .arith_float_float => |x| {
@@ -152,61 +138,118 @@ pub const ScriptModule = struct {
                     };
                 },
                 .arith_float_buffer => |x| {
+                    var out = getOut(p, x.out);
+                    const a = self.getResultAsFloat(p, x.a);
+                    const b = self.getResultAsBuffer(p, x.b);
                     switch (x.op) {
                         .add => {
-                            var out = getOut(p, x.out);
-                            const a = self.getResultAsFloat(p, x.a);
-                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.addScalar(span, out, b, a);
                         },
+                        .sub => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a - b[i];
+                            }
+                        },
                         .mul => {
-                            var out = getOut(p, x.out);
-                            const a = self.getResultAsFloat(p, x.a);
-                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.multiplyScalar(span, out, b, a);
                         },
-                        else => {
-                            std.debug.warn("op: {}\n", .{x.op});
-                            @panic("op not implemented");
+                        .div => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a / b[i];
+                            }
+                        },
+                        .pow => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = std.math.pow(f32, a, b[i]);
+                            }
                         },
                     }
                 },
                 .arith_buffer_float => |x| {
+                    var out = getOut(p, x.out);
+                    const a = self.getResultAsBuffer(p, x.a);
+                    const b = self.getResultAsFloat(p, x.b);
                     switch (x.op) {
+                        .add => {
+                            zang.zero(span, out);
+                            zang.addScalar(span, out, a, b);
+                        },
+                        .sub => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a[i] - b;
+                            }
+                        },
                         .mul => {
-                            var out = getOut(p, x.out);
-                            const a = self.getResultAsBuffer(p, x.a);
-                            const b = self.getResultAsFloat(p, x.b);
                             zang.zero(span, out);
                             zang.multiplyScalar(span, out, a, b);
                         },
-                        else => {
-                            std.debug.warn("op: {}\n", .{x.op});
-                            @panic("op not implemented");
+                        .div => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a[i] / b;
+                            }
+                        },
+                        .pow => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = std.math.pow(f32, a[i], b);
+                            }
                         },
                     }
                 },
                 .arith_buffer_buffer => |x| {
+                    var out = getOut(p, x.out);
+                    const a = self.getResultAsBuffer(p, x.a);
+                    const b = self.getResultAsBuffer(p, x.b);
                     switch (x.op) {
+                        .add => {
+                            zang.zero(span, out);
+                            zang.add(span, out, a, b);
+                        },
+                        .sub => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a[i] - b[i];
+                            }
+                        },
                         .mul => {
-                            var out = getOut(p, x.out);
-                            const a = self.getResultAsBuffer(p, x.a);
-                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.multiply(span, out, a, b);
                         },
-                        else => {
-                            std.debug.warn("op: {}\n", .{x.op});
-                            @panic("op not implemented");
+                        .div => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = a[i] / b[i];
+                            }
+                        },
+                        .pow => {
+                            var i: usize = span.start;
+                            while (i < span.end) : (i += 1) {
+                                out[i] = std.math.pow(f32, a[i], b[i]);
+                            }
                         },
                     }
                 },
-                else => {
-                    std.debug.warn("not implemented: {}\n", .{instr});
-                    @panic("instruction not implemented");
+                .call => |x| {
+                    var out = getOut(p, x.out);
+                    const callee_module_index = inner.resolved_fields[x.field_index];
+                    switch (self.module_instances[x.field_index]) {
+                        .script_module => @panic("calling script_module not implemented"),
+                        .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
+                        .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
+                        .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
+                        .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
+                        .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
+                    }
                 },
+                .delay_begin => @panic("delay_begin not implemented"), // TODO
+                .delay_end => @panic("delay_end not implemented"), // TODO
             }
         }
     }

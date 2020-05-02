@@ -1,6 +1,6 @@
 def Instrument:
     sample_rate: constant,
-    freq: constant,
+    freq: cob,
     note_on: boolean,
     attack: PaintCurve,
 begin

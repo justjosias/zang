@@ -109,7 +109,7 @@ pub const MainModule = struct {
 
             self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = a4 * rel_freq,
+                .freq = zang.constant(a4 * rel_freq),
                 .note_on = down,
                 .attack = .{ .cubed = 0.5 },
             });
