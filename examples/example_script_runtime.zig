@@ -23,7 +23,7 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
 pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 4;
-    pub const Params = [5]zangscript.Value;
+    pub const Params = [3]zangscript.Value;
 
     ok: bool,
     key: ?i32,
@@ -101,8 +101,6 @@ pub const MainModule = struct {
                 .{ .constant = AUDIO_SAMPLE_RATE },
                 .{ .cob = zang.constant(a4 * rel_freq) },
                 .{ .boolean = down },
-                .{ .one_of = .{ .label = "cubed", .payload = 0.5 } },
-                .{ .one_of = .{ .label = "low_pass", .payload = null } },
             });
         }
     }

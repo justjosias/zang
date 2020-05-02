@@ -1,7 +1,6 @@
 runtime branch todo:
-- get rid of hardcoded num_temps, num_outputs, and Params
-- pass temps to callee
-- script module calling script module
+- make a helper function to construct list of params from a struct, to be used in example_script_runtime.
+- runtime should validate the params, num_outputs, and num_temps.
 - implement delay ops
 - handle temp_floats properly
 - stop leaking memory

@@ -159,7 +159,7 @@ pub const ScriptModule = struct {
     module_index: usize,
     module_instances: []*ModuleBase,
 
-    pub fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) !ScriptModule {
+    pub fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) error{OutOfMemory}!ScriptModule {
         const inner = switch (script.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
@@ -206,7 +206,14 @@ pub const ScriptModule = struct {
                 impl.* = TriSawOscImpl.init(params);
                 module_instances[i] = &impl.base;
             } else {
-                @panic("not implemented");
+                for (script.modules) |module, j| {
+                    if (std.mem.eql(u8, field_module_name, module.name)) {
+                        var impl = try allocator.create(ScriptModule);
+                        impl.* = try ScriptModule.init(script, j, allocator);
+                        module_instances[i] = &impl.base;
+                        break;
+                    }
+                } else unreachable;
             }
         }
         return ScriptModule{
