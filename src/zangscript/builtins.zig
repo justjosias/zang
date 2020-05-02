@@ -117,7 +117,7 @@ pub const zang_builtin_package = BuiltinPackage{
         getBuiltinModule(zang.Filter),
         getBuiltinModule(zang.Gate),
         getBuiltinModule(zang.Noise),
-        // zang.Portamento
+        getBuiltinModule(zang.Portamento),
         getBuiltinModule(zang.PulseOsc),
         // zang.Sampler
         getBuiltinModule(zang.SineOsc),

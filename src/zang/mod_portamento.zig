@@ -1,3 +1,4 @@
+const PaintCurve = @import("painter.zig").PaintCurve;
 const PaintState = @import("painter.zig").PaintState;
 const Painter = @import("painter.zig").Painter;
 const Span = @import("basics.zig").Span;
@@ -8,7 +9,7 @@ pub const Portamento = struct {
     pub const num_temps = 0;
     pub const Params = struct {
         sample_rate: f32,
-        curve: Painter.Curve,
+        curve: PaintCurve,
         goal: f32,
         note_on: bool,
         prev_note_on: bool,
@@ -32,11 +33,10 @@ pub const Portamento = struct {
     ) void {
         const output = outputs[0][span.start..span.end];
 
-        const curve =
-            if (params.note_on and params.prev_note_on)
-                params.curve
-            else
-                .instantaneous;
+        const curve = if (params.note_on and params.prev_note_on)
+            params.curve
+        else
+            .instantaneous;
 
         if (params.note_on and note_id_changed) {
             self.painter.newCurve();
