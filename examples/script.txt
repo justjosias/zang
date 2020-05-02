@@ -1,4 +1,4 @@
-def Instrument:
+def InnerInstrument:
     sample_rate: constant,
     freq: cob,
     color: constant,
@@ -26,20 +26,21 @@ def Echoes:
     echo_volume: constant,
     filter_type: FilterType,
 begin
-    out delay 11025 begin
-        let result = input + feedback * echo_volume
+    out input
+    //out delay 11025 begin
+    //    let result = input + feedback * echo_volume
 
-        out result
-        feedback Filter(input=result, type=filter_type, cutoff=0.8, res=0)
-    end
+    //    out result
+    //    feedback Filter(input=result, type=filter_type, cutoff=0.8, res=0)
+    //end
 end
 
-def OuterInstrument:
+def Instrument:
     sample_rate: constant,
     freq: cob,
     note_on: boolean,
 begin
-    let input = Instrument(sample_rate, freq=freq*0.5, color=0.7, note_on)
+    let input = InnerInstrument(sample_rate, freq=freq*0.5, color=0.7, note_on)
 
     out Echoes(input, echo_volume=0.5, filter_type='low_pass')
 end

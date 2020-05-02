@@ -3,6 +3,7 @@ const zang = @import("zang");
 const zangscript = @import("zangscript");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
+const modules = @import("modules.zig");
 
 pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 44100;
@@ -16,13 +17,23 @@ pub const DESCRIPTION =
 
 const a4 = 440.0;
 
+const custom_builtin_package = zangscript.BuiltinPackage{
+    .zig_package_name = "modules",
+    .zig_import_path = "modules.zig",
+    .builtins = &[_]zangscript.BuiltinModule{
+        zangscript.getBuiltinModule(modules.FilteredSawtoothInstrument),
+    },
+    .enums = &[_]zangscript.BuiltinEnum{},
+};
+
 const builtin_packages = [_]zangscript.BuiltinPackage{
     zangscript.zang_builtin_package,
+    custom_builtin_package,
 };
 
 pub const MainModule = struct {
     pub const num_outputs = 1;
-    pub const num_temps = 4;
+    pub const num_temps = 10; // FIXME
     pub const Params = [3]zangscript.Value;
 
     ok: bool,
@@ -34,7 +45,7 @@ pub const MainModule = struct {
 
     pub fn init() MainModule {
         var allocator = std.heap.page_allocator;
-        const filename = "examples/script_runtime.txt";
+        const filename = "examples/script.txt";
         const contents = std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
             std.debug.warn("failed to read file: {}\n", .{err});
             var self: MainModule = undefined;
@@ -81,7 +92,7 @@ pub const MainModule = struct {
 
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            self.instr.paint(result.span, &outputs, &temps, result.note_id_changed, &result.params);
+            self.instr.paint(result.span, &outputs, temps[0..self.instr.base.num_temps], result.note_id_changed, &result.params);
         }
     }
 

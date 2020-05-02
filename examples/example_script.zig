@@ -2,7 +2,7 @@ const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
-const Instrument = @import("scriptgen.zig").OuterInstrument;
+const Instrument = @import("scriptgen.zig").Instrument;
 
 pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 44100;
