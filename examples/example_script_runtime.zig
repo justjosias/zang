@@ -65,7 +65,7 @@ pub const MainModule = struct {
             .key = null,
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
-            .instr = zangscript.ScriptModule.init(script_ptr, module_index, allocator) catch @panic("ScriptModule init failed"),
+            .instr = zangscript.ScriptModule.init(script_ptr, module_index, &builtin_packages, allocator) catch @panic("ScriptModule init failed"),
             .trig = zang.Trigger(Params).init(),
         };
     }

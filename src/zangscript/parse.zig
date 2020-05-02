@@ -506,7 +506,6 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
 
 pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
-    builtin_packages: []const BuiltinPackage,
     modules: []const Module,
 
     pub fn deinit(self: *ParseResult) void {
@@ -516,7 +515,7 @@ pub const ParseResult = struct {
 
 pub fn parse(
     source: Source,
-    builtin_packages: []const BuiltinPackage,
+    comptime builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
 ) !ParseResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
@@ -530,9 +529,9 @@ pub fn parse(
     };
 
     // add builtins
-    for (builtin_packages) |pkg| {
+    inline for (builtin_packages) |pkg| {
         try ps.enums.appendSlice(pkg.enums);
-        for (pkg.builtins) |builtin| {
+        inline for (pkg.builtins) |builtin| {
             try ps.modules.append(.{
                 .name = builtin.name,
                 .zig_package_name = pkg.zig_package_name,
@@ -563,7 +562,6 @@ pub fn parse(
 
     return ParseResult{
         .arena = arena,
-        .builtin_packages = builtin_packages,
         .modules = modules,
     };
 }

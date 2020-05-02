@@ -2,6 +2,7 @@ const std = @import("std");
 const Source = @import("tokenize.zig").Source;
 const SourceRange = @import("tokenize.zig").SourceRange;
 const fail = @import("fail.zig").fail;
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
@@ -595,7 +596,12 @@ const CodeGenVisitor = struct {
 };
 
 // codegen entry point
-pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.mem.Allocator) !CodeGenResult {
+pub fn codegen(
+    source: Source,
+    comptime builtin_packages: []const BuiltinPackage,
+    parse_result: ParseResult,
+    inner_allocator: *std.mem.Allocator,
+) !CodeGenResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
@@ -607,8 +613,8 @@ pub fn codegen(source: Source, parse_result: ParseResult, inner_allocator: *std.
     var module_results = try arena.allocator.alloc(CodeGenModuleResult, parse_result.modules.len);
 
     var builtin_index: usize = 0;
-    for (parse_result.builtin_packages) |pkg| {
-        for (pkg.builtins) |builtin| {
+    inline for (builtin_packages) |pkg| {
+        inline for (pkg.builtins) |builtin| {
             module_results[builtin_index] = .{
                 .num_outputs = builtin.num_outputs,
                 .num_temps = builtin.num_temps,

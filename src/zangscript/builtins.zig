@@ -4,6 +4,7 @@ const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
 
 pub const BuiltinModule = struct {
+    T: type,
     name: []const u8,
     params: []const ModuleParam,
     num_temps: usize,
@@ -90,6 +91,7 @@ pub fn getBuiltinModule(comptime T: type) BuiltinModule {
         };
     }
     return .{
+        .T = T,
         .name = @typeName(T),
         .params = &params,
         .num_temps = T.num_temps,

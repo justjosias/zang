@@ -1,6 +1,7 @@
 const std = @import("std");
 const zang = @import("../zang.zig");
 const Source = @import("tokenize.zig").Source;
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const ParamType = @import("parse.zig").ParamType;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParseResult = @import("parse.zig").ParseResult;
@@ -142,16 +143,6 @@ pub const Value = union(enum) {
     }
 };
 
-const DecimatorImpl = makeImpl(zang.Decimator);
-const DistortionImpl = makeImpl(zang.Distortion);
-const EnvelopeImpl = makeImpl(zang.Envelope);
-const FilterImpl = makeImpl(zang.Filter);
-const GateImpl = makeImpl(zang.Gate);
-const NoiseImpl = makeImpl(zang.Noise);
-const PulseOscImpl = makeImpl(zang.PulseOsc);
-const SineOscImpl = makeImpl(zang.SineOsc);
-const TriSawOscImpl = makeImpl(zang.TriSawOsc);
-
 pub const ScriptModule = struct {
     base: ModuleBase,
     allocator: *std.mem.Allocator, // don't use this in the audio thread (paint method)
@@ -159,7 +150,12 @@ pub const ScriptModule = struct {
     module_index: usize,
     module_instances: []*ModuleBase,
 
-    pub fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) error{OutOfMemory}!ScriptModule {
+    pub fn init(
+        script: *const CompiledScript,
+        module_index: usize,
+        comptime builtin_packages: []const BuiltinPackage,
+        allocator: *std.mem.Allocator,
+    ) error{OutOfMemory}!ScriptModule {
         const inner = switch (script.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
@@ -168,53 +164,30 @@ pub const ScriptModule = struct {
         for (inner.resolved_fields) |field_module_index, i| {
             const field_module_name = script.modules[field_module_index].name;
             const params = script.modules[field_module_index].params;
+            var done = false;
 
-            if (std.mem.eql(u8, field_module_name, "Decimator")) {
-                var impl = try allocator.create(DecimatorImpl);
-                impl.* = DecimatorImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "Distortion")) {
-                var impl = try allocator.create(DistortionImpl);
-                impl.* = DistortionImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "Envelope")) {
-                var impl = try allocator.create(EnvelopeImpl);
-                impl.* = EnvelopeImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "Filter")) {
-                var impl = try allocator.create(FilterImpl);
-                impl.* = FilterImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "Gate")) {
-                var impl = try allocator.create(GateImpl);
-                impl.* = GateImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "Noise")) {
-                var impl = try allocator.create(NoiseImpl);
-                impl.* = NoiseImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "PulseOsc")) {
-                var impl = try allocator.create(PulseOscImpl);
-                impl.* = PulseOscImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "SineOsc")) {
-                var impl = try allocator.create(SineOscImpl);
-                impl.* = SineOscImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else if (std.mem.eql(u8, field_module_name, "TriSawOsc")) {
-                var impl = try allocator.create(TriSawOscImpl);
-                impl.* = TriSawOscImpl.init(params);
-                module_instances[i] = &impl.base;
-            } else {
-                for (script.modules) |module, j| {
-                    if (std.mem.eql(u8, field_module_name, module.name)) {
-                        var impl = try allocator.create(ScriptModule);
-                        impl.* = try ScriptModule.init(script, j, allocator);
+            inline for (builtin_packages) |pkg| {
+                inline for (pkg.builtins) |builtin| {
+                    if (std.mem.eql(u8, builtin.name, field_module_name)) {
+                        const Impl = makeImpl(builtin.T);
+                        var impl = try allocator.create(Impl);
+                        impl.* = Impl.init(params);
                         module_instances[i] = &impl.base;
-                        break;
+                        done = true;
                     }
-                } else unreachable;
+                }
             }
+            if (done) {
+                continue;
+            }
+            for (script.modules) |module, j| {
+                if (std.mem.eql(u8, field_module_name, module.name)) {
+                    var impl = try allocator.create(ScriptModule);
+                    impl.* = try ScriptModule.init(script, j, builtin_packages, allocator);
+                    module_instances[i] = &impl.base;
+                    break;
+                }
+            } else unreachable;
         }
         return ScriptModule{
             .base = .{
