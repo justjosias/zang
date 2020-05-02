@@ -10,18 +10,66 @@ const CompiledScript = @import("compile.zig").CompiledScript;
 // TODO replace this with some vtable-like system?
 const ModuleInstance = union(enum) {
     script_module: ScriptModule,
+    base: *ModuleBase, //zang.Noise,
     // TODO generate these using comptime code. we also need to support user-passed builtin modules
     decimator: zang.Decimator,
     distortion: zang.Distortion,
     envelope: zang.Envelope,
     filter: zang.Filter,
     gate: zang.Gate,
-    noise: zang.Noise,
     //portamento: zang.Portamento,
     pulse_osc: zang.PulseOsc,
     //sampler: zang.Sampler,
     sine_osc: zang.SineOsc,
     tri_saw_osc: zang.TriSawOsc,
+};
+
+pub const ModuleBase = struct {
+    num_outputs: usize,
+    num_temps: usize,
+    paintFn: fn (
+        base: *ModuleBase,
+        span: zang.Span,
+        outputs: []const []f32,
+        temps: []const []f32,
+        note_id_changed: bool,
+        params: []const u8, // ?!
+    ) void,
+};
+
+pub const NoiseImpl = struct {
+    base: ModuleBase,
+    mod: zang.Noise,
+
+    pub fn init() NoiseImpl {
+        return .{
+            .base = .{
+                .num_outputs = zang.Noise.num_outputs,
+                .num_temps = zang.Noise.num_temps,
+                .paintFn = paintFn,
+            },
+            .mod = zang.Noise.init(0),
+        };
+    }
+
+    fn paintFn(
+        base: *ModuleBase,
+        span: zang.Span,
+        outputs_slice: []const []f32,
+        temps_slice: []const []f32,
+        note_id_changed: bool,
+        raw_params: []const u8,
+    ) void {
+        std.debug.assert(outputs_slice.len == zang.Noise.num_outputs);
+        std.debug.assert(temps_slice.len == zang.Noise.num_temps);
+        var self = @fieldParentPtr(NoiseImpl, "base", base);
+        var outputs: [zang.Noise.num_outputs][]f32 = undefined;
+        var temps: [zang.Noise.num_temps][]f32 = undefined;
+        std.mem.copy([]f32, &outputs, outputs_slice);
+        std.mem.copy([]f32, &temps, temps_slice);
+        var params: zang.Noise.Params = .{}; // somehow get this from raw_params
+        self.mod.paint(span, outputs, temps, note_id_changed, params);
+    }
 };
 
 pub const ScriptModule = struct {
@@ -61,7 +109,9 @@ pub const ScriptModule = struct {
             } else if (std.mem.eql(u8, field_module_name, "Gate")) {
                 module_instances[i] = .{ .gate = zang.Gate.init() };
             } else if (std.mem.eql(u8, field_module_name, "Noise")) {
-                module_instances[i] = .{ .noise = zang.Noise.init(0) };
+                var impl = try allocator.create(NoiseImpl);
+                impl.* = NoiseImpl.init();
+                module_instances[i] = .{ .base = &impl.base };
             } else if (std.mem.eql(u8, field_module_name, "PulseOsc")) {
                 module_instances[i] = .{ .pulse_osc = zang.PulseOsc.init() };
             } else if (std.mem.eql(u8, field_module_name, "SineOsc")) {
@@ -256,10 +306,18 @@ pub const ScriptModule = struct {
                         .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
                         .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
                         .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
-                        .noise => |*m| self.call(p, zang.Noise, m, x.args, callee_module_index, out),
                         .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
                         .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
                         .tri_saw_osc => |*m| self.call(p, zang.TriSawOsc, m, x.args, callee_module_index, out),
+                        .base => |base| {
+                            var callee_temps: [10][]f32 = undefined; // FIXME...
+                            for (x.temps) |n, i| callee_temps[i] = temps[n];
+
+                            var callee_params: []const u8 = undefined;
+
+                            zang.zero(span, out);
+                            base.paintFn(base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], note_id_changed, callee_params);
+                        },
                     }
                 },
                 .delay_begin => @panic("delay_begin not implemented"), // TODO
