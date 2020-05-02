@@ -15,18 +15,26 @@ pub const Script = struct {
 // TODO replace this with some vtable-like system?
 const ModuleInstance = union(enum) {
     script_module: ScriptModule,
-    // TODO the latter should be gotten from builtin packages
+    // TODO generate these using comptime code. we also need to support user-passed builtin modules
+    decimator: zang.Decimator,
+    distortion: zang.Distortion,
     envelope: zang.Envelope,
     filter: zang.Filter,
     gate: zang.Gate,
+    noise: zang.Noise,
+    //portamento: zang.Portamento,
     pulse_osc: zang.PulseOsc,
+    //sampler: zang.Sampler,
     sine_osc: zang.SineOsc,
+    tri_saw_osc: zang.TriSawOsc,
 };
 
 pub const ScriptModule = struct {
-    // these might have to change to functions to get them to work with script modules...
+    // these might have to change to getter functions to get them to work with script modules...
     pub const num_outputs = 1;
     pub const num_temps = 10;
+
+    // no idea what to do with this
     pub const Params = struct {
         sample_rate: f32,
         freq: zang.ConstantOrBuffer,
@@ -40,7 +48,6 @@ pub const ScriptModule = struct {
     module_instances: []ModuleInstance,
 
     pub fn init(script: *const Script, module_index: usize, allocator: *std.mem.Allocator) !ScriptModule {
-        const module = script.parse_result.modules[module_index];
         const inner = switch (script.codegen_result.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
@@ -48,16 +55,24 @@ pub const ScriptModule = struct {
         var module_instances = try allocator.alloc(ModuleInstance, inner.resolved_fields.len);
         for (inner.resolved_fields) |field_module_index, i| {
             const field_module_name = script.parse_result.modules[field_module_index].name;
-            if (std.mem.eql(u8, field_module_name, "Envelope")) {
+            if (std.mem.eql(u8, field_module_name, "Decimator")) {
+                module_instances[i] = .{ .decimator = zang.Decimator.init() };
+            } else if (std.mem.eql(u8, field_module_name, "Distortion")) {
+                module_instances[i] = .{ .distortion = zang.Distortion.init() };
+            } else if (std.mem.eql(u8, field_module_name, "Envelope")) {
                 module_instances[i] = .{ .envelope = zang.Envelope.init() };
             } else if (std.mem.eql(u8, field_module_name, "Filter")) {
                 module_instances[i] = .{ .filter = zang.Filter.init() };
             } else if (std.mem.eql(u8, field_module_name, "Gate")) {
                 module_instances[i] = .{ .gate = zang.Gate.init() };
+            } else if (std.mem.eql(u8, field_module_name, "Noise")) {
+                module_instances[i] = .{ .noise = zang.Noise.init(0) };
             } else if (std.mem.eql(u8, field_module_name, "PulseOsc")) {
                 module_instances[i] = .{ .pulse_osc = zang.PulseOsc.init() };
             } else if (std.mem.eql(u8, field_module_name, "SineOsc")) {
                 module_instances[i] = .{ .sine_osc = zang.SineOsc.init() };
+            } else if (std.mem.eql(u8, field_module_name, "TriSawOsc")) {
+                module_instances[i] = .{ .tri_saw_osc = zang.TriSawOsc.init() };
             } else {
                 @panic("not implemented");
             }
@@ -241,11 +256,15 @@ pub const ScriptModule = struct {
                     const callee_module_index = inner.resolved_fields[x.field_index];
                     switch (self.module_instances[x.field_index]) {
                         .script_module => @panic("calling script_module not implemented"),
+                        .decimator => |*m| self.call(p, zang.Decimator, m, x.args, callee_module_index, out),
+                        .distortion => |*m| self.call(p, zang.Distortion, m, x.args, callee_module_index, out),
                         .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
                         .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
                         .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
+                        .noise => |*m| self.call(p, zang.Noise, m, x.args, callee_module_index, out),
                         .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
                         .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
+                        .tri_saw_osc => |*m| self.call(p, zang.TriSawOsc, m, x.args, callee_module_index, out),
                     }
                 },
                 .delay_begin => @panic("delay_begin not implemented"), // TODO
