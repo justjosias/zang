@@ -113,7 +113,7 @@ pub const OuterInstrument = struct {
 
     pub fn init() OuterInstrument {
         return .{
-            .noise = zang.Noise.init(0),
+            .noise = zang.Noise.init(),
             .noise_filter = zang.Filter.init(),
             .inner = Instrument.init(),
         };

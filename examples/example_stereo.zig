@@ -51,9 +51,9 @@ const NoiseModule = struct {
     noise: zang.Noise,
     flt: zang.Filter,
 
-    fn init(seed: u64) NoiseModule {
+    fn init() NoiseModule {
         return .{
-            .noise = zang.Noise.init(seed),
+            .noise = zang.Noise.init(),
             .flt = zang.Filter.init(),
         };
     }
@@ -109,8 +109,8 @@ pub const MainModule = struct {
     pub fn init() MainModule {
         return .{
             .osc = zang.SineOsc.init(),
-            .noisem0 = NoiseModule.init(0),
-            .noisem1 = NoiseModule.init(1),
+            .noisem0 = NoiseModule.init(),
+            .noisem1 = NoiseModule.init(),
         };
     }
 
