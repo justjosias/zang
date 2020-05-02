@@ -31,9 +31,10 @@ pub const ScriptModule = struct {
         sample_rate: f32,
         freq: f32,
         note_on: bool,
+        attack: zang.PaintCurve,
     };
 
-    allocator: *std.mem.Allocator,
+    allocator: *std.mem.Allocator, // don't use this in the audio thread (paint method)
     script: *const Script,
     module_index: usize,
     module_instances: []ModuleInstance,
@@ -73,6 +74,7 @@ pub const ScriptModule = struct {
         span: zang.Span,
         outputs: [num_outputs][]f32,
         temps: [num_temps][]f32,
+        temp_floats: []f32,
         note_id_changed: bool,
         params: Params,
     };
@@ -85,12 +87,14 @@ pub const ScriptModule = struct {
         note_id_changed: bool,
         params: Params,
     ) void {
-        const paint_args: PaintArgs = .{
+        var temp_floats: [50]f32 = undefined; // FIXME - use the num_temp_floats from codegen result
+        const p: PaintArgs = .{
             .span = span,
             .outputs = outputs,
             .temps = temps,
             .note_id_changed = note_id_changed,
             .params = params,
+            .temp_floats = &temp_floats,
         };
         const inner = switch (self.script.codegen_result.module_results[self.module_index].inner) {
             .builtin => unreachable,
@@ -124,31 +128,42 @@ pub const ScriptModule = struct {
                         .buffer => |v| zang.copy(span, out, v),
                     }
                 },
-                .call => |call| {
-                    var out = getOut(paint_args, call.out);
-                    const callee_module_index = inner.resolved_fields[call.field_index];
-                    switch (self.module_instances[call.field_index]) {
+                .call => |x| {
+                    var out = getOut(p, x.out);
+                    const callee_module_index = inner.resolved_fields[x.field_index];
+                    switch (self.module_instances[x.field_index]) {
                         .script_module => @panic("calling script_module not implemented"),
-                        .envelope => |*m| self.callGeneric(paint_args, zang.Envelope, m, call.args, callee_module_index, out),
-                        .filter => |*m| self.callGeneric(paint_args, zang.Filter, m, call.args, callee_module_index, out),
-                        .gate => |*m| self.callGeneric(paint_args, zang.Gate, m, call.args, callee_module_index, out),
-                        .pulse_osc => |*m| self.callGeneric(paint_args, zang.PulseOsc, m, call.args, callee_module_index, out),
-                        .sine_osc => |*m| self.callGeneric(paint_args, zang.SineOsc, m, call.args, callee_module_index, out),
+                        .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
+                        .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
+                        .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
+                        .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
+                        .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
                     }
+                },
+                .arith_float_float => |x| {
+                    const a = self.getResultAsFloat(p, x.a);
+                    const b = self.getResultAsFloat(p, x.b);
+                    temp_floats[x.out.temp_float_index] = switch (x.op) {
+                        .add => a + b,
+                        .sub => a - b,
+                        .mul => a * b,
+                        .div => a / b,
+                        .pow => std.math.pow(f32, a, b),
+                    };
                 },
                 .arith_float_buffer => |x| {
                     switch (x.op) {
                         .add => {
-                            var out = getOut(paint_args, x.out);
-                            const a = self.getResultAsFloat(params, x.a);
-                            const b = self.getResultAsBuffer(params, x.b, temps);
+                            var out = getOut(p, x.out);
+                            const a = self.getResultAsFloat(p, x.a);
+                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.addScalar(span, out, b, a);
                         },
                         .mul => {
-                            var out = getOut(paint_args, x.out);
-                            const a = self.getResultAsFloat(params, x.a);
-                            const b = self.getResultAsBuffer(params, x.b, temps);
+                            var out = getOut(p, x.out);
+                            const a = self.getResultAsFloat(p, x.a);
+                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.multiplyScalar(span, out, b, a);
                         },
@@ -161,9 +176,9 @@ pub const ScriptModule = struct {
                 .arith_buffer_float => |x| {
                     switch (x.op) {
                         .mul => {
-                            var out = getOut(paint_args, x.out);
-                            const a = self.getResultAsBuffer(params, x.a, temps);
-                            const b = self.getResultAsFloat(params, x.b);
+                            var out = getOut(p, x.out);
+                            const a = self.getResultAsBuffer(p, x.a);
+                            const b = self.getResultAsFloat(p, x.b);
                             zang.zero(span, out);
                             zang.multiplyScalar(span, out, a, b);
                         },
@@ -176,9 +191,9 @@ pub const ScriptModule = struct {
                 .arith_buffer_buffer => |x| {
                     switch (x.op) {
                         .mul => {
-                            var out = getOut(paint_args, x.out);
-                            const a = self.getResultAsBuffer(params, x.a, temps);
-                            const b = self.getResultAsBuffer(params, x.b, temps);
+                            var out = getOut(p, x.out);
+                            const a = self.getResultAsBuffer(p, x.a);
+                            const b = self.getResultAsBuffer(p, x.b);
                             zang.zero(span, out);
                             zang.multiply(span, out, a, b);
                         },
@@ -203,10 +218,9 @@ pub const ScriptModule = struct {
         };
     }
 
-    fn callGeneric(self: *ScriptModule, p: PaintArgs, comptime T: type, m: *T, args: []const ExpressionResult, callee_module_index: usize, out: []f32) void {
-        const CalleeParams = T.Params;
-        var callee_params: CalleeParams = undefined;
-        inline for (@typeInfo(CalleeParams).Struct.fields) |field| {
+    fn call(self: *ScriptModule, p: PaintArgs, comptime T: type, m: *T, args: []const ExpressionResult, callee_module_index: usize, out: []f32) void {
+        var callee_params: T.Params = undefined;
+        inline for (@typeInfo(T.Params).Struct.fields) |field| {
             // get the index of this callee param in the runtime stuff
             const callee_module = self.script.parse_result.modules[callee_module_index];
             const callee_param_index = blk: {
@@ -217,84 +231,77 @@ pub const ScriptModule = struct {
                 }
                 unreachable;
             };
-            // args are "in the order of the callee module's params".
+            const arg = args[callee_param_index]; // args are "in the order of the callee module's params".
             switch (field.field_type) {
-                bool => {
-                    @field(callee_params, field.name) = self.getResultAsBool(p.params, args[callee_param_index]);
-                },
-                f32 => {
-                    @field(callee_params, field.name) = self.getResultAsFloat(p.params, args[callee_param_index]);
-                },
-                []const f32 => {
-                    @field(callee_params, field.name) = self.getResultAsBuffer(p.params, args[callee_param_index], p.temps);
-                },
-                zang.ConstantOrBuffer => {
-                    @field(callee_params, field.name) = self.getResultAsCob(p.params, args[callee_param_index], p.temps);
-                },
+                bool => @field(callee_params, field.name) = self.getResultAsBool(p, arg),
+                f32 => @field(callee_params, field.name) = self.getResultAsFloat(p, arg),
+                []const f32 => @field(callee_params, field.name) = self.getResultAsBuffer(p, arg),
+                zang.ConstantOrBuffer => @field(callee_params, field.name) = self.getResultAsCob(p, arg),
                 else => switch (@typeInfo(field.field_type)) {
-                    .Enum => {
-                        @field(callee_params, field.name) = self.getResultAsEnum(p.params, args[callee_param_index], field.field_type);
-                    },
-                    .Union => {
-                        @field(callee_params, field.name) = self.getResultAsUnion(p.params, args[callee_param_index], field.field_type);
-                    },
-                    else => {
-                        std.debug.warn("field type: {}\n", .{@typeName(field.field_type)});
-                        @panic("field type not implemented");
-                    },
+                    .Enum => @field(callee_params, field.name) = self.getResultAsEnum(p, arg, field.field_type),
+                    .Union => @field(callee_params, field.name) = self.getResultAsUnion(p, arg, field.field_type),
+                    else => unreachable,
                 },
             }
         }
         zang.zero(p.span, out);
+        // TODO pass temps
         m.paint(p.span, [1][]f32{out}, .{}, p.note_id_changed, callee_params);
     }
-    fn getResultAsBuffer(self: *const ScriptModule, params: Params, result: ExpressionResult, temps: [num_temps][]f32) []const f32 {
+
+    fn getParam(self: *const ScriptModule, comptime T: type, params: Params, param_index: usize) ?T {
+        const param_name = self.script.parse_result.modules[self.module_index].params[param_index].name;
+        inline for (@typeInfo(Params).Struct.fields) |field| {
+            if (field.field_type != T) continue;
+            if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);
+        }
+        return null;
+    }
+
+    // TODO in the getResult* functions, the unreachables can be hit if the ScriptModule.Params struct
+    // doesn't match the script params. we should be validating the Params beforehand or something.
+
+    fn getResultAsBuffer(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) []const f32 {
         return switch (result) {
-            //.self_param => |self_param_index| self.getParamAsFloat(params, self_param_index),
-            //.literal_number => |literal| std.fmt.parseFloat(f32, literal.verbatim) catch unreachable,
-            .temp_buffer => |temp_ref| temps[temp_ref.index],
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
-            },
+            .temp_buffer => |temp_ref| p.temps[temp_ref.index],
+            .self_param => |param_index| self.getParam([]const f32, p.params, param_index).?,
+            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
         };
     }
-    fn getResultAsFloat(self: *const ScriptModule, params: Params, result: ExpressionResult) f32 {
+
+    fn getResultAsFloat(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) f32 {
         return switch (result) {
-            .self_param => |self_param_index| self.getParamAsFloat(params, self_param_index),
             .literal_number => |literal| std.fmt.parseFloat(f32, literal.verbatim) catch unreachable,
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
-            },
+            .temp_float => |temp_ref| p.temp_floats[temp_ref.index],
+            .self_param => |param_index| self.getParam(f32, p.params, param_index).?,
+            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value => unreachable,
         };
     }
-    fn getResultAsCob(self: *const ScriptModule, params: Params, result: ExpressionResult, temps: [num_temps][]f32) zang.ConstantOrBuffer {
+
+    fn getResultAsCob(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) zang.ConstantOrBuffer {
         return switch (result) {
-            //.self_param => |self_param_index| self.getParamAsCob
-            //    // TODO support buffers as well
-            //    const f = self.getParamAsFloat(p.params, self_param_index);
-            //    break :blk zang.constant(f);
-            //},
+            .temp_buffer => |temp_ref| zang.buffer(p.temps[temp_ref.index]),
+            .temp_float => |temp_ref| zang.constant(p.temp_floats[temp_ref.index]),
             .literal_number => |literal| zang.constant(std.fmt.parseFloat(f32, literal.verbatim) catch unreachable),
-            .temp_buffer => |temp_ref| zang.buffer(temps[temp_ref.index]),
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
+            .self_param => |param_index| {
+                if (self.getParam([]const f32, p.params, param_index)) |v| return zang.buffer(v);
+                if (self.getParam(f32, p.params, param_index)) |v| return zang.constant(v);
+                unreachable;
             },
+            .nothing, .literal_boolean, .literal_enum_value => unreachable,
         };
     }
-    fn getResultAsBool(self: *const ScriptModule, params: Params, result: ExpressionResult) bool {
+
+    fn getResultAsBool(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) bool {
         return switch (result) {
-            .self_param => |self_param_index| self.getParamAsBool(params, self_param_index),
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
-            },
+            .literal_boolean => |v| v,
+            .self_param => |param_index| self.getParam(bool, p.params, param_index).?,
+            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value => unreachable,
         };
     }
-    fn getResultAsEnum(self: *const ScriptModule, params: Params, result: ExpressionResult, comptime T: type) T {
-        switch (result) {
+
+    fn getResultAsEnum(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult, comptime T: type) T {
+        return switch (result) {
             .literal_enum_value => |v| {
                 inline for (@typeInfo(T).Enum.fields) |field, i| {
                     if (std.mem.eql(u8, v.label, field.name)) {
@@ -303,57 +310,28 @@ pub const ScriptModule = struct {
                 }
                 unreachable;
             },
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
-            },
-        }
+            .self_param => |param_index| self.getParam(T, p.params, param_index).?,
+            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number => unreachable,
+        };
     }
-    fn getResultAsUnion(self: *const ScriptModule, params: Params, result: ExpressionResult, comptime T: type) T {
-        switch (result) {
+
+    fn getResultAsUnion(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult, comptime T: type) T {
+        return switch (result) {
             .literal_enum_value => |v| {
                 inline for (@typeInfo(T).Union.fields) |field, i| {
                     if (std.mem.eql(u8, v.label, field.name)) {
                         switch (field.field_type) {
                             void => return @unionInit(T, field.name, {}),
-                            f32 => return @unionInit(T, field.name, getResultAsFloat(self, params, v.payload.?.*)),
-                            else => {
-                                std.debug.warn("field_type: {}\n", .{@typeName(field.field_type)});
-                                @panic("field type not implemented");
-                            },
+                            f32 => return @unionInit(T, field.name, getResultAsFloat(self, p, v.payload.?.*)),
+                            // the above are the only payload types allowed by the language so far
+                            else => @panic("getResultAsUnion: field type not implemented: " ++ @typeName(field.field_type)),
                         }
                     }
                 }
                 unreachable;
             },
-            else => {
-                std.debug.warn("result: {}\n", .{result});
-                @panic("value type not implemented");
-            },
-        }
-    }
-    //fn getParamAsBuffer(self: *const ScriptModule, params: Params, param_index: usize) f32 {
-    //    const param_name = self.script.parse_result.modules[self.module_index].params[param_index].name;
-    //    inline for (@typeInfo(Params).Struct.fields) |field| {
-    //        if (field.field_type != f32) continue;
-    //        if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);
-    //    }
-    //    unreachable;
-    //}
-    fn getParamAsFloat(self: *const ScriptModule, params: Params, param_index: usize) f32 {
-        const param_name = self.script.parse_result.modules[self.module_index].params[param_index].name;
-        inline for (@typeInfo(Params).Struct.fields) |field| {
-            if (field.field_type != f32) continue;
-            if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);
-        }
-        unreachable;
-    }
-    fn getParamAsBool(self: *const ScriptModule, params: Params, param_index: usize) bool {
-        const param_name = self.script.parse_result.modules[self.module_index].params[param_index].name;
-        inline for (@typeInfo(Params).Struct.fields) |field| {
-            if (field.field_type != bool) continue;
-            if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);
-        }
-        unreachable;
+            .self_param => |param_index| self.getParam(T, p.params, param_index).?,
+            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number => unreachable,
+        };
     }
 };

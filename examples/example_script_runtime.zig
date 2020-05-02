@@ -111,6 +111,7 @@ pub const MainModule = struct {
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .freq = a4 * rel_freq,
                 .note_on = down,
+                .attack = .{ .cubed = 0.5 },
             });
         }
     }
