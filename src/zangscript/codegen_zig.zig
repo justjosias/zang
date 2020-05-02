@@ -8,9 +8,10 @@ const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
+const CompiledScript = @import("compile.zig").CompiledScript;
 
 const State = struct {
-    parse_result: ParseResult,
+    script: CompiledScript,
     module: ?Module,
     helper: PrintHelper,
 
@@ -41,7 +42,7 @@ const State = struct {
     }
 
     fn printModuleName(self: *State, module_index: usize) !void {
-        const module = self.parse_result.modules[module_index];
+        const module = self.script.modules[module_index];
         if (module.zig_package_name) |pkg_name| {
             try self.print("{identifier}.", .{pkg_name});
         }
@@ -75,9 +76,9 @@ const State = struct {
     }
 };
 
-pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codegen_result: CodeGenResult) !void {
+pub fn generateZig(out: *std.fs.File.OutStream, script: CompiledScript) !void {
     var self: State = .{
-        .parse_result = parse_result,
+        .script = script,
         .module = null,
         .helper = PrintHelper.init(out),
     };
@@ -85,7 +86,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
-    for (parse_result.builtin_packages) |pkg| {
+    for (script.builtin_packages) |pkg| {
         if (std.mem.eql(u8, pkg.zig_package_name, "zang")) {
             continue;
         }
@@ -94,14 +95,14 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
 
     const num_builtins = blk: {
         var n: usize = 0;
-        for (parse_result.builtin_packages) |pkg| {
+        for (script.builtin_packages) |pkg| {
             n += pkg.builtins.len;
         }
         break :blk n;
     };
 
-    for (parse_result.modules) |module, i| {
-        const module_result = codegen_result.module_results[i];
+    for (script.modules) |module, i| {
+        const module_result = script.module_results[i];
         const inner = switch (module_result.inner) {
             .builtin => continue,
             .custom => |x| x,
@@ -128,7 +129,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
         try self.print("\n", .{});
 
         for (inner.resolved_fields) |field_module_index, j| {
-            const field_module = parse_result.modules[field_module_index];
+            const field_module = script.modules[field_module_index];
             try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field_module_index });
         }
         for (inner.delays) |delay_decl, j| {
@@ -138,7 +139,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
         for (inner.resolved_fields) |field_module_index, j| {
-            const field_module = parse_result.modules[field_module_index];
+            const field_module = script.modules[field_module_index];
             if (std.mem.eql(u8, field_module.name, "Noise")) {
                 // hack to support the Noise module which takes an init argument (seed value)
                 try self.print(".field{usize}_{identifier} = {module_name}.init(0),\n", .{ j, field_module.name, field_module_index });
@@ -270,7 +271,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, parse_result: ParseResult, codeg
                 },
                 .call => |call| {
                     const field_module_index = inner.resolved_fields[call.field_index];
-                    const callee_module = parse_result.modules[field_module_index];
+                    const callee_module = script.modules[field_module_index];
                     try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
                     try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });
                     try self.print("{buffer_dest}}}, .{{", .{call.out});

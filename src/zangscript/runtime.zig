@@ -5,12 +5,7 @@ const ParseResult = @import("parse.zig").ParseResult;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const BufferDest = @import("codegen.zig").BufferDest;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
-
-pub const Script = struct {
-    source: Source,
-    parse_result: ParseResult,
-    codegen_result: CodeGenResult,
-};
+const CompiledScript = @import("compile.zig").CompiledScript;
 
 // TODO replace this with some vtable-like system?
 const ModuleInstance = union(enum) {
@@ -43,18 +38,18 @@ pub const ScriptModule = struct {
     };
 
     allocator: *std.mem.Allocator, // don't use this in the audio thread (paint method)
-    script: *const Script,
+    script: *const CompiledScript,
     module_index: usize,
     module_instances: []ModuleInstance,
 
-    pub fn init(script: *const Script, module_index: usize, allocator: *std.mem.Allocator) !ScriptModule {
-        const inner = switch (script.codegen_result.module_results[module_index].inner) {
+    pub fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) !ScriptModule {
+        const inner = switch (script.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
         };
         var module_instances = try allocator.alloc(ModuleInstance, inner.resolved_fields.len);
         for (inner.resolved_fields) |field_module_index, i| {
-            const field_module_name = script.parse_result.modules[field_module_index].name;
+            const field_module_name = script.modules[field_module_index].name;
             if (std.mem.eql(u8, field_module_name, "Decimator")) {
                 module_instances[i] = .{ .decimator = zang.Decimator.init() };
             } else if (std.mem.eql(u8, field_module_name, "Distortion")) {
@@ -111,7 +106,7 @@ pub const ScriptModule = struct {
             .params = params,
             .temp_floats = &temp_floats,
         };
-        const inner = switch (self.script.codegen_result.module_results[self.module_index].inner) {
+        const inner = switch (self.script.module_results[self.module_index].inner) {
             .builtin => unreachable,
             .custom => |x| x,
         };
@@ -284,7 +279,7 @@ pub const ScriptModule = struct {
         var callee_params: T.Params = undefined;
         inline for (@typeInfo(T.Params).Struct.fields) |field| {
             // get the index of this callee param in the runtime stuff
-            const callee_module = self.script.parse_result.modules[callee_module_index];
+            const callee_module = self.script.modules[callee_module_index];
             const callee_param_index = blk: {
                 for (callee_module.params) |callee_param, i| {
                     if (std.mem.eql(u8, field.name, callee_param.name)) {
@@ -312,7 +307,7 @@ pub const ScriptModule = struct {
     }
 
     fn getParam(self: *const ScriptModule, comptime T: type, params: Params, param_index: usize) ?T {
-        const param_name = self.script.parse_result.modules[self.module_index].params[param_index].name;
+        const param_name = self.script.modules[self.module_index].params[param_index].name;
         inline for (@typeInfo(Params).Struct.fields) |field| {
             if (field.field_type != T) continue;
             if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);

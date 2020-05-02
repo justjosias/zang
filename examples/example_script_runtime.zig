@@ -42,27 +42,16 @@ pub const MainModule = struct {
         };
         //defer allocator.free(contents);
         const source: zangscript.Source = .{ .filename = filename, .contents = contents };
-        var parse_result = zangscript.parse(source, &builtin_packages, allocator) catch |err| {
-            if (err != error.Failed) std.debug.warn("parse failed: {}\n", .{err});
+        var script = zangscript.compile(source, &builtin_packages, allocator) catch |err| {
+            if (err != error.Failed) std.debug.warn("{}\n", .{err});
             var self: MainModule = undefined;
             self.ok = false;
             return self;
         };
-        //defer parse_result.deinit();
-        var codegen_result = zangscript.codegen(source, parse_result, allocator) catch |err| {
-            if (err != error.Failed) std.debug.warn("codegen failed: {}\n", .{err});
-            var self: MainModule = undefined;
-            self.ok = false;
-            return self;
-        };
-        //defer codegen_result.deinit();
-        var script = allocator.create(zangscript.Script) catch @panic("alloc failed");
-        script.* = .{
-            .source = source,
-            .parse_result = parse_result,
-            .codegen_result = codegen_result,
-        };
-        const module_index = for (parse_result.modules) |module, i| {
+        //defer script.deinit();
+        var script_ptr = allocator.create(zangscript.CompiledScript) catch @panic("alloc failed");
+        script_ptr.* = script;
+        const module_index = for (script.modules) |module, i| {
             if (std.mem.eql(u8, module.name, "Instrument")) break i;
         } else {
             std.debug.warn("could not find module \"Instrument\"\n", .{});
@@ -75,7 +64,7 @@ pub const MainModule = struct {
             .key = null,
             .iq = zang.Notes(zangscript.ScriptModule.Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
-            .instr = zangscript.ScriptModule.init(script, module_index, allocator) catch @panic("ScriptModule init failed"),
+            .instr = zangscript.ScriptModule.init(script_ptr, module_index, allocator) catch @panic("ScriptModule init failed"),
             .trig = zang.Trigger(zangscript.ScriptModule.Params).init(),
         };
     }

@@ -39,21 +39,15 @@ pub fn main() u8 {
         .contents = contents,
     };
 
-    var parse_result = zangscript.parse(source, &builtin_packages, allocator) catch |err| {
-        if (err != error.Failed) std.debug.warn("parse failed: {}\n", .{err});
+    var script = zangscript.compile(source, &builtin_packages, allocator) catch |err| {
+        if (err != error.Failed) std.debug.warn("{}\n", .{err});
         return 1;
     };
-    defer parse_result.deinit();
-
-    var codegen_result = zangscript.codegen(source, parse_result, allocator) catch |err| {
-        if (err != error.Failed) std.debug.warn("codegen failed: {}\n", .{err});
-        return 1;
-    };
-    defer codegen_result.deinit();
+    defer script.deinit();
 
     var stdout_file_out_stream = std.io.getStdOut().outStream();
 
-    zangscript.generateZig(&stdout_file_out_stream, parse_result, codegen_result) catch |err| {
+    zangscript.generateZig(&stdout_file_out_stream, script) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };
