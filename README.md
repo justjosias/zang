@@ -51,6 +51,7 @@ git submodule update
 
 ## Features
 Modules:
+
 * Curve: renders a curve (array of curve nodes) to a buffer using one of several interpolation functions
 * Decimator: imitate a lower sample rate
 * Distortion: overdrive/clip the input sound
@@ -66,6 +67,7 @@ Modules:
 
 ## Goals
 My goals for the core library:
+
 * Small set of standard generators and filters
 * Decent audio quality (deal with oscillator aliasing, wav resampling...)
 * Total modularity (single-purpose modules with controllable inputs)
