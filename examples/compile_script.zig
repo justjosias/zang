@@ -47,7 +47,7 @@ pub fn main() u8 {
 
     var stdout_file_out_stream = std.io.getStdOut().outStream();
 
-    zangscript.generateZig(&stdout_file_out_stream, script) catch |err| {
+    zangscript.generateZig(&stdout_file_out_stream, &builtin_packages, script) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };

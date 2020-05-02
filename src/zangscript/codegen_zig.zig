@@ -1,5 +1,6 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const ParseResult = @import("parse.zig").ParseResult;
 const Module = @import("parse.zig").Module;
 const ModuleCodeGen = @import("codegen.zig").ModuleCodeGen;
@@ -76,7 +77,7 @@ const State = struct {
     }
 };
 
-pub fn generateZig(out: *std.fs.File.OutStream, script: CompiledScript) !void {
+pub fn generateZig(out: *std.fs.File.OutStream, comptime builtin_packages: []const BuiltinPackage, script: CompiledScript) !void {
     var self: State = .{
         .script = script,
         .module = null,
@@ -86,16 +87,15 @@ pub fn generateZig(out: *std.fs.File.OutStream, script: CompiledScript) !void {
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
-    for (script.builtin_packages) |pkg| {
-        if (std.mem.eql(u8, pkg.zig_package_name, "zang")) {
-            continue;
+    inline for (builtin_packages) |pkg| {
+        if (comptime !std.mem.eql(u8, pkg.zig_package_name, "zang")) {
+            try self.print("const {str} = @import(\"{str}\");\n", .{ pkg.zig_package_name, pkg.zig_import_path });
         }
-        try self.print("const {str} = @import(\"{str}\");\n", .{ pkg.zig_package_name, pkg.zig_import_path });
     }
 
-    const num_builtins = blk: {
+    const num_builtins = comptime blk: {
         var n: usize = 0;
-        for (script.builtin_packages) |pkg| {
+        for (builtin_packages) |pkg| {
             n += pkg.builtins.len;
         }
         break :blk n;
