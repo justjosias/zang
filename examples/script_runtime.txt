@@ -3,6 +3,7 @@ def Instrument:
     freq: cob,
     note_on: boolean,
     attack: PaintCurve,
+    filter_type: FilterType,
 begin
     let freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
 
@@ -15,6 +16,8 @@ begin
         sustain_volume=0.5+0.1,
         note_on
     )
+
     let in = PulseOsc(color=0.7, sample_rate, freq=freq*0.5)
-    out f * Filter(input=in, type='low_pass', cutoff=0.2, res=0.5)
+
+    out f * Filter(input=in, type=filter_type, cutoff=0.2, res=0.5)
 end

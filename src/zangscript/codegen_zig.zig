@@ -140,12 +140,7 @@ pub fn generateZig(out: *std.fs.File.OutStream, script: CompiledScript) !void {
         try self.print("return .{{\n", .{});
         for (inner.resolved_fields) |field_module_index, j| {
             const field_module = script.modules[field_module_index];
-            if (std.mem.eql(u8, field_module.name, "Noise")) {
-                // hack to support the Noise module which takes an init argument (seed value)
-                try self.print(".field{usize}_{identifier} = {module_name}.init(0),\n", .{ j, field_module.name, field_module_index });
-            } else {
-                try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field_module_index });
-            }
+            try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field_module_index });
         }
         for (inner.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });

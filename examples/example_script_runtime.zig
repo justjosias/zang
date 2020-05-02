@@ -21,15 +21,16 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
 };
 
 pub const MainModule = struct {
-    pub const num_outputs = zangscript.ScriptModule.num_outputs;
-    pub const num_temps = zangscript.ScriptModule.num_temps;
+    pub const num_outputs = 1;
+    pub const num_temps = 4;
+    pub const Params = [5]zangscript.Value;
 
     ok: bool,
     key: ?i32,
-    iq: zang.Notes(zangscript.ScriptModule.Params).ImpulseQueue,
+    iq: zang.Notes(Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     instr: zangscript.ScriptModule,
-    trig: zang.Trigger(zangscript.ScriptModule.Params),
+    trig: zang.Trigger(Params),
 
     pub fn init() MainModule {
         var allocator = std.heap.page_allocator;
@@ -62,10 +63,10 @@ pub const MainModule = struct {
         return .{
             .ok = true,
             .key = null,
-            .iq = zang.Notes(zangscript.ScriptModule.Params).ImpulseQueue.init(),
+            .iq = zang.Notes(Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
             .instr = zangscript.ScriptModule.init(script_ptr, module_index, allocator) catch @panic("ScriptModule init failed"),
-            .trig = zang.Trigger(zangscript.ScriptModule.Params).init(),
+            .trig = zang.Trigger(Params).init(),
         };
     }
 
@@ -80,7 +81,7 @@ pub const MainModule = struct {
 
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.instr.paint(result.span, &outputs, &temps, result.note_id_changed, &result.params);
         }
     }
 
@@ -96,11 +97,12 @@ pub const MainModule = struct {
         if (down or (if (self.key) |nh| nh == key else false)) {
             self.key = if (down) key else null;
 
-            self.iq.push(impulse_frame, self.idgen.nextId(), .{
-                .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = zang.constant(a4 * rel_freq),
-                .note_on = down,
-                .attack = .{ .cubed = 0.5 },
+            self.iq.push(impulse_frame, self.idgen.nextId(), [_]zangscript.Value{
+                .{ .constant = AUDIO_SAMPLE_RATE },
+                .{ .cob = zang.constant(a4 * rel_freq) },
+                .{ .boolean = down },
+                .{ .one_of = .{ .label = "cubed", .payload = 0.5 } },
+                .{ .one_of = .{ .label = "low_pass", .payload = null } },
             });
         }
     }

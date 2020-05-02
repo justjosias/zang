@@ -1,128 +1,221 @@
 const std = @import("std");
 const zang = @import("../zang.zig");
 const Source = @import("tokenize.zig").Source;
+const ParamType = @import("parse.zig").ParamType;
+const ModuleParam = @import("parse.zig").ModuleParam;
 const ParseResult = @import("parse.zig").ParseResult;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const BufferDest = @import("codegen.zig").BufferDest;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const CompiledScript = @import("compile.zig").CompiledScript;
 
-// TODO replace this with some vtable-like system?
-const ModuleInstance = union(enum) {
-    script_module: ScriptModule,
-    base: *ModuleBase, //zang.Noise,
-    // TODO generate these using comptime code. we also need to support user-passed builtin modules
-    decimator: zang.Decimator,
-    distortion: zang.Distortion,
-    envelope: zang.Envelope,
-    filter: zang.Filter,
-    gate: zang.Gate,
-    //portamento: zang.Portamento,
-    pulse_osc: zang.PulseOsc,
-    //sampler: zang.Sampler,
-    sine_osc: zang.SineOsc,
-    tri_saw_osc: zang.TriSawOsc,
-};
-
 pub const ModuleBase = struct {
     num_outputs: usize,
     num_temps: usize,
+    params: []const ModuleParam,
     paintFn: fn (
         base: *ModuleBase,
         span: zang.Span,
         outputs: []const []f32,
         temps: []const []f32,
         note_id_changed: bool,
-        params: []const u8, // ?!
+        params: []const Value,
     ) void,
 };
 
-pub const NoiseImpl = struct {
-    base: ModuleBase,
-    mod: zang.Noise,
+// implement ModuleBase for a builtin module
+pub fn makeImpl(comptime T: type) type {
+    return struct {
+        base: ModuleBase,
+        mod: T,
 
-    pub fn init() NoiseImpl {
-        return .{
-            .base = .{
-                .num_outputs = zang.Noise.num_outputs,
-                .num_temps = zang.Noise.num_temps,
-                .paintFn = paintFn,
+        pub fn init(params: []const ModuleParam) @This() {
+            return .{
+                .base = .{
+                    .num_outputs = T.num_outputs,
+                    .num_temps = T.num_temps,
+                    .params = params,
+                    .paintFn = paintFn,
+                },
+                .mod = T.init(),
+            };
+        }
+
+        fn paintFn(
+            base: *ModuleBase,
+            span: zang.Span,
+            outputs_slice: []const []f32,
+            temps_slice: []const []f32,
+            note_id_changed: bool,
+            param_values: []const Value,
+        ) void {
+            var self = @fieldParentPtr(@This(), "base", base);
+
+            std.debug.assert(outputs_slice.len == T.num_outputs);
+            var outputs: [T.num_outputs][]f32 = undefined;
+            std.mem.copy([]f32, &outputs, outputs_slice);
+
+            std.debug.assert(temps_slice.len == T.num_temps);
+            var temps: [T.num_temps][]f32 = undefined;
+            std.mem.copy([]f32, &temps, temps_slice);
+
+            var params: T.Params = undefined;
+            inline for (@typeInfo(T.Params).Struct.fields) |field| {
+                const param_index = getParamIndex(self.base.params, field.name);
+                @field(params, field.name) = param_values[param_index].resolve(field.field_type);
+            }
+
+            self.mod.paint(span, outputs, temps, note_id_changed, params);
+        }
+
+        fn getParamIndex(params: []const ModuleParam, name: []const u8) usize {
+            for (params) |param, i| {
+                if (std.mem.eql(u8, name, param.name)) {
+                    return i;
+                }
+            }
+            unreachable;
+        }
+    };
+}
+
+pub const Value = union(enum) {
+    constant: f32,
+    buffer: []const f32,
+    cob: zang.ConstantOrBuffer,
+    boolean: bool,
+    one_of: struct { label: []const u8, payload: ?f32 },
+
+    pub fn resolve(value: Value, comptime P: type) P {
+        switch (P) {
+            bool => switch (value) {
+                .boolean => |v| return v,
+                else => unreachable,
             },
-            .mod = zang.Noise.init(0),
-        };
-    }
-
-    fn paintFn(
-        base: *ModuleBase,
-        span: zang.Span,
-        outputs_slice: []const []f32,
-        temps_slice: []const []f32,
-        note_id_changed: bool,
-        raw_params: []const u8,
-    ) void {
-        std.debug.assert(outputs_slice.len == zang.Noise.num_outputs);
-        std.debug.assert(temps_slice.len == zang.Noise.num_temps);
-        var self = @fieldParentPtr(NoiseImpl, "base", base);
-        var outputs: [zang.Noise.num_outputs][]f32 = undefined;
-        var temps: [zang.Noise.num_temps][]f32 = undefined;
-        std.mem.copy([]f32, &outputs, outputs_slice);
-        std.mem.copy([]f32, &temps, temps_slice);
-        var params: zang.Noise.Params = .{}; // somehow get this from raw_params
-        self.mod.paint(span, outputs, temps, note_id_changed, params);
+            f32 => switch (value) {
+                .constant => |v| return v,
+                else => unreachable,
+            },
+            []const f32 => switch (value) {
+                .buffer => |v| return v,
+                else => unreachable,
+            },
+            zang.ConstantOrBuffer => switch (value) {
+                .cob => |v| return v,
+                else => unreachable,
+            },
+            else => switch (@typeInfo(P)) {
+                .Enum => |enum_info| {
+                    switch (value) {
+                        .one_of => |v| {
+                            inline for (enum_info.fields) |enum_field, i| {
+                                if (std.mem.eql(u8, v.label, enum_field.name)) {
+                                    return @intToEnum(P, i);
+                                }
+                            }
+                            unreachable;
+                        },
+                        else => unreachable,
+                    }
+                },
+                .Union => |union_info| {
+                    switch (value) {
+                        .one_of => |v| {
+                            inline for (union_info.fields) |union_field, i| {
+                                if (std.mem.eql(u8, v.label, union_field.name)) {
+                                    switch (union_field.field_type) {
+                                        void => return @unionInit(P, union_field.name, {}),
+                                        f32 => return @unionInit(P, union_field.name, v.payload.?),
+                                        // the above are the only payload types allowed by the language so far
+                                        else => @panic("union field type not implemented: " ++ @typeName(union_field.field_type)),
+                                    }
+                                }
+                            }
+                            unreachable;
+                        },
+                        else => unreachable,
+                    }
+                },
+                else => unreachable,
+            },
+        }
     }
 };
 
+const DecimatorImpl = makeImpl(zang.Decimator);
+const DistortionImpl = makeImpl(zang.Distortion);
+const EnvelopeImpl = makeImpl(zang.Envelope);
+const FilterImpl = makeImpl(zang.Filter);
+const GateImpl = makeImpl(zang.Gate);
+const NoiseImpl = makeImpl(zang.Noise);
+const PulseOscImpl = makeImpl(zang.PulseOsc);
+const SineOscImpl = makeImpl(zang.SineOsc);
+const TriSawOscImpl = makeImpl(zang.TriSawOsc);
+
 pub const ScriptModule = struct {
-    // these might have to change to getter functions to get them to work with script modules...
-    pub const num_outputs = 1;
-    pub const num_temps = 10;
-
-    // no idea what to do with this
-    pub const Params = struct {
-        sample_rate: f32,
-        freq: zang.ConstantOrBuffer,
-        note_on: bool,
-        attack: zang.PaintCurve,
-    };
-
+    base: ModuleBase,
     allocator: *std.mem.Allocator, // don't use this in the audio thread (paint method)
     script: *const CompiledScript,
     module_index: usize,
-    module_instances: []ModuleInstance,
+    module_instances: []*ModuleBase,
 
     pub fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) !ScriptModule {
         const inner = switch (script.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
         };
-        var module_instances = try allocator.alloc(ModuleInstance, inner.resolved_fields.len);
+        var module_instances = try allocator.alloc(*ModuleBase, inner.resolved_fields.len);
         for (inner.resolved_fields) |field_module_index, i| {
             const field_module_name = script.modules[field_module_index].name;
+            const params = script.modules[field_module_index].params;
+
             if (std.mem.eql(u8, field_module_name, "Decimator")) {
-                module_instances[i] = .{ .decimator = zang.Decimator.init() };
+                var impl = try allocator.create(DecimatorImpl);
+                impl.* = DecimatorImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "Distortion")) {
-                module_instances[i] = .{ .distortion = zang.Distortion.init() };
+                var impl = try allocator.create(DistortionImpl);
+                impl.* = DistortionImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "Envelope")) {
-                module_instances[i] = .{ .envelope = zang.Envelope.init() };
+                var impl = try allocator.create(EnvelopeImpl);
+                impl.* = EnvelopeImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "Filter")) {
-                module_instances[i] = .{ .filter = zang.Filter.init() };
+                var impl = try allocator.create(FilterImpl);
+                impl.* = FilterImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "Gate")) {
-                module_instances[i] = .{ .gate = zang.Gate.init() };
+                var impl = try allocator.create(GateImpl);
+                impl.* = GateImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "Noise")) {
                 var impl = try allocator.create(NoiseImpl);
-                impl.* = NoiseImpl.init();
-                module_instances[i] = .{ .base = &impl.base };
+                impl.* = NoiseImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "PulseOsc")) {
-                module_instances[i] = .{ .pulse_osc = zang.PulseOsc.init() };
+                var impl = try allocator.create(PulseOscImpl);
+                impl.* = PulseOscImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "SineOsc")) {
-                module_instances[i] = .{ .sine_osc = zang.SineOsc.init() };
+                var impl = try allocator.create(SineOscImpl);
+                impl.* = SineOscImpl.init(params);
+                module_instances[i] = &impl.base;
             } else if (std.mem.eql(u8, field_module_name, "TriSawOsc")) {
-                module_instances[i] = .{ .tri_saw_osc = zang.TriSawOsc.init() };
+                var impl = try allocator.create(TriSawOscImpl);
+                impl.* = TriSawOscImpl.init(params);
+                module_instances[i] = &impl.base;
             } else {
                 @panic("not implemented");
             }
         }
         return ScriptModule{
+            .base = .{
+                .num_outputs = script.module_results[module_index].num_outputs,
+                .num_temps = script.module_results[module_index].num_temps,
+                .params = script.modules[module_index].params,
+                .paintFn = paintFn,
+            },
             .allocator = allocator,
             .script = script,
             .module_index = module_index,
@@ -132,22 +225,39 @@ pub const ScriptModule = struct {
 
     const PaintArgs = struct {
         span: zang.Span,
-        outputs: [num_outputs][]f32,
-        temps: [num_temps][]f32,
+        outputs: []const []f32,
+        temps: []const []f32,
         temp_floats: []f32,
         note_id_changed: bool,
-        params: Params,
+        params: []const Value,
     };
 
     pub fn paint(
         self: *ScriptModule,
         span: zang.Span,
-        outputs: [num_outputs][]f32,
-        temps: [num_temps][]f32,
+        outputs: []const []f32,
+        temps: []const []f32,
         note_id_changed: bool,
-        params: Params,
+        params: []const Value,
     ) void {
+        self.base.paintFn(&self.base, span, outputs, temps, note_id_changed, params);
+    }
+
+    fn paintFn(
+        base: *ModuleBase,
+        span: zang.Span,
+        outputs: []const []f32,
+        temps: []const []f32,
+        note_id_changed: bool,
+        params: []const Value,
+    ) void {
+        var self = @fieldParentPtr(ScriptModule, "base", base);
+
+        std.debug.assert(outputs.len == self.script.module_results[self.module_index].num_outputs);
+        std.debug.assert(temps.len == self.script.module_results[self.module_index].num_temps);
+
         var temp_floats: [50]f32 = undefined; // FIXME - use the num_temp_floats from codegen result
+
         const p: PaintArgs = .{
             .span = span,
             .outputs = outputs,
@@ -170,10 +280,31 @@ pub const ScriptModule = struct {
                 },
                 .cob_to_buffer => |x| {
                     var out = getOut(p, x.out);
-                    switch (self.getParam(zang.ConstantOrBuffer, p.params, x.in_self_param).?) {
-                        .constant => |v| zang.set(span, out, v),
-                        .buffer => |v| zang.copy(span, out, v),
+                    switch (p.params[x.in_self_param]) {
+                        .cob => |cob| switch (cob) {
+                            .constant => |v| zang.set(span, out, v),
+                            .buffer => |v| zang.copy(span, out, v),
+                        },
+                        else => unreachable,
                     }
+                },
+                .call => |x| {
+                    var out = getOut(p, x.out);
+
+                    const callee_module_index = inner.resolved_fields[x.field_index];
+                    const callee_base = self.module_instances[x.field_index];
+
+                    var callee_temps: [10][]f32 = undefined; // FIXME...
+                    for (x.temps) |n, i| callee_temps[i] = temps[n];
+
+                    var arg_values: [10]Value = undefined; // FIXME
+                    for (x.args) |arg, i| {
+                        const param_type = self.script.modules[callee_module_index].params[i].param_type;
+                        arg_values[i] = self.getResultValue(p, param_type, arg);
+                    }
+
+                    zang.zero(span, out);
+                    callee_base.paintFn(callee_base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], note_id_changed, arg_values[0..x.args.len]);
                 },
                 .negate_float_to_float => |x| {
                     temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
@@ -296,30 +427,6 @@ pub const ScriptModule = struct {
                         },
                     }
                 },
-                .call => |x| {
-                    var out = getOut(p, x.out);
-                    const callee_module_index = inner.resolved_fields[x.field_index];
-                    switch (self.module_instances[x.field_index]) {
-                        .script_module => @panic("calling script_module not implemented"),
-                        .decimator => |*m| self.call(p, zang.Decimator, m, x.args, callee_module_index, out),
-                        .distortion => |*m| self.call(p, zang.Distortion, m, x.args, callee_module_index, out),
-                        .envelope => |*m| self.call(p, zang.Envelope, m, x.args, callee_module_index, out),
-                        .filter => |*m| self.call(p, zang.Filter, m, x.args, callee_module_index, out),
-                        .gate => |*m| self.call(p, zang.Gate, m, x.args, callee_module_index, out),
-                        .pulse_osc => |*m| self.call(p, zang.PulseOsc, m, x.args, callee_module_index, out),
-                        .sine_osc => |*m| self.call(p, zang.SineOsc, m, x.args, callee_module_index, out),
-                        .tri_saw_osc => |*m| self.call(p, zang.TriSawOsc, m, x.args, callee_module_index, out),
-                        .base => |base| {
-                            var callee_temps: [10][]f32 = undefined; // FIXME...
-                            for (x.temps) |n, i| callee_temps[i] = temps[n];
-
-                            var callee_params: []const u8 = undefined;
-
-                            zang.zero(span, out);
-                            base.paintFn(base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], note_id_changed, callee_params);
-                        },
-                    }
-                },
                 .delay_begin => @panic("delay_begin not implemented"), // TODO
                 .delay_end => @panic("delay_end not implemented"), // TODO
             }
@@ -333,62 +440,50 @@ pub const ScriptModule = struct {
         };
     }
 
-    fn call(self: *ScriptModule, p: PaintArgs, comptime T: type, m: *T, args: []const ExpressionResult, callee_module_index: usize, out: []f32) void {
-        var callee_params: T.Params = undefined;
-        inline for (@typeInfo(T.Params).Struct.fields) |field| {
-            // get the index of this callee param in the runtime stuff
-            const callee_module = self.script.modules[callee_module_index];
-            const callee_param_index = blk: {
-                for (callee_module.params) |callee_param, i| {
-                    if (std.mem.eql(u8, field.name, callee_param.name)) {
-                        break :blk i;
-                    }
-                }
-                unreachable;
-            };
-            const arg = args[callee_param_index]; // args are "in the order of the callee module's params".
-            switch (field.field_type) {
-                bool => @field(callee_params, field.name) = self.getResultAsBool(p, arg),
-                f32 => @field(callee_params, field.name) = self.getResultAsFloat(p, arg),
-                []const f32 => @field(callee_params, field.name) = self.getResultAsBuffer(p, arg),
-                zang.ConstantOrBuffer => @field(callee_params, field.name) = self.getResultAsCob(p, arg),
-                else => switch (@typeInfo(field.field_type)) {
-                    .Enum => @field(callee_params, field.name) = self.getResultAsEnum(p, arg, field.field_type),
-                    .Union => @field(callee_params, field.name) = self.getResultAsUnion(p, arg, field.field_type),
-                    else => unreachable,
-                },
-            }
+    fn getResultValue(self: *const ScriptModule, p: PaintArgs, param_type: ParamType, result: ExpressionResult) Value {
+        switch (param_type) {
+            .boolean => return .{ .boolean = self.getResultAsBool(p, result) },
+            .buffer => return .{ .buffer = self.getResultAsBuffer(p, result) },
+            .constant => return .{ .constant = self.getResultAsFloat(p, result) },
+            .constant_or_buffer => return .{ .cob = self.getResultAsCob(p, result) },
+            .one_of => |builtin_enum| {
+                return switch (result) {
+                    .literal_enum_value => |literal| {
+                        const payload = if (literal.payload) |result_payload|
+                            self.getResultAsFloat(p, result_payload.*)
+                        else
+                            null;
+                        return .{ .one_of = .{ .label = literal.label, .payload = payload } };
+                    },
+                    .self_param => |param_index| switch (p.params[param_index]) {
+                        .one_of => |v| return .{ .one_of = v },
+                        .constant, .buffer, .cob, .boolean => unreachable,
+                    },
+                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number => unreachable,
+                };
+            },
         }
-        zang.zero(p.span, out);
-        // TODO pass temps
-        m.paint(p.span, [1][]f32{out}, .{}, p.note_id_changed, callee_params);
     }
-
-    fn getParam(self: *const ScriptModule, comptime T: type, params: Params, param_index: usize) ?T {
-        const param_name = self.script.modules[self.module_index].params[param_index].name;
-        inline for (@typeInfo(Params).Struct.fields) |field| {
-            if (field.field_type != T) continue;
-            if (std.mem.eql(u8, field.name, param_name)) return @field(params, field.name);
-        }
-        return null;
-    }
-
-    // TODO in the getResult* functions, the unreachables can be hit if the ScriptModule.Params struct
-    // doesn't match the script params. we should be validating the Params beforehand or something.
 
     fn getResultAsBuffer(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) []const f32 {
         return switch (result) {
             .temp_buffer => |temp_ref| p.temps[temp_ref.index],
-            .self_param => |param_index| self.getParam([]const f32, p.params, param_index).?,
+            .self_param => |param_index| switch (p.params[param_index]) {
+                .buffer => |v| v,
+                .constant, .cob, .boolean, .one_of => unreachable,
+            },
             .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
         };
     }
 
     fn getResultAsFloat(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) f32 {
         return switch (result) {
-            .literal_number => |literal| std.fmt.parseFloat(f32, literal.verbatim) catch unreachable,
+            .literal_number => |literal| literal.value,
             .temp_float => |temp_ref| p.temp_floats[temp_ref.index],
-            .self_param => |param_index| self.getParam(f32, p.params, param_index).?,
+            .self_param => |param_index| switch (p.params[param_index]) {
+                .constant => |v| v,
+                .buffer, .cob, .boolean, .one_of => unreachable,
+            },
             .nothing, .temp_buffer, .literal_boolean, .literal_enum_value => unreachable,
         };
     }
@@ -397,11 +492,12 @@ pub const ScriptModule = struct {
         return switch (result) {
             .temp_buffer => |temp_ref| zang.buffer(p.temps[temp_ref.index]),
             .temp_float => |temp_ref| zang.constant(p.temp_floats[temp_ref.index]),
-            .literal_number => |literal| zang.constant(std.fmt.parseFloat(f32, literal.verbatim) catch unreachable),
-            .self_param => |param_index| {
-                if (self.getParam([]const f32, p.params, param_index)) |v| return zang.buffer(v);
-                if (self.getParam(f32, p.params, param_index)) |v| return zang.constant(v);
-                unreachable;
+            .literal_number => |literal| zang.constant(literal.value),
+            .self_param => |param_index| switch (p.params[param_index]) {
+                .constant => |v| zang.constant(v),
+                .buffer => |v| zang.buffer(v),
+                .cob => |v| v,
+                .boolean, .one_of => unreachable,
             },
             .nothing, .literal_boolean, .literal_enum_value => unreachable,
         };
@@ -410,43 +506,11 @@ pub const ScriptModule = struct {
     fn getResultAsBool(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) bool {
         return switch (result) {
             .literal_boolean => |v| v,
-            .self_param => |param_index| self.getParam(bool, p.params, param_index).?,
+            .self_param => |param_index| switch (p.params[param_index]) {
+                .boolean => |v| v,
+                .constant, .buffer, .cob, .one_of => unreachable,
+            },
             .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value => unreachable,
-        };
-    }
-
-    fn getResultAsEnum(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult, comptime T: type) T {
-        return switch (result) {
-            .literal_enum_value => |v| {
-                inline for (@typeInfo(T).Enum.fields) |field, i| {
-                    if (std.mem.eql(u8, v.label, field.name)) {
-                        return @intToEnum(T, i);
-                    }
-                }
-                unreachable;
-            },
-            .self_param => |param_index| self.getParam(T, p.params, param_index).?,
-            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number => unreachable,
-        };
-    }
-
-    fn getResultAsUnion(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult, comptime T: type) T {
-        return switch (result) {
-            .literal_enum_value => |v| {
-                inline for (@typeInfo(T).Union.fields) |field, i| {
-                    if (std.mem.eql(u8, v.label, field.name)) {
-                        switch (field.field_type) {
-                            void => return @unionInit(T, field.name, {}),
-                            f32 => return @unionInit(T, field.name, getResultAsFloat(self, p, v.payload.?.*)),
-                            // the above are the only payload types allowed by the language so far
-                            else => @panic("getResultAsUnion: field type not implemented: " ++ @typeName(field.field_type)),
-                        }
-                    }
-                }
-                unreachable;
-            },
-            .self_param => |param_index| self.getParam(T, p.params, param_index).?,
-            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number => unreachable,
         };
     }
 };
