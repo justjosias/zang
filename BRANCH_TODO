@@ -1,0 +1,7 @@
+runtime branch todo:
+- get rid of hardcoded num_temps, num_outputs, and Params
+- pass temps to callee
+- script module calling script module
+- implement delay ops
+- handle temp_floats properly
+- stop leaking memory
