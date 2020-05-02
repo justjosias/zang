@@ -26,13 +26,12 @@ def Echoes:
     echo_volume: constant,
     filter_type: FilterType,
 begin
-    out input
-    //out delay 11025 begin
-    //    let result = input + feedback * echo_volume
+    out delay 11025 begin
+        let result = input + feedback * echo_volume
 
-    //    out result
-    //    feedback Filter(input=result, type=filter_type, cutoff=0.8, res=0)
-    //end
+        out result
+        feedback Filter(input=result, type=filter_type, cutoff=0.8, res=0)
+    end
 end
 
 def Instrument:

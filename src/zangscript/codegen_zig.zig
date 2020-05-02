@@ -9,6 +9,8 @@ const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferValue = @import("codegen.zig").BufferValue;
 const FloatValue = @import("codegen.zig").FloatValue;
 const BufferDest = @import("codegen.zig").BufferDest;
+const Instruction = @import("codegen.zig").Instruction;
+const CodeGenCustomModuleInner = @import("codegen.zig").CodeGenCustomModuleInner;
 const CompiledScript = @import("compile.zig").CompiledScript;
 
 const State = struct {
@@ -149,225 +151,229 @@ pub fn generateZig(out: *std.fs.File.OutStream, comptime builtin_packages: []con
         try self.print("}}\n", .{});
         try self.print("\n", .{});
         try self.print("pub fn paint(self: *{identifier}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
-        var span: []const u8 = "span";
         for (inner.instructions) |instr| {
-            switch (instr) {
-                .copy_buffer => |x| {
-                    try self.print("zang.copy({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
-                },
-                .float_to_buffer => |x| {
-                    try self.print("zang.set({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
-                },
-                .cob_to_buffer => |x| {
-                    try self.print("switch (params.{identifier}) {{\n", .{module.params[x.in_self_param].name});
-                    try self.print(".constant => |v| zang.set({str}, {buffer_dest}, v),\n", .{ span, x.out });
-                    try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
-                    try self.print("}}\n", {});
-                },
-                .negate_float_to_float => |x| {
-                    try self.print("const temp_float{usize} = -{expression_result};\n", .{ x.out.temp_float_index, x.a });
-                },
-                .negate_buffer_to_buffer => |x| {
-                    try self.print("{{\n", .{});
-                    try self.print("var i = {str}.start;\n", .{span});
-                    try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                    try self.print("{buffer_dest}[i] = -{expression_result}[i];\n", .{ x.out, x.a });
-                    try self.print("}}\n", .{});
-                    try self.print("}}\n", .{});
-                },
-                .arith_float_float => |x| {
-                    try self.print("const temp_float{usize} = ", .{x.out.temp_float_index});
-                    switch (x.op) {
-                        .add => try self.print("{expression_result} + {expression_result};\n", .{ x.a, x.b }),
-                        .sub => try self.print("{expression_result} - {expression_result};\n", .{ x.a, x.b }),
-                        .mul => try self.print("{expression_result} * {expression_result};\n", .{ x.a, x.b }),
-                        .div => try self.print("{expression_result} / {expression_result};\n", .{ x.a, x.b }),
-                        .pow => try self.print("std.math.pow(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
-                    }
-                },
-                .arith_float_buffer => |x| {
-                    switch (x.op) {
-                        .sub, .div, .pow => {
-                            try self.print("{{\n", .{});
-                            try self.print("var i = {str}.start;\n", .{span});
-                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                            switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {expression_result} - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {expression_result} / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                                else => unreachable,
-                            }
-                            try self.print("}}\n", .{});
-                            try self.print("}}\n", .{});
-                        },
-                        .add, .mul => {
-                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                            switch (x.op) {
-                                .add => try self.print("zang.addScalar", .{}),
-                                .mul => try self.print("zang.multiplyScalar", .{}),
-                                else => unreachable,
-                            }
-                            // swap order, since the supported operators are commutative
-                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.b, x.a });
-                        },
-                    }
-                },
-                .arith_buffer_float => |x| {
-                    switch (x.op) {
-                        .sub, .div, .pow => {
-                            try self.print("{{\n", .{});
-                            try self.print("var i = {str}.start;\n", .{span});
-                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                            switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result};\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result};\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
-                                else => unreachable,
-                            }
-                            try self.print("}}\n", .{});
-                            try self.print("}}\n", .{});
-                        },
-                        else => {
-                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                            switch (x.op) {
-                                .add => try self.print("zang.addScalar", .{}),
-                                .mul => try self.print("zang.multiplyScalar", .{}),
-                                else => unreachable,
-                            }
-                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
-                        },
-                    }
-                },
-                .arith_buffer_buffer => |x| {
-                    switch (x.op) {
-                        .sub, .div, .pow => {
-                            try self.print("{{\n", .{});
-                            try self.print("var i = {str}.start;\n", .{span});
-                            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
-                            switch (x.op) {
-                                .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
-                                .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
-                                .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                                else => unreachable,
-                            }
-                            try self.print("}}\n", .{});
-                            try self.print("}}\n", .{});
-                        },
-                        else => {
-                            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
-                            switch (x.op) {
-                                .add => try self.print("zang.add", .{}),
-                                .mul => try self.print("zang.multiply", .{}),
-                                else => unreachable,
-                            }
-                            try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
-                        },
-                    }
-                },
-                .call => |call| {
-                    const field_module_index = inner.resolved_fields[call.field_index];
-                    const callee_module = script.modules[field_module_index];
-                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
-                    try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });
-                    try self.print("{buffer_dest}}}, .{{", .{call.out});
-                    // callee temps
-                    for (call.temps) |n, j| {
-                        if (j > 0) {
-                            try self.print(", ", .{});
-                        }
-                        try self.print("temps[{usize}]", .{n});
-                    }
-                    // callee params
-                    try self.print("}}, note_id_changed, .{{\n", .{});
-                    for (call.args) |arg, j| {
-                        const callee_param = callee_module.params[j];
-                        try self.print(".{identifier} = ", .{callee_param.name});
-                        if (callee_param.param_type == .constant_or_buffer) {
-                            // coerce to ConstantOrBuffer?
-                            switch (arg) {
-                                .nothing => {},
-                                .temp_buffer => |temp_ref| try self.print("zang.buffer(temps[{usize}])", .{temp_ref.index}),
-                                .temp_float => |temp_ref| try self.print("zang.constant(temp_float{usize})", .{temp_ref.index}),
-                                .literal_boolean => unreachable,
-                                .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
-                                .literal_enum_value => unreachable,
-                                .self_param => |index| {
-                                    const param = module.params[index];
-                                    switch (param.param_type) {
-                                        .boolean => unreachable,
-                                        .buffer => try self.print("zang.buffer(params.{identifier})", .{param.name}),
-                                        .constant => try self.print("zang.constant(params.{identifier})", .{param.name}),
-                                        .constant_or_buffer => try self.print("params.{identifier}", .{param.name}),
-                                        .one_of => unreachable,
-                                    }
-                                },
-                            }
-                        } else {
-                            try self.print("{expression_result}", .{arg});
-                        }
-                        try self.print(",\n", .{});
-                    }
-                    try self.print("}});\n", .{});
-                },
-                .delay_begin => |delay_begin| {
-                    // this next line kind of sucks, if the delay loop iterates more than once,
-                    // we'll have done some overlapping zeroing.
-                    // maybe readDelayBuffer should do the zeroing internally.
-                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, delay_begin.out });
-                    try self.print("{{\n", .{});
-                    try self.print("var start = span.start;\n", .{});
-                    try self.print("const end = span.end;\n", .{});
-                    try self.print("while (start < end) {{\n", .{});
-                    try self.print("// temps[{usize}] will be the destination for writing into the feedback buffer\n", .{
-                        delay_begin.feedback_out_temp_buffer_index,
-                    });
-                    try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
-                        delay_begin.feedback_out_temp_buffer_index,
-                    });
-                    try self.print("// temps[{usize}] will contain the delay buffer's previous contents\n", .{
-                        delay_begin.feedback_temp_buffer_index,
-                    });
-                    try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
-                        delay_begin.feedback_temp_buffer_index,
-                    });
-                    try self.print("const samples_read = self.delay{usize}.readDelayBuffer(temps[{usize}][start..end]);\n", .{
-                        delay_begin.delay_index,
-                        delay_begin.feedback_temp_buffer_index,
-                    });
-                    try self.print("const inner_span = zang.Span.init(start, start + samples_read);\n", .{});
-                    span = "inner_span";
-                    // FIXME script should be able to output separately into the delay buffer, and the final result.
-                    // for now, i'm hardcoding it so that delay buffer is copied to final result, and the delay expression
-                    // is sent to the delay buffer. i need some new syntax in the language before i can implement
-                    // this properly
-                    try self.print("\n", .{});
-
-                    //try indent(out, indentation);
-                    //try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
-
-                    //try indent(out, indentation);
-                    //try out.print("zang.addInto({str}, ", .{span});
-                    //try printBufferDest(out, delay_begin.out);
-                    //try out.print(", temps[{usize}]);\n", .{delay_begin.feedback_temp_buffer_index});
-                    //try out.print("\n", .{});
-
-                    try self.print("// inner expression\n", .{});
-                },
-                .delay_end => |delay_end| {
-                    span = "span"; // nested delays aren't allowed so this is fine
-                    try self.print("\n", .{});
-                    try self.print("// write expression result into the delay buffer\n", .{});
-                    try self.print("self.delay{usize}.writeDelayBuffer(temps[{usize}][start..start + samples_read]);\n", .{
-                        delay_end.delay_index,
-                        delay_end.feedback_out_temp_buffer_index,
-                    });
-                    try self.print("start += samples_read;\n", .{});
-                    try self.print("}}\n", .{});
-                    try self.print("}}\n", .{});
-                },
-            }
+            try genInstruction(&self, module, inner, instr, "span");
         }
         try self.print("}}\n", .{});
         try self.print("}};\n", .{});
+    }
+}
+
+fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner, instr: Instruction, span: []const u8) (error{NoModule} || std.os.WriteError)!void {
+    switch (instr) {
+        .copy_buffer => |x| {
+            try self.print("zang.copy({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
+        },
+        .float_to_buffer => |x| {
+            try self.print("zang.set({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
+        },
+        .cob_to_buffer => |x| {
+            try self.print("switch (params.{identifier}) {{\n", .{module.params[x.in_self_param].name});
+            try self.print(".constant => |v| zang.set({str}, {buffer_dest}, v),\n", .{ span, x.out });
+            try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
+            try self.print("}}\n", {});
+        },
+        .negate_float_to_float => |x| {
+            try self.print("const temp_float{usize} = -{expression_result};\n", .{ x.out.temp_float_index, x.a });
+        },
+        .negate_buffer_to_buffer => |x| {
+            try self.print("{{\n", .{});
+            try self.print("var i = {str}.start;\n", .{span});
+            try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+            try self.print("{buffer_dest}[i] = -{expression_result}[i];\n", .{ x.out, x.a });
+            try self.print("}}\n", .{});
+            try self.print("}}\n", .{});
+        },
+        .arith_float_float => |x| {
+            try self.print("const temp_float{usize} = ", .{x.out.temp_float_index});
+            switch (x.op) {
+                .add => try self.print("{expression_result} + {expression_result};\n", .{ x.a, x.b }),
+                .sub => try self.print("{expression_result} - {expression_result};\n", .{ x.a, x.b }),
+                .mul => try self.print("{expression_result} * {expression_result};\n", .{ x.a, x.b }),
+                .div => try self.print("{expression_result} / {expression_result};\n", .{ x.a, x.b }),
+                .pow => try self.print("std.math.pow(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
+            }
+        },
+        .arith_float_buffer => |x| {
+            switch (x.op) {
+                .sub, .div, .pow => {
+                    try self.print("{{\n", .{});
+                    try self.print("var i = {str}.start;\n", .{span});
+                    try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                    switch (x.op) {
+                        .sub => try self.print("{buffer_dest}[i] = {expression_result} - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                        .div => try self.print("{buffer_dest}[i] = {expression_result} / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                        .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        else => unreachable,
+                    }
+                    try self.print("}}\n", .{});
+                    try self.print("}}\n", .{});
+                },
+                .add, .mul => {
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                    switch (x.op) {
+                        .add => try self.print("zang.addScalar", .{}),
+                        .mul => try self.print("zang.multiplyScalar", .{}),
+                        else => unreachable,
+                    }
+                    // swap order, since the supported operators are commutative
+                    try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.b, x.a });
+                },
+            }
+        },
+        .arith_buffer_float => |x| {
+            switch (x.op) {
+                .sub, .div, .pow => {
+                    try self.print("{{\n", .{});
+                    try self.print("var i = {str}.start;\n", .{span});
+                    try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                    switch (x.op) {
+                        .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result};\n", .{ x.out, x.a, x.b }),
+                        .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result};\n", .{ x.out, x.a, x.b }),
+                        .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
+                        else => unreachable,
+                    }
+                    try self.print("}}\n", .{});
+                    try self.print("}}\n", .{});
+                },
+                else => {
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                    switch (x.op) {
+                        .add => try self.print("zang.addScalar", .{}),
+                        .mul => try self.print("zang.multiplyScalar", .{}),
+                        else => unreachable,
+                    }
+                    try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
+                },
+            }
+        },
+        .arith_buffer_buffer => |x| {
+            switch (x.op) {
+                .sub, .div, .pow => {
+                    try self.print("{{\n", .{});
+                    try self.print("var i = {str}.start;\n", .{span});
+                    try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
+                    switch (x.op) {
+                        .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                        .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
+                        .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        else => unreachable,
+                    }
+                    try self.print("}}\n", .{});
+                    try self.print("}}\n", .{});
+                },
+                else => {
+                    try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, x.out });
+                    switch (x.op) {
+                        .add => try self.print("zang.add", .{}),
+                        .mul => try self.print("zang.multiply", .{}),
+                        else => unreachable,
+                    }
+                    try self.print("({str}, {buffer_dest}, {expression_result}, {expression_result});\n", .{ span, x.out, x.a, x.b });
+                },
+            }
+        },
+        .call => |call| {
+            const field_module_index = inner.resolved_fields[call.field_index];
+            const callee_module = self.script.modules[field_module_index];
+            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out });
+            try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });
+            try self.print("{buffer_dest}}}, .{{", .{call.out});
+            // callee temps
+            for (call.temps) |n, j| {
+                if (j > 0) {
+                    try self.print(", ", .{});
+                }
+                try self.print("temps[{usize}]", .{n});
+            }
+            // callee params
+            try self.print("}}, note_id_changed, .{{\n", .{});
+            for (call.args) |arg, j| {
+                const callee_param = callee_module.params[j];
+                try self.print(".{identifier} = ", .{callee_param.name});
+                if (callee_param.param_type == .constant_or_buffer) {
+                    // coerce to ConstantOrBuffer?
+                    switch (arg) {
+                        .nothing => {},
+                        .temp_buffer => |temp_ref| try self.print("zang.buffer(temps[{usize}])", .{temp_ref.index}),
+                        .temp_float => |temp_ref| try self.print("zang.constant(temp_float{usize})", .{temp_ref.index}),
+                        .literal_boolean => unreachable,
+                        .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
+                        .literal_enum_value => unreachable,
+                        .self_param => |index| {
+                            const param = module.params[index];
+                            switch (param.param_type) {
+                                .boolean => unreachable,
+                                .buffer => try self.print("zang.buffer(params.{identifier})", .{param.name}),
+                                .constant => try self.print("zang.constant(params.{identifier})", .{param.name}),
+                                .constant_or_buffer => try self.print("params.{identifier}", .{param.name}),
+                                .one_of => unreachable,
+                            }
+                        },
+                    }
+                } else {
+                    try self.print("{expression_result}", .{arg});
+                }
+                try self.print(",\n", .{});
+            }
+            try self.print("}});\n", .{});
+        },
+        .delay => |delay| {
+            // this next line kind of sucks, if the delay loop iterates more than once,
+            // we'll have done some overlapping zeroing.
+            // maybe readDelayBuffer should do the zeroing internally.
+            try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, delay.out });
+            try self.print("{{\n", .{});
+            try self.print("var start = span.start;\n", .{});
+            try self.print("const end = span.end;\n", .{});
+            try self.print("while (start < end) {{\n", .{});
+            try self.print("// temps[{usize}] will be the destination for writing into the feedback buffer\n", .{
+                delay.feedback_out_temp_buffer_index,
+            });
+            try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
+                delay.feedback_out_temp_buffer_index,
+            });
+            try self.print("// temps[{usize}] will contain the delay buffer's previous contents\n", .{
+                delay.feedback_temp_buffer_index,
+            });
+            try self.print("zang.zero(zang.Span.init(start, end), temps[{usize}]);\n", .{
+                delay.feedback_temp_buffer_index,
+            });
+            try self.print("const samples_read = self.delay{usize}.readDelayBuffer(temps[{usize}][start..end]);\n", .{
+                delay.delay_index,
+                delay.feedback_temp_buffer_index,
+            });
+            try self.print("const inner_span = zang.Span.init(start, start + samples_read);\n", .{});
+            // FIXME script should be able to output separately into the delay buffer, and the final result.
+            // for now, i'm hardcoding it so that delay buffer is copied to final result, and the delay expression
+            // is sent to the delay buffer. i need some new syntax in the language before i can implement
+            // this properly
+            try self.print("\n", .{});
+
+            //try indent(out, indentation);
+            //try out.print("// copy the old delay buffer contents into the result (hardcoded for now)\n", .{});
+
+            //try indent(out, indentation);
+            //try out.print("zang.addInto({str}, ", .{span});
+            //try printBufferDest(out, delay_begin.out);
+            //try out.print(", temps[{usize}]);\n", .{delay_begin.feedback_temp_buffer_index});
+            //try out.print("\n", .{});
+
+            try self.print("// inner expression\n", .{});
+            for (delay.instructions) |sub_instr| {
+                try genInstruction(self, module, inner, sub_instr, "inner_span");
+            }
+
+            // end
+            try self.print("\n", .{});
+            try self.print("// write expression result into the delay buffer\n", .{});
+            try self.print("self.delay{usize}.writeDelayBuffer(temps[{usize}][start..start + samples_read]);\n", .{
+                delay.delay_index,
+                delay.feedback_out_temp_buffer_index,
+            });
+            try self.print("start += samples_read;\n", .{});
+            try self.print("}}\n", .{});
+            try self.print("}}\n", .{});
+        },
     }
 }

@@ -8,6 +8,8 @@ const ParseResult = @import("parse.zig").ParseResult;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const BufferDest = @import("codegen.zig").BufferDest;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
+const Instruction = @import("codegen.zig").Instruction;
+const CodeGenCustomModuleInner = @import("codegen.zig").CodeGenCustomModuleInner;
 const CompiledScript = @import("compile.zig").CompiledScript;
 
 pub const ModuleBase = struct {
@@ -149,6 +151,7 @@ pub const ScriptModule = struct {
     script: *const CompiledScript,
     module_index: usize,
     module_instances: []*ModuleBase,
+    delay_instances: []zang.Delay(11025),
 
     pub fn init(
         script: *const CompiledScript,
@@ -189,6 +192,11 @@ pub const ScriptModule = struct {
                 }
             } else unreachable;
         }
+        var delay_instances = try allocator.alloc(zang.Delay(11025), inner.delays.len);
+        for (inner.delays) |delay_decl, i| {
+            // ignoring delay_decl.num_samples because we need a comptime value
+            delay_instances[i] = zang.Delay(11025).init();
+        }
         return ScriptModule{
             .base = .{
                 .num_outputs = script.module_results[module_index].num_outputs,
@@ -200,11 +208,11 @@ pub const ScriptModule = struct {
             .script = script,
             .module_index = module_index,
             .module_instances = module_instances,
+            .delay_instances = delay_instances,
         };
     }
 
     const PaintArgs = struct {
-        span: zang.Span,
         outputs: []const []f32,
         temps: []const []f32,
         temp_floats: []f32,
@@ -238,178 +246,196 @@ pub const ScriptModule = struct {
 
         var temp_floats: [50]f32 = undefined; // FIXME - use the num_temp_floats from codegen result
 
+        const inner = switch (self.script.module_results[self.module_index].inner) {
+            .builtin => unreachable,
+            .custom => |x| x,
+        };
         const p: PaintArgs = .{
-            .span = span,
             .outputs = outputs,
             .temps = temps,
             .note_id_changed = note_id_changed,
             .params = params,
             .temp_floats = &temp_floats,
         };
-        const inner = switch (self.script.module_results[self.module_index].inner) {
-            .builtin => unreachable,
-            .custom => |x| x,
-        };
         for (inner.instructions) |instr| {
-            switch (instr) {
-                .copy_buffer => |x| {
-                    zang.copy(span, getOut(p, x.out), self.getResultAsBuffer(p, x.in));
-                },
-                .float_to_buffer => |x| {
-                    zang.set(span, getOut(p, x.out), self.getResultAsFloat(p, x.in));
-                },
-                .cob_to_buffer => |x| {
-                    var out = getOut(p, x.out);
-                    switch (p.params[x.in_self_param]) {
-                        .cob => |cob| switch (cob) {
-                            .constant => |v| zang.set(span, out, v),
-                            .buffer => |v| zang.copy(span, out, v),
-                        },
-                        else => unreachable,
-                    }
-                },
-                .call => |x| {
-                    var out = getOut(p, x.out);
+            self.paintInstruction(inner, p, span, instr);
+        }
+    }
 
-                    const callee_module_index = inner.resolved_fields[x.field_index];
-                    const callee_base = self.module_instances[x.field_index];
+    fn paintInstruction(self: *const ScriptModule, inner: CodeGenCustomModuleInner, p: PaintArgs, span: zang.Span, instr: Instruction) void {
+        switch (instr) {
+            .copy_buffer => |x| {
+                zang.copy(span, getOut(p, x.out), self.getResultAsBuffer(p, x.in));
+            },
+            .float_to_buffer => |x| {
+                zang.set(span, getOut(p, x.out), self.getResultAsFloat(p, x.in));
+            },
+            .cob_to_buffer => |x| {
+                var out = getOut(p, x.out);
+                switch (p.params[x.in_self_param]) {
+                    .cob => |cob| switch (cob) {
+                        .constant => |v| zang.set(span, out, v),
+                        .buffer => |v| zang.copy(span, out, v),
+                    },
+                    else => unreachable,
+                }
+            },
+            .call => |x| {
+                var out = getOut(p, x.out);
 
-                    var callee_temps: [10][]f32 = undefined; // FIXME...
-                    for (x.temps) |n, i| callee_temps[i] = temps[n];
+                const callee_module_index = inner.resolved_fields[x.field_index];
+                const callee_base = self.module_instances[x.field_index];
 
-                    var arg_values: [10]Value = undefined; // FIXME
-                    for (x.args) |arg, i| {
-                        const param_type = self.script.modules[callee_module_index].params[i].param_type;
-                        arg_values[i] = self.getResultValue(p, param_type, arg);
-                    }
+                var callee_temps: [10][]f32 = undefined; // FIXME...
+                for (x.temps) |n, i| callee_temps[i] = p.temps[n];
 
-                    zang.zero(span, out);
-                    callee_base.paintFn(callee_base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], note_id_changed, arg_values[0..x.args.len]);
-                },
-                .negate_float_to_float => |x| {
-                    temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
-                },
-                .negate_buffer_to_buffer => |x| {
-                    var out = getOut(p, x.out);
-                    const a = self.getResultAsBuffer(p, x.a);
-                    var i: usize = span.start;
-                    while (i < span.end) : (i += 1) {
-                        out[i] = -a[i];
+                var arg_values: [10]Value = undefined; // FIXME
+                for (x.args) |arg, i| {
+                    const param_type = self.script.modules[callee_module_index].params[i].param_type;
+                    arg_values[i] = self.getResultValue(p, param_type, arg);
+                }
+
+                zang.zero(span, out);
+                callee_base.paintFn(callee_base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], p.note_id_changed, arg_values[0..x.args.len]);
+            },
+            .negate_float_to_float => |x| {
+                p.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
+            },
+            .negate_buffer_to_buffer => |x| {
+                var out = getOut(p, x.out);
+                const a = self.getResultAsBuffer(p, x.a);
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = -a[i];
+                }
+            },
+            .arith_float_float => |x| {
+                const a = self.getResultAsFloat(p, x.a);
+                const b = self.getResultAsFloat(p, x.b);
+                p.temp_floats[x.out.temp_float_index] = switch (x.op) {
+                    .add => a + b,
+                    .sub => a - b,
+                    .mul => a * b,
+                    .div => a / b,
+                    .pow => std.math.pow(f32, a, b),
+                };
+            },
+            .arith_float_buffer => |x| {
+                var out = getOut(p, x.out);
+                const a = self.getResultAsFloat(p, x.a);
+                const b = self.getResultAsBuffer(p, x.b);
+                switch (x.op) {
+                    .add => {
+                        zang.zero(span, out);
+                        zang.addScalar(span, out, b, a);
+                    },
+                    .sub => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a - b[i];
+                        }
+                    },
+                    .mul => {
+                        zang.zero(span, out);
+                        zang.multiplyScalar(span, out, b, a);
+                    },
+                    .div => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a / b[i];
+                        }
+                    },
+                    .pow => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = std.math.pow(f32, a, b[i]);
+                        }
+                    },
+                }
+            },
+            .arith_buffer_float => |x| {
+                var out = getOut(p, x.out);
+                const a = self.getResultAsBuffer(p, x.a);
+                const b = self.getResultAsFloat(p, x.b);
+                switch (x.op) {
+                    .add => {
+                        zang.zero(span, out);
+                        zang.addScalar(span, out, a, b);
+                    },
+                    .sub => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a[i] - b;
+                        }
+                    },
+                    .mul => {
+                        zang.zero(span, out);
+                        zang.multiplyScalar(span, out, a, b);
+                    },
+                    .div => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a[i] / b;
+                        }
+                    },
+                    .pow => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = std.math.pow(f32, a[i], b);
+                        }
+                    },
+                }
+            },
+            .arith_buffer_buffer => |x| {
+                var out = getOut(p, x.out);
+                const a = self.getResultAsBuffer(p, x.a);
+                const b = self.getResultAsBuffer(p, x.b);
+                switch (x.op) {
+                    .add => {
+                        zang.zero(span, out);
+                        zang.add(span, out, a, b);
+                    },
+                    .sub => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a[i] - b[i];
+                        }
+                    },
+                    .mul => {
+                        zang.zero(span, out);
+                        zang.multiply(span, out, a, b);
+                    },
+                    .div => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = a[i] / b[i];
+                        }
+                    },
+                    .pow => {
+                        var i: usize = span.start;
+                        while (i < span.end) : (i += 1) {
+                            out[i] = std.math.pow(f32, a[i], b[i]);
+                        }
+                    },
+                }
+            },
+            .delay => |x| {
+                var out = getOut(p, x.out);
+                zang.zero(span, out);
+                var start = span.start;
+                const end = span.end;
+                while (start < end) {
+                    zang.zero(zang.Span.init(start, end), p.temps[x.feedback_out_temp_buffer_index]);
+                    zang.zero(zang.Span.init(start, end), p.temps[x.feedback_temp_buffer_index]);
+                    const samples_read = self.delay_instances[x.delay_index].readDelayBuffer(p.temps[x.feedback_temp_buffer_index][start..end]);
+                    const inner_span = zang.Span.init(start, start + samples_read);
+                    for (x.instructions) |sub_instr| {
+                        self.paintInstruction(inner, p, inner_span, sub_instr);
                     }
-                },
-                .arith_float_float => |x| {
-                    const a = self.getResultAsFloat(p, x.a);
-                    const b = self.getResultAsFloat(p, x.b);
-                    temp_floats[x.out.temp_float_index] = switch (x.op) {
-                        .add => a + b,
-                        .sub => a - b,
-                        .mul => a * b,
-                        .div => a / b,
-                        .pow => std.math.pow(f32, a, b),
-                    };
-                },
-                .arith_float_buffer => |x| {
-                    var out = getOut(p, x.out);
-                    const a = self.getResultAsFloat(p, x.a);
-                    const b = self.getResultAsBuffer(p, x.b);
-                    switch (x.op) {
-                        .add => {
-                            zang.zero(span, out);
-                            zang.addScalar(span, out, b, a);
-                        },
-                        .sub => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a - b[i];
-                            }
-                        },
-                        .mul => {
-                            zang.zero(span, out);
-                            zang.multiplyScalar(span, out, b, a);
-                        },
-                        .div => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a / b[i];
-                            }
-                        },
-                        .pow => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = std.math.pow(f32, a, b[i]);
-                            }
-                        },
-                    }
-                },
-                .arith_buffer_float => |x| {
-                    var out = getOut(p, x.out);
-                    const a = self.getResultAsBuffer(p, x.a);
-                    const b = self.getResultAsFloat(p, x.b);
-                    switch (x.op) {
-                        .add => {
-                            zang.zero(span, out);
-                            zang.addScalar(span, out, a, b);
-                        },
-                        .sub => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a[i] - b;
-                            }
-                        },
-                        .mul => {
-                            zang.zero(span, out);
-                            zang.multiplyScalar(span, out, a, b);
-                        },
-                        .div => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a[i] / b;
-                            }
-                        },
-                        .pow => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = std.math.pow(f32, a[i], b);
-                            }
-                        },
-                    }
-                },
-                .arith_buffer_buffer => |x| {
-                    var out = getOut(p, x.out);
-                    const a = self.getResultAsBuffer(p, x.a);
-                    const b = self.getResultAsBuffer(p, x.b);
-                    switch (x.op) {
-                        .add => {
-                            zang.zero(span, out);
-                            zang.add(span, out, a, b);
-                        },
-                        .sub => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a[i] - b[i];
-                            }
-                        },
-                        .mul => {
-                            zang.zero(span, out);
-                            zang.multiply(span, out, a, b);
-                        },
-                        .div => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = a[i] / b[i];
-                            }
-                        },
-                        .pow => {
-                            var i: usize = span.start;
-                            while (i < span.end) : (i += 1) {
-                                out[i] = std.math.pow(f32, a[i], b[i]);
-                            }
-                        },
-                    }
-                },
-                .delay_begin => @panic("delay_begin not implemented"), // TODO
-                .delay_end => @panic("delay_end not implemented"), // TODO
-            }
+                    self.delay_instances[x.delay_index].writeDelayBuffer(p.temps[x.feedback_out_temp_buffer_index][start .. start + samples_read]);
+                    start += samples_read;
+                }
+            },
         }
     }
 

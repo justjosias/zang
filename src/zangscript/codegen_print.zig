@@ -4,6 +4,7 @@ const CodegenModuleState = @import("codegen.zig").CodegenModuleState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferDest = @import("codegen.zig").BufferDest;
 const FloatDest = @import("codegen.zig").FloatDest;
+const Instruction = @import("codegen.zig").Instruction;
 
 const State = struct {
     codegen_state: *const CodegenModuleState,
@@ -75,57 +76,62 @@ pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
     try self.print("bytecode:\n", .{});
     for (codegen_state.instructions.items) |instr| {
         try self.print("    ", .{});
-        switch (instr) {
-            .copy_buffer => |x| {
-                try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
-            },
-            .float_to_buffer => |x| {
-                try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
-            },
-            .cob_to_buffer => |x| {
-                const module = self.codegen_state.modules[self.codegen_state.module_index];
-                try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
-            },
-            .negate_float_to_float => |x| {
-                try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {expression_result}\n", .{ x.out, x.a });
-            },
-            .negate_buffer_to_buffer => |x| {
-                try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {expression_result}\n", .{ x.out, x.a });
-            },
-            .arith_float_float => |x| {
-                try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
-            },
-            .arith_float_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
-            },
-            .arith_buffer_float => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
-            },
-            .arith_buffer_buffer => |x| {
-                try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
-            },
-            .call => |call| {
-                const field_module_index = codegen_state.resolved_fields[call.field_index];
-                const callee_module = codegen_state.modules[field_module_index];
-                try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
-                try self.print("        temps: [", .{});
-                for (call.temps) |temp, i| {
-                    if (i > 0) try self.print(", ", .{});
-                    try self.print("temp{usize}", .{temp});
-                }
-                try self.print("]\n", .{});
-                for (call.args) |arg, i| {
-                    try self.print("        {str} = {expression_result}\n", .{ callee_module.params[i].name, arg });
-                }
-            },
-            .delay_begin => |delay_begin| {
-                try self.print("DELAY_BEGIN (feedback provided at temps[{usize}])\n", .{delay_begin.feedback_temp_buffer_index});
-            },
-            .delay_end => |delay_end| {
-                //try self.print("{buffer_dest} = DELAY_END {expression_result}\n", .{delay_end.out,delay_end.inner_value}); // FIXME
-                try self.print("{buffer_dest} = DELAY_END\n", .{delay_end.out});
-            },
-        }
+        try printInstruction(&self, instr);
     }
     try self.print("\n", .{});
+}
+
+fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
+    switch (instr) {
+        .copy_buffer => |x| {
+            try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
+        },
+        .float_to_buffer => |x| {
+            try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
+        },
+        .cob_to_buffer => |x| {
+            const module = self.codegen_state.modules[self.codegen_state.module_index];
+            try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
+        },
+        .negate_float_to_float => |x| {
+            try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {expression_result}\n", .{ x.out, x.a });
+        },
+        .negate_buffer_to_buffer => |x| {
+            try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {expression_result}\n", .{ x.out, x.a });
+        },
+        .arith_float_float => |x| {
+            try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
+        },
+        .arith_float_buffer => |x| {
+            try self.print("{buffer_dest} = ARITH_FLOAT_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
+        },
+        .arith_buffer_float => |x| {
+            try self.print("{buffer_dest} = ARITH_BUFFER_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
+        },
+        .arith_buffer_buffer => |x| {
+            try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
+        },
+        .call => |call| {
+            const field_module_index = self.codegen_state.resolved_fields[call.field_index];
+            const callee_module = self.codegen_state.modules[field_module_index];
+            try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
+            try self.print("        temps: [", .{});
+            for (call.temps) |temp, i| {
+                if (i > 0) try self.print(", ", .{});
+                try self.print("temp{usize}", .{temp});
+            }
+            try self.print("]\n", .{});
+            for (call.args) |arg, i| {
+                try self.print("        {str} = {expression_result}\n", .{ callee_module.params[i].name, arg });
+            }
+        },
+        .delay => |delay| {
+            try self.print("{buffer_dest} = DELAY (feedback provided at temps[{usize}]):\n", .{ delay.out, delay.feedback_temp_buffer_index });
+            for (delay.instructions) |sub_instr| {
+                try self.print("        ", .{});
+                try printInstruction(self, sub_instr);
+            }
+            //try self.print("{buffer_dest} = DELAY_END {expression_result}\n", .{delay_end.out,delay_end.inner_value}); // FIXME
+        },
+    }
 }

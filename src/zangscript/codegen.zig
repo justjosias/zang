@@ -76,23 +76,22 @@ pub const Instruction = union(enum) {
         // list of argument param values (in the order of the callee module's params)
         args: []const ExpressionResult,
     },
-    // i might consider replacing this begin/end pair with a single InstrDelay
-    // which actually contains a sublist of Instructions?
-    delay_begin: struct {
+    delay: struct {
         delay_index: usize,
         out: BufferDest,
         feedback_out_temp_buffer_index: usize,
         feedback_temp_buffer_index: usize,
-    },
-    delay_end: struct {
-        delay_index: usize,
-        out: BufferDest,
-        feedback_out_temp_buffer_index: usize,
+        instructions: []const Instruction,
     },
 };
 
 pub const DelayDecl = struct {
     num_samples: usize,
+};
+
+pub const CurrentDelay = struct {
+    feedback_temp_index: usize,
+    instructions: std.ArrayList(Instruction),
 };
 
 pub const CodegenModuleState = struct {
@@ -108,6 +107,7 @@ pub const CodegenModuleState = struct {
     temp_floats: TempManager,
     local_results: []?ExpressionResult,
     delays: std.ArrayList(DelayDecl),
+    current_delay: ?*CurrentDelay,
 };
 
 const TempManager = struct {
@@ -273,9 +273,17 @@ fn commitBufferDest(self: *CodegenModuleState, maybe_result_loc: ?BufferDest, bu
     return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
 }
 
-fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+fn addInstruction(self: *CodegenModuleState, instruction: Instruction) !void {
+    if (self.current_delay) |current_delay| {
+        try current_delay.instructions.append(instruction);
+    } else {
+        try self.instructions.append(instruction);
+    }
+}
+
+fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const Expression) !ExpressionResult {
     if (payload) |payload_expr| {
-        const payload_result = try genExpression(self, payload_expr, null, maybe_feedback_temp_index);
+        const payload_result = try genExpression(self, payload_expr, null);
         // the payload_result is now owned by the enum result, and will be released with it by releaseExpressionResult
         var payload_result_ptr = try self.arena_allocator.create(ExpressionResult);
         payload_result_ptr.* = payload_result;
@@ -285,42 +293,42 @@ fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const
     }
 }
 
-fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, expr: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
-    const ra = try genExpression(self, expr, null, maybe_feedback_temp_index);
+fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, expr: *const Expression) !ExpressionResult {
+    const ra = try genExpression(self, expr, null);
     defer releaseExpressionResult(self, ra);
 
     if (isResultFloat(self, ra)) {
         // float -> float
         const float_dest = try requestFloatDest(self);
-        try self.instructions.append(.{ .negate_float_to_float = .{ .out = float_dest, .a = ra } });
+        try addInstruction(self, .{ .negate_float_to_float = .{ .out = float_dest, .a = ra } });
         return commitFloatDest(self, float_dest);
     }
     if (isResultBuffer(self, ra)) {
         // buffer -> buffer
         const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-        try self.instructions.append(.{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = ra } });
+        try addInstruction(self, .{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = ra } });
         return commitBufferDest(self, maybe_result_loc, buffer_dest);
     }
     return fail(self.source, expr.source_range, "arithmetic can only be performed on numeric types", .{});
 }
 
-fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression, maybe_feedback_temp_index: ?usize) !ExpressionResult {
-    const ra = try genExpression(self, ea, null, maybe_feedback_temp_index);
+fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression) !ExpressionResult {
+    const ra = try genExpression(self, ea, null);
     defer releaseExpressionResult(self, ra);
-    const rb = try genExpression(self, eb, null, maybe_feedback_temp_index);
+    const rb = try genExpression(self, eb, null);
     defer releaseExpressionResult(self, rb);
 
     if (isResultFloat(self, ra)) {
         if (isResultFloat(self, rb)) {
             // float * float -> float
             const float_dest = try requestFloatDest(self);
-            try self.instructions.append(.{ .arith_float_float = .{ .out = float_dest, .op = op, .a = ra, .b = rb } });
+            try addInstruction(self, .{ .arith_float_float = .{ .out = float_dest, .op = op, .a = ra, .b = rb } });
             return commitFloatDest(self, float_dest);
         }
         if (isResultBuffer(self, rb)) {
             // float * buffer -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_float_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
+            try addInstruction(self, .{ .arith_float_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
     }
@@ -328,13 +336,13 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
         if (isResultFloat(self, rb)) {
             // buffer * float -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_buffer_float = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
+            try addInstruction(self, .{ .arith_buffer_float = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
         if (isResultBuffer(self, rb)) {
             // buffer * buffer -> buffer
             const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-            try self.instructions.append(.{ .arith_buffer_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
+            try addInstruction(self, .{ .arith_buffer_buffer = .{ .out = buffer_dest, .op = op, .a = ra, .b = rb } });
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
     }
@@ -352,7 +360,7 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
             if (isResultBuffer(self, result)) return result;
             if (isResultFloat(self, result)) {
                 const temp_buffer_index = try self.temp_buffers.claim();
-                try self.instructions.append(.{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = result } });
+                try addInstruction(self, .{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = result } });
                 return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
             }
             return fail(self.source, sr, "expected buffer value", .{});
@@ -373,7 +381,7 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
     }
 }
 
-fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, field_index: usize, args: []const CallArg, maybe_feedback_temp_index: ?usize) !ExpressionResult {
+fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, field_index: usize, args: []const CallArg) !ExpressionResult {
     const field_module_index = self.resolved_fields[field_index];
     const callee_module = self.modules[field_module_index];
     const callee_num_temps = self.module_results[field_module_index].num_temps;
@@ -394,7 +402,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
             maybe_arg = a;
         }
         const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
-        const result = try genExpression(self, arg.value, null, maybe_feedback_temp_index);
+        const result = try genExpression(self, arg.value, null);
         arg_results[i] = try commitCalleeParam(self, arg.value.source_range, result, param.param_type);
     }
     defer for (callee_module.params) |param, i| releaseExpressionResult(self, arg_results[i]);
@@ -405,7 +413,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
     defer for (temps) |temp_buffer_index| self.temp_buffers.release(temp_buffer_index);
 
     const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-    try self.instructions.append(.{
+    try addInstruction(self, .{
         .call = .{
             .out = buffer_dest,
             .field_index = field_index,
@@ -416,8 +424,8 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
     return commitBufferDest(self, maybe_result_loc, buffer_dest);
 }
 
-fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay, maybe_feedback_temp_index: ?usize) !ExpressionResult {
-    if (maybe_feedback_temp_index != null) {
+fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay) !ExpressionResult {
+    if (self.current_delay != null) {
         return fail(self.source, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
     }
 
@@ -432,39 +440,41 @@ fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffe
     const feedback_out_temp_index = try self.temp_buffers.claim();
     defer self.temp_buffers.release(feedback_out_temp_index);
 
-    try self.instructions.append(.{
-        .delay_begin = .{
-            .out = buffer_dest,
-            .delay_index = delay_index,
-            .feedback_out_temp_buffer_index = feedback_out_temp_index,
-            .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
-        },
-    });
+    var current_delay: CurrentDelay = .{
+        .feedback_temp_index = feedback_temp_index,
+        .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
+    };
+
+    self.current_delay = &current_delay;
 
     for (delay.scope.statements.items) |statement| {
         switch (statement) {
             .let_assignment => |x| {
-                self.local_results[x.local_index] = try genExpression(self, x.expression, null, feedback_temp_index);
+                self.local_results[x.local_index] = try genExpression(self, x.expression, null);
             },
             .output => |expr| {
-                const result = try genExpression(self, expr, buffer_dest, feedback_temp_index);
+                const result = try genExpression(self, expr, buffer_dest);
                 try commitOutput(self, expr.source_range, result, buffer_dest);
                 releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
             },
             .feedback => |expr| {
                 const result_loc: BufferDest = .{ .temp_buffer_index = feedback_out_temp_index };
-                const result = try genExpression(self, expr, result_loc, feedback_temp_index);
+                const result = try genExpression(self, expr, result_loc);
                 try commitOutput(self, expr.source_range, result, result_loc);
                 releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
             },
         }
     }
 
-    try self.instructions.append(.{
-        .delay_end = .{
+    self.current_delay = null;
+
+    try addInstruction(self, .{
+        .delay = .{
             .out = buffer_dest,
-            .feedback_out_temp_buffer_index = feedback_out_temp_index,
             .delay_index = delay_index,
+            .feedback_out_temp_buffer_index = feedback_out_temp_index,
+            .feedback_temp_buffer_index = feedback_temp_index, // do i need this?
+            .instructions = current_delay.instructions.toOwnedSlice(),
         },
     });
 
@@ -477,13 +487,13 @@ pub const GenError = error{
 };
 
 // generate bytecode instructions for an expression
-fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe_result_loc: ?BufferDest, maybe_feedback_temp_index: ?usize) GenError!ExpressionResult {
+fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe_result_loc: ?BufferDest) GenError!ExpressionResult {
     const sr = expression.source_range;
 
     switch (expression.inner) {
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
-        .literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload, maybe_feedback_temp_index),
+        .literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload),
         .local => |local_index| {
             // a local is just a saved ExpressionResult. make a weak-reference version of it
             const result = self.local_results[local_index].?;
@@ -497,20 +507,21 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
             // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
             if (self.modules[self.module_index].params[param_index].param_type == .constant_or_buffer) {
                 const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-                try self.instructions.append(.{ .cob_to_buffer = .{ .out = buffer_dest, .in_self_param = param_index } });
+                try addInstruction(self, .{ .cob_to_buffer = .{ .out = buffer_dest, .in_self_param = param_index } });
                 return try commitBufferDest(self, maybe_result_loc, buffer_dest);
             } else {
                 return ExpressionResult{ .self_param = param_index };
             }
         },
-        .negate => |expr| return try genNegate(self, sr, maybe_result_loc, expr, maybe_feedback_temp_index),
-        .bin_arith => |m| return try genBinArith(self, sr, maybe_result_loc, m.op, m.a, m.b, maybe_feedback_temp_index),
-        .call => |call| return try genCall(self, sr, maybe_result_loc, call.field_index, call.args, maybe_feedback_temp_index),
-        .delay => |delay| return try genDelay(self, sr, maybe_result_loc, delay, maybe_feedback_temp_index),
+        .negate => |expr| return try genNegate(self, sr, maybe_result_loc, expr),
+        .bin_arith => |m| return try genBinArith(self, sr, maybe_result_loc, m.op, m.a, m.b),
+        .call => |call| return try genCall(self, sr, maybe_result_loc, call.field_index, call.args),
+        .delay => |delay| return try genDelay(self, sr, maybe_result_loc, delay),
         .feedback => {
-            const feedback_temp_index = maybe_feedback_temp_index orelse {
+            const feedback_temp_index = if (self.current_delay) |current_delay|
+                current_delay.feedback_temp_index
+            else
                 return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
-            };
             return ExpressionResult{ .temp_buffer = TempRef.weak(feedback_temp_index) };
         },
     }
@@ -523,10 +534,10 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
             // value has already been written into the result location
         },
         .temp_buffer => {
-            try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = result } });
+            try addInstruction(self, .{ .copy_buffer = .{ .out = buffer_dest, .in = result } });
         },
         .temp_float, .literal_number => {
-            try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = result } });
+            try addInstruction(self, .{ .float_to_buffer = .{ .out = buffer_dest, .in = result } });
         },
         .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
@@ -534,10 +545,10 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
             switch (self.modules[self.module_index].params[param_index].param_type) {
                 .boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
                 .buffer, .constant_or_buffer => { // constant_or_buffer are immediately unwrapped to buffers in codegen (for now)
-                    try self.instructions.append(.{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
+                    try addInstruction(self, .{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
                 .constant => {
-                    try self.instructions.append(.{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
+                    try addInstruction(self, .{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
                 .one_of => |e| return fail(self.source, sr, "expected buffer value, found enum value", .{}),
             }
@@ -546,13 +557,15 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
 }
 
 fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
+    std.debug.assert(self.current_delay == null);
+
     switch (statement) {
         .let_assignment => |x| {
-            self.local_results[x.local_index] = try genExpression(self, x.expression, null, null);
+            self.local_results[x.local_index] = try genExpression(self, x.expression, null);
         },
         .output => |expression| {
             const result_loc: BufferDest = .{ .output_index = 0 };
-            const result = try genExpression(self, expression, result_loc, null);
+            const result = try genExpression(self, expression, result_loc);
             try commitOutput(self, expression.source_range, result, result_loc);
             releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
         },
@@ -562,16 +575,18 @@ fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
     }
 }
 
+pub const CodeGenCustomModuleInner = struct {
+    resolved_fields: []const usize, // owned slice
+    delays: []const DelayDecl, // owned slice
+    instructions: []const Instruction, // owned slice
+};
+
 pub const CodeGenModuleResult = struct {
     num_outputs: usize,
     num_temps: usize,
     inner: union(enum) {
         builtin,
-        custom: struct {
-            resolved_fields: []const usize, // owned slice
-            delays: []const DelayDecl, // owned slice
-            instructions: []const Instruction, // owned slice
-        },
+        custom: CodeGenCustomModuleInner,
     },
 };
 
@@ -694,6 +709,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .temp_floats = TempManager.init(self.inner_allocator, false), // don't reuse temp floats slots (they become `const` in zig)
         .local_results = try self.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
+        .current_delay = null,
     };
     defer state.temp_buffers.deinit();
     defer state.temp_floats.deinit();
