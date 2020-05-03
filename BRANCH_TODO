@@ -1,4 +1,0 @@
-runtime branch todo:
-- runtime should validate num_outputs and num_temps?
-- handle temp_floats properly
-- delay buffer length is always 11025 at runtime (delay module itself needs to be refactored)

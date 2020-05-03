@@ -584,6 +584,7 @@ pub const CodeGenCustomModuleInner = struct {
 pub const CodeGenModuleResult = struct {
     num_outputs: usize,
     num_temps: usize,
+    num_temp_floats: usize,
     inner: union(enum) {
         builtin,
         custom: CodeGenCustomModuleInner,
@@ -633,6 +634,7 @@ pub fn codegen(
             module_results[builtin_index] = .{
                 .num_outputs = builtin.num_outputs,
                 .num_temps = builtin.num_temps,
+                .num_temp_floats = 0,
                 .inner = .builtin,
             };
             module_visited[builtin_index] = true;
@@ -706,7 +708,9 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .locals = module_info.locals,
         .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
         .temp_buffers = TempManager.init(self.inner_allocator, true),
-        .temp_floats = TempManager.init(self.inner_allocator, false), // don't reuse temp floats slots (they become `const` in zig)
+        // pass false: don't reuse temp floats slots (they become `const` in zig)
+        // TODO we could reuse them if we're targeting runtime, not codegen_zig
+        .temp_floats = TempManager.init(self.inner_allocator, false),
         .local_results = try self.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
         .current_delay = null,
@@ -734,6 +738,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     return CodeGenModuleResult{
         .num_outputs = 1,
         .num_temps = state.temp_buffers.finalCount(),
+        .num_temp_floats = state.temp_floats.finalCount(),
         .inner = .{
             .custom = .{
                 .resolved_fields = resolved_fields,

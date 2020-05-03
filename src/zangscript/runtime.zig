@@ -157,6 +157,7 @@ pub const ScriptModule = struct {
     module_index: usize,
     module_instances: []*ModuleBase,
     delay_instances: []zang.Delay(11025),
+    temp_floats: []f32,
 
     pub fn init(
         script: *const CompiledScript,
@@ -168,7 +169,11 @@ pub const ScriptModule = struct {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
         };
+
+        // TODO - use an arena allocator? (just be careful about child modules that might have their own arenas...)
+
         var module_instances = try allocator.alloc(*ModuleBase, inner.resolved_fields.len);
+        errdefer allocator.free(module_instances);
         for (inner.resolved_fields) |field_module_index, i| {
             const field_module_name = script.modules[field_module_index].name;
             const params = script.modules[field_module_index].params;
@@ -178,8 +183,8 @@ pub const ScriptModule = struct {
                 inline for (pkg.builtins) |builtin| {
                     if (std.mem.eql(u8, builtin.name, field_module_name)) {
                         const Impl = makeImpl(builtin.T);
-                        var impl = try allocator.create(Impl);
-                        impl.* = Impl.init(params);
+                        var impl = try allocator.create(Impl); // FIXME - not destroyed on error
+                        impl.* = Impl.init(params); // FIXME - not deinit'ed on error
                         module_instances[i] = &impl.base;
                         done = true;
                     }
@@ -190,18 +195,24 @@ pub const ScriptModule = struct {
             }
             for (script.modules) |module, j| {
                 if (std.mem.eql(u8, field_module_name, module.name)) {
-                    var impl = try allocator.create(ScriptModule);
-                    impl.* = try ScriptModule.init(script, j, builtin_packages, allocator);
+                    var impl = try allocator.create(ScriptModule); // FIXME - not destroyed on error
+                    impl.* = try ScriptModule.init(script, j, builtin_packages, allocator); // FIXME - not deinit'ed on error
                     module_instances[i] = &impl.base;
                     break;
                 }
             } else unreachable;
         }
+
         var delay_instances = try allocator.alloc(zang.Delay(11025), inner.delays.len);
+        errdefer allocator.free(delay_instances);
         for (inner.delays) |delay_decl, i| {
             // ignoring delay_decl.num_samples because we need a comptime value
             delay_instances[i] = zang.Delay(11025).init();
         }
+
+        var temp_floats = try allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
+        errdefer allocator.free(temp_floats);
+
         return ScriptModule{
             .base = .{
                 .num_outputs = script.module_results[module_index].num_outputs,
@@ -215,11 +226,13 @@ pub const ScriptModule = struct {
             .module_index = module_index,
             .module_instances = module_instances,
             .delay_instances = delay_instances,
+            .temp_floats = temp_floats,
         };
     }
 
     fn deinitFn(base: *ModuleBase) void {
         var self = @fieldParentPtr(ScriptModule, "base", base);
+        self.allocator.free(self.temp_floats);
         self.allocator.free(self.delay_instances);
         for (self.module_instances) |module_instance| {
             module_instance.deinitFn(module_instance);
@@ -233,7 +246,6 @@ pub const ScriptModule = struct {
     const PaintArgs = struct {
         outputs: []const []f32,
         temps: []const []f32,
-        temp_floats: []f32,
         note_id_changed: bool,
         params: []const Value,
     };
@@ -262,8 +274,6 @@ pub const ScriptModule = struct {
         std.debug.assert(outputs.len == self.script.module_results[self.module_index].num_outputs);
         std.debug.assert(temps.len == self.script.module_results[self.module_index].num_temps);
 
-        var temp_floats: [50]f32 = undefined; // FIXME - use the num_temp_floats from codegen result
-
         const inner = switch (self.script.module_results[self.module_index].inner) {
             .builtin => unreachable,
             .custom => |x| x,
@@ -273,7 +283,6 @@ pub const ScriptModule = struct {
             .temps = temps,
             .note_id_changed = note_id_changed,
             .params = params,
-            .temp_floats = &temp_floats,
         };
         for (inner.instructions) |instr| {
             self.paintInstruction(inner, p, span, instr);
@@ -317,7 +326,7 @@ pub const ScriptModule = struct {
                 callee_base.paintFn(callee_base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], p.note_id_changed, arg_values[0..x.args.len]);
             },
             .negate_float_to_float => |x| {
-                p.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
+                self.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
             },
             .negate_buffer_to_buffer => |x| {
                 var out = getOut(p, x.out);
@@ -330,7 +339,7 @@ pub const ScriptModule = struct {
             .arith_float_float => |x| {
                 const a = self.getResultAsFloat(p, x.a);
                 const b = self.getResultAsFloat(p, x.b);
-                p.temp_floats[x.out.temp_float_index] = switch (x.op) {
+                self.temp_floats[x.out.temp_float_index] = switch (x.op) {
                     .add => a + b,
                     .sub => a - b,
                     .mul => a * b,
@@ -503,7 +512,7 @@ pub const ScriptModule = struct {
     fn getResultAsFloat(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) f32 {
         return switch (result) {
             .literal_number => |literal| literal.value,
-            .temp_float => |temp_ref| p.temp_floats[temp_ref.index],
+            .temp_float => |temp_ref| self.temp_floats[temp_ref.index],
             .self_param => |param_index| switch (p.params[param_index]) {
                 .constant => |v| v,
                 .buffer, .cob, .boolean, .one_of => unreachable,
@@ -515,7 +524,7 @@ pub const ScriptModule = struct {
     fn getResultAsCob(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) zang.ConstantOrBuffer {
         return switch (result) {
             .temp_buffer => |temp_ref| zang.buffer(p.temps[temp_ref.index]),
-            .temp_float => |temp_ref| zang.constant(p.temp_floats[temp_ref.index]),
+            .temp_float => |temp_ref| zang.constant(self.temp_floats[temp_ref.index]),
             .literal_number => |literal| zang.constant(literal.value),
             .self_param => |param_index| switch (p.params[param_index]) {
                 .constant => |v| zang.constant(v),
