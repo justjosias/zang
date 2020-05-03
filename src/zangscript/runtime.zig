@@ -158,6 +158,8 @@ pub const ScriptModule = struct {
     module_instances: []*ModuleBase,
     delay_instances: []zang.Delay(11025),
     temp_floats: []f32,
+    callee_temps: [][]f32,
+    callee_params: []Value,
 
     pub fn init(
         script: *const CompiledScript,
@@ -213,6 +215,23 @@ pub const ScriptModule = struct {
         var temp_floats = try allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
         errdefer allocator.free(temp_floats);
 
+        var most_callee_temps: usize = 0;
+        var most_callee_params: usize = 0;
+        for (inner.resolved_fields) |field_module_index| {
+            const callee_temps = script.module_results[field_module_index].num_temps;
+            if (callee_temps > most_callee_temps) {
+                most_callee_temps = callee_temps;
+            }
+            const callee_params = script.modules[field_module_index].params;
+            if (callee_params.len > most_callee_params) {
+                most_callee_params = callee_params.len;
+            }
+        }
+        var callee_temps = try allocator.alloc([]f32, most_callee_temps);
+        errdefer allocator.free(callee_temps);
+        var callee_params = try allocator.alloc(Value, most_callee_params);
+        errdefer allocator.free(callee_params);
+
         return ScriptModule{
             .base = .{
                 .num_outputs = script.module_results[module_index].num_outputs,
@@ -227,11 +246,15 @@ pub const ScriptModule = struct {
             .module_instances = module_instances,
             .delay_instances = delay_instances,
             .temp_floats = temp_floats,
+            .callee_temps = callee_temps,
+            .callee_params = callee_params,
         };
     }
 
     fn deinitFn(base: *ModuleBase) void {
         var self = @fieldParentPtr(ScriptModule, "base", base);
+        self.allocator.free(self.callee_params);
+        self.allocator.free(self.callee_temps);
         self.allocator.free(self.temp_floats);
         self.allocator.free(self.delay_instances);
         for (self.module_instances) |module_instance| {
@@ -313,17 +336,24 @@ pub const ScriptModule = struct {
                 const callee_module_index = inner.resolved_fields[x.field_index];
                 const callee_base = self.module_instances[x.field_index];
 
-                var callee_temps: [10][]f32 = undefined; // FIXME...
-                for (x.temps) |n, i| callee_temps[i] = p.temps[n];
+                for (x.temps) |n, i| {
+                    self.callee_temps[i] = p.temps[n];
+                }
 
-                var arg_values: [10]Value = undefined; // FIXME
                 for (x.args) |arg, i| {
                     const param_type = self.script.modules[callee_module_index].params[i].param_type;
-                    arg_values[i] = self.getResultValue(p, param_type, arg);
+                    self.callee_params[i] = self.getResultValue(p, param_type, arg);
                 }
 
                 zang.zero(span, out);
-                callee_base.paintFn(callee_base, span, &[1][]f32{out}, callee_temps[0..x.temps.len], p.note_id_changed, arg_values[0..x.args.len]);
+                callee_base.paintFn(
+                    callee_base,
+                    span,
+                    &[1][]f32{out},
+                    self.callee_temps[0..x.temps.len],
+                    p.note_id_changed,
+                    self.callee_params[0..x.args.len],
+                );
             },
             .negate_float_to_float => |x| {
                 self.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
