@@ -16,6 +16,7 @@ pub const ModuleBase = struct {
     num_outputs: usize,
     num_temps: usize,
     params: []const ModuleParam,
+    deinitFn: fn (base: *ModuleBase) void,
     paintFn: fn (
         base: *ModuleBase,
         span: zang.Span,
@@ -38,11 +39,14 @@ pub fn makeImpl(comptime T: type) type {
                     .num_outputs = T.num_outputs,
                     .num_temps = T.num_temps,
                     .params = params,
+                    .deinitFn = deinitFn,
                     .paintFn = paintFn,
                 },
                 .mod = T.init(),
             };
         }
+
+        fn deinitFn(base: *ModuleBase) void {}
 
         fn paintFn(
             base: *ModuleBase,
@@ -130,7 +134,7 @@ pub const Value = union(enum) {
                                         void => return @unionInit(P, union_field.name, {}),
                                         f32 => return @unionInit(P, union_field.name, v.payload.?),
                                         // the above are the only payload types allowed by the language so far
-                                        else => @panic("union field type not implemented: " ++ @typeName(union_field.field_type)),
+                                        else => unreachable,
                                     }
                                 }
                             }
@@ -202,6 +206,7 @@ pub const ScriptModule = struct {
                 .num_outputs = script.module_results[module_index].num_outputs,
                 .num_temps = script.module_results[module_index].num_temps,
                 .params = script.modules[module_index].params,
+                .deinitFn = deinitFn,
                 .paintFn = paintFn,
             },
             .allocator = allocator,
@@ -210,6 +215,18 @@ pub const ScriptModule = struct {
             .module_instances = module_instances,
             .delay_instances = delay_instances,
         };
+    }
+
+    fn deinitFn(base: *ModuleBase) void {
+        var self = @fieldParentPtr(ScriptModule, "base", base);
+        self.allocator.free(self.delay_instances);
+        for (self.module_instances) |module_instance| {
+            module_instance.deinitFn(module_instance);
+            // technically we didn't "create" the base, but it's at the same memory
+            // address as the larger thing we did create, so it's ok
+            self.allocator.destroy(module_instance);
+        }
+        self.allocator.free(self.module_instances);
     }
 
     const PaintArgs = struct {

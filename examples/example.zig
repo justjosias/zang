@@ -131,6 +131,11 @@ pub fn main() !void {
     } else {
         userdata.main_module = example.MainModule.init();
     }
+    defer if (userdata.ok) {
+        if (@hasDecl(example.MainModule, "deinit")) {
+            userdata.main_module.deinit();
+        }
+    };
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
         c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());

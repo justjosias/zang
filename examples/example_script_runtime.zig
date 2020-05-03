@@ -73,12 +73,13 @@ pub const MainModule = struct {
             .key = null,
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
-            .instr = zangscript.ScriptModule.init(script_ptr, module_index, &builtin_packages, allocator) catch @panic("ScriptModule init failed"),
+            .instr = try zangscript.ScriptModule.init(script_ptr, module_index, &builtin_packages, allocator),
             .trig = zang.Trigger(Params).init(),
         };
     }
 
     pub fn deinit(self: *MainModule) void {
+        self.instr.base.deinitFn(&self.instr.base);
         self.script.deinit();
         self.allocator.destroy(self.script);
         self.allocator.free(self.contents);

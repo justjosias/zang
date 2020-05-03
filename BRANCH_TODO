@@ -2,4 +2,4 @@ runtime branch todo:
 - make a helper function to construct list of params from a struct, to be used in example_script_runtime.
 - runtime should validate the params, num_outputs, and num_temps.
 - handle temp_floats properly
-- stop leaking memory
+- delay buffer length is always 11025 at runtime (delay module itself needs to be refactored)
