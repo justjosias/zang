@@ -36,7 +36,12 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
 pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 10; // FIXME
-    pub const Params = [3]zangscript.Value;
+
+    const Params = struct {
+        sample_rate: f32,
+        freq: zang.ConstantOrBuffer,
+        note_on: bool,
+    };
 
     allocator: *std.mem.Allocator,
     contents: []const u8,
@@ -88,19 +93,22 @@ pub const MainModule = struct {
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            self.instr.paint(result.span, &outputs, temps[0..self.instr.base.num_temps], result.note_id_changed, &result.params);
+            const params = self.instr.makeParams(Params, result.params) orelse break;
+
+            self.instr.paint(result.span, &outputs, temps[0..self.instr.base.num_temps], result.note_id_changed, &params);
         }
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         const rel_freq = common.getKeyRelFreq(key) orelse return;
+
         if (down or (if (self.key) |nh| nh == key else false)) {
             self.key = if (down) key else null;
 
-            self.iq.push(impulse_frame, self.idgen.nextId(), [_]zangscript.Value{
-                .{ .constant = AUDIO_SAMPLE_RATE },
-                .{ .cob = zang.constant(a4 * rel_freq) },
-                .{ .boolean = down },
+            self.iq.push(impulse_frame, self.idgen.nextId(), Params{
+                .sample_rate = AUDIO_SAMPLE_RATE,
+                .freq = zang.constant(a4 * rel_freq),
+                .note_on = down,
             });
         }
     }

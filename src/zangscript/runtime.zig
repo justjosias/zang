@@ -2,6 +2,7 @@ const std = @import("std");
 const zang = @import("../zang.zig");
 const Source = @import("tokenize.zig").Source;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
+const BuiltinEnumValue = @import("builtins.zig").BuiltinEnumValue;
 const ParamType = @import("parse.zig").ParamType;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParseResult = @import("parse.zig").ParseResult;
@@ -535,5 +536,80 @@ pub const ScriptModule = struct {
             },
             .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value => unreachable,
         };
+    }
+
+    // convenience function for interfacing with runtime scripts from zig code.
+    // you give it an impromptu struct of params and it will validate and convert that into the runtime structure
+    pub fn makeParams(self: *const ScriptModule, comptime T: type, params: T) ?[@typeInfo(T).Struct.fields.len]Value {
+        const module_params = self.script.modules[self.module_index].params;
+        const struct_fields = @typeInfo(T).Struct.fields;
+        var values: [struct_fields.len]Value = undefined;
+        for (module_params) |param, i| {
+            var found = false;
+            inline for (struct_fields) |field| {
+                if (std.mem.eql(u8, field.name, param.name)) {
+                    values[i] = valueFromZig(param.param_type, @field(params, field.name)) orelse {
+                        std.debug.warn("makeParams: type mismatch on param \"{}\"\n", .{param.name});
+                        return null;
+                    };
+                    found = true;
+                }
+            }
+            if (!found) {
+                std.debug.warn("makeParams: missing param \"{}\"\n", .{param.name});
+                return null;
+            }
+        }
+        return values;
+    }
+
+    fn valueFromZig(param_type: ParamType, zig_value: var) ?Value {
+        switch (param_type) {
+            .boolean => if (@TypeOf(zig_value) == bool) return Value{ .boolean = zig_value },
+            .buffer => if (@TypeOf(zig_value) == []const f32) return Value{ .buffer = zig_value },
+            .constant => if (@TypeOf(zig_value) == f32) return Value{ .constant = zig_value },
+            .constant_or_buffer => if (@TypeOf(zig_value) == zang.ConstantOrBuffer) return Value{ .cob = zig_value },
+            .one_of => |builtin_enum| {
+                switch (@typeInfo(@TypeOf(zig_value))) {
+                    .Enum => |enum_info| {
+                        // just check if the current value of `zig_value` fits structurally
+                        const label = @tagName(zig_value);
+                        for (builtin_enum.values) |bev| {
+                            if (std.mem.eql(u8, bev.label, label) and bev.payload_type == .none) {
+                                return Value{ .one_of = .{ .label = label, .payload = null } };
+                            }
+                        }
+                    },
+                    .Union => |union_info| {
+                        // just check if the current value of `zig_value` fits structurally
+                        for (builtin_enum.values) |bev| {
+                            inline for (union_info.fields) |field, i| {
+                                if (@enumToInt(zig_value) == i and std.mem.eql(u8, bev.label, field.name)) {
+                                    return payloadFromZig(bev, @field(zig_value, field.name));
+                                }
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            },
+        }
+        return null;
+    }
+
+    fn payloadFromZig(bev: BuiltinEnumValue, zig_payload: var) ?Value {
+        switch (bev.payload_type) {
+            .none => {
+                if (@TypeOf(zig_payload) == void) {
+                    return Value{ .one_of = .{ .label = bev.label, .payload = null } };
+                }
+            },
+            .f32 => {
+                if (@TypeOf(zig_payload) == f32) {
+                    return Value{ .one_of = .{ .label = bev.label, .payload = zig_payload } };
+                }
+            },
+        }
+        return null;
     }
 };

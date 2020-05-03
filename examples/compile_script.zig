@@ -34,12 +34,7 @@ pub fn main() u8 {
     };
     defer allocator.free(contents);
 
-    const source: zangscript.Source = .{
-        .filename = filename,
-        .contents = contents,
-    };
-
-    var script = zangscript.compile(source, &builtin_packages, allocator) catch |err| {
+    var script = zangscript.compile(filename, contents, &builtin_packages, allocator) catch |err| {
         if (err != error.Failed) std.debug.warn("{}\n", .{err});
         return 1;
     };
