@@ -87,7 +87,7 @@ zig-cache/zangscript examples/script.txt > examples/scriptgen.zig
 zig build script
 ```
 
-The scripts can also be evaluated at runtime. The result should be the same as when compiling to Zig, but you trade efficiency for the ability to reload changes instantaneously.
+The scripts can also be evaluated at runtime. The result should be the same as when compiling to Zig, but you trade efficiency for the ability to reload changes instantaneously (by pressing F5).
 
 ```
 # loads and runs examples/script.txt
