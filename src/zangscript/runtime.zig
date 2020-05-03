@@ -152,7 +152,7 @@ pub const Value = union(enum) {
 
 pub const ScriptModule = struct {
     base: ModuleBase,
-    allocator: *std.mem.Allocator, // don't use this in the audio thread (paint method)
+    arena: std.heap.ArenaAllocator,
     script: *const CompiledScript,
     module_index: usize,
     module_instances: []*ModuleBase,
@@ -165,17 +165,23 @@ pub const ScriptModule = struct {
         script: *const CompiledScript,
         module_index: usize,
         comptime builtin_packages: []const BuiltinPackage,
-        allocator: *std.mem.Allocator,
+        inner_allocator: *std.mem.Allocator,
     ) error{OutOfMemory}!ScriptModule {
         const inner = switch (script.module_results[module_index].inner) {
             .builtin => @panic("builtin passed to ScriptModule"),
             .custom => |x| x,
         };
 
-        // TODO - use an arena allocator? (just be careful about child modules that might have their own arenas...)
+        var arena = std.heap.ArenaAllocator.init(inner_allocator);
+        errdefer arena.deinit();
 
-        var module_instances = try allocator.alloc(*ModuleBase, inner.resolved_fields.len);
-        errdefer allocator.free(module_instances);
+        var module_instances = try arena.allocator.alloc(*ModuleBase, inner.resolved_fields.len);
+
+        var num_initialized_fields: usize = 0;
+        errdefer for (module_instances[0..num_initialized_fields]) |module_instance| {
+            module_instance.deinitFn(module_instance);
+        };
+
         for (inner.resolved_fields) |field_module_index, i| {
             const field_module_name = script.modules[field_module_index].name;
             const params = script.modules[field_module_index].params;
@@ -185,35 +191,35 @@ pub const ScriptModule = struct {
                 inline for (pkg.builtins) |builtin| {
                     if (std.mem.eql(u8, builtin.name, field_module_name)) {
                         const Impl = makeImpl(builtin.T);
-                        var impl = try allocator.create(Impl); // FIXME - not destroyed on error
-                        impl.* = Impl.init(params); // FIXME - not deinit'ed on error
+                        var impl = try arena.allocator.create(Impl);
+                        impl.* = Impl.init(params);
                         module_instances[i] = &impl.base;
                         done = true;
                     }
                 }
             }
-            if (done) {
-                continue;
+
+            if (!done) {
+                for (script.modules) |module, j| {
+                    if (std.mem.eql(u8, field_module_name, module.name)) {
+                        var impl = try arena.allocator.create(ScriptModule);
+                        impl.* = try ScriptModule.init(script, j, builtin_packages, inner_allocator);
+                        module_instances[i] = &impl.base;
+                        break;
+                    }
+                } else unreachable;
             }
-            for (script.modules) |module, j| {
-                if (std.mem.eql(u8, field_module_name, module.name)) {
-                    var impl = try allocator.create(ScriptModule); // FIXME - not destroyed on error
-                    impl.* = try ScriptModule.init(script, j, builtin_packages, allocator); // FIXME - not deinit'ed on error
-                    module_instances[i] = &impl.base;
-                    break;
-                }
-            } else unreachable;
+
+            num_initialized_fields += 1;
         }
 
-        var delay_instances = try allocator.alloc(zang.Delay(11025), inner.delays.len);
-        errdefer allocator.free(delay_instances);
+        var delay_instances = try arena.allocator.alloc(zang.Delay(11025), inner.delays.len);
         for (inner.delays) |delay_decl, i| {
             // ignoring delay_decl.num_samples because we need a comptime value
             delay_instances[i] = zang.Delay(11025).init();
         }
 
-        var temp_floats = try allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
-        errdefer allocator.free(temp_floats);
+        var temp_floats = try arena.allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
 
         var most_callee_temps: usize = 0;
         var most_callee_params: usize = 0;
@@ -227,10 +233,8 @@ pub const ScriptModule = struct {
                 most_callee_params = callee_params.len;
             }
         }
-        var callee_temps = try allocator.alloc([]f32, most_callee_temps);
-        errdefer allocator.free(callee_temps);
-        var callee_params = try allocator.alloc(Value, most_callee_params);
-        errdefer allocator.free(callee_params);
+        var callee_temps = try arena.allocator.alloc([]f32, most_callee_temps);
+        var callee_params = try arena.allocator.alloc(Value, most_callee_params);
 
         return ScriptModule{
             .base = .{
@@ -240,7 +244,7 @@ pub const ScriptModule = struct {
                 .deinitFn = deinitFn,
                 .paintFn = paintFn,
             },
-            .allocator = allocator,
+            .arena = arena,
             .script = script,
             .module_index = module_index,
             .module_instances = module_instances,
@@ -253,17 +257,10 @@ pub const ScriptModule = struct {
 
     fn deinitFn(base: *ModuleBase) void {
         var self = @fieldParentPtr(ScriptModule, "base", base);
-        self.allocator.free(self.callee_params);
-        self.allocator.free(self.callee_temps);
-        self.allocator.free(self.temp_floats);
-        self.allocator.free(self.delay_instances);
         for (self.module_instances) |module_instance| {
             module_instance.deinitFn(module_instance);
-            // technically we didn't "create" the base, but it's at the same memory
-            // address as the larger thing we did create, so it's ok
-            self.allocator.destroy(module_instance);
         }
-        self.allocator.free(self.module_instances);
+        self.arena.deinit();
     }
 
     const PaintArgs = struct {
