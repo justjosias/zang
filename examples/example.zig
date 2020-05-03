@@ -34,39 +34,46 @@ fn pushRedrawEvent() void {
     _ = c.SDL_PushEvent(&event);
 }
 
+const UserData = struct {
+    main_module: example.MainModule, // only valid if ok is true
+    ok: bool,
+};
+
 fn audioCallback(
     userdata_: ?*c_void,
     stream_: ?[*]u8,
     len_: c_int,
 ) callconv(.C) void {
-    const main_module =
-        @ptrCast(*example.MainModule,
-            @alignCast(@alignOf(*example.MainModule),
-                userdata_.?));
+    const userdata = @ptrCast(*UserData, @alignCast(@alignOf(*UserData), userdata_.?));
     const stream = stream_.?[0..@intCast(usize, len_)];
 
     var outputs: [example.MainModule.num_outputs][]f32 = undefined;
     var temps: [example.MainModule.num_temps][]f32 = undefined;
     var i: usize = undefined;
 
-    const span = zang.Span {
+    const span = zang.Span{
         .start = 0,
         .end = AUDIO_BUFFER_SIZE,
     };
 
-    i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
+    i = 0;
+    while (i < example.MainModule.num_outputs) : (i += 1) {
         outputs[i] = g_outputs[i][0..];
         zang.zero(span, outputs[i]);
     }
-    i = 0; while (i < example.MainModule.num_temps) : (i += 1) {
+    i = 0;
+    while (i < example.MainModule.num_temps) : (i += 1) {
         temps[i] = g_temps[i][0..];
     }
 
-    main_module.paint(span, outputs, temps);
+    if (userdata.ok) {
+        userdata.main_module.paint(span, outputs, temps);
+    }
 
     const mul = 0.25;
 
-    i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
+    i = 0;
+    while (i < example.MainModule.num_outputs) : (i += 1) {
         zang.mixDown(
             stream,
             outputs[i][0..],
@@ -82,8 +89,10 @@ fn audioCallback(
     }
 
     // i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
-    i = 0; {
-        var j: usize = 0; while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
+    i = 0;
+    {
+        var j: usize = 0;
+        while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
             const output = outputs[i][j * 1024 .. j * 1024 + 1024];
             var min: f32 = 0.0;
             var max: f32 = 0.0;
@@ -109,7 +118,19 @@ fn audioCallback(
 }
 
 pub fn main() !void {
-    var main_module = example.MainModule.init();
+    var userdata: UserData = .{
+        .ok = true,
+        .main_module = undefined,
+    };
+    if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
+        userdata.main_module = example.MainModule.init() catch |err| blk: {
+            std.debug.warn("{}\n", .{err});
+            userdata.ok = false;
+            break :blk undefined;
+        };
+    } else {
+        userdata.main_module = example.MainModule.init();
+    }
 
     if (c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_AUDIO) != 0) {
         c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
@@ -119,13 +140,13 @@ pub fn main() !void {
 
     g_redraw_event = c.SDL_RegisterEvents(1);
 
-    const SDL_WINDOWPOS_UNDEFINED =
-        @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
+    const SDL_WINDOWPOS_UNDEFINED = @bitCast(c_int, c.SDL_WINDOWPOS_UNDEFINED_MASK);
     const window = c.SDL_CreateWindow(
         "zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        screen_w, screen_h,
+        screen_w,
+        screen_h,
         0,
     ) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
@@ -144,7 +165,7 @@ pub fn main() !void {
     want.channels = example.MainModule.num_outputs;
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
-    want.userdata = &main_module;
+    want.userdata = &userdata;
 
     const device: c.SDL_AudioDeviceID = c.SDL_OpenAudioDevice(
         0, // device name (NULL)
@@ -152,7 +173,7 @@ pub fn main() !void {
         &want, // desired output format
         0, // obtained output format (NULL)
         0, // allowed changes: 0 means `obtained` will not differ from `want`,
-           // and SDL will do any necessary resampling behind the scenes
+        // and SDL will do any necessary resampling behind the scenes
     );
     if (device == 0) {
         c.SDL_Log("Failed to open audio: %s", c.SDL_GetError());
@@ -175,8 +196,7 @@ pub fn main() !void {
             c.SDL_QUIT => {
                 break;
             },
-            c.SDL_KEYDOWN,
-            c.SDL_KEYUP => {
+            c.SDL_KEYDOWN, c.SDL_KEYUP => {
                 const down = event.type == c.SDL_KEYDOWN;
                 if (event.key.keysym.sym == c.SDLK_ESCAPE and down) {
                     break;
@@ -198,20 +218,37 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
                     g_fft_log = !g_fft_log;
                 }
+                if (event.key.keysym.sym == c.SDLK_F5 and down) {
+                    c.SDL_LockAudioDevice(device);
+                    if (userdata.ok) {
+                        if (@hasDecl(example.MainModule, "deinit")) {
+                            userdata.main_module.deinit();
+                        }
+                    }
+                    userdata.ok = true;
+                    if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
+                        userdata.main_module = example.MainModule.init() catch |err| blk: {
+                            std.debug.warn("{}\n", .{err});
+                            userdata.ok = false;
+                            break :blk undefined;
+                        };
+                    } else {
+                        userdata.main_module = example.MainModule.init();
+                    }
+                    c.SDL_UnlockAudioDevice(device);
+                }
                 if (@hasDecl(example.MainModule, "keyEvent")) {
                     if (event.key.repeat == 0) {
                         c.SDL_LockAudioDevice(device);
-                        //const impulse_frame = getImpulseFrame(
-                        //    AUDIO_BUFFER_SIZE,
-                        //    AUDIO_SAMPLE_RATE,
-                        //    start_time,
-                        //);
-                        const impulse_frame = getImpulseFrame();
-                        main_module.keyEvent(
-                            event.key.keysym.sym,
-                            down,
-                            impulse_frame,
-                        );
+                        if (userdata.ok) {
+                            //const impulse_frame = getImpulseFrame(
+                            //    AUDIO_BUFFER_SIZE,
+                            //    AUDIO_SAMPLE_RATE,
+                            //    start_time,
+                            //);
+                            const impulse_frame = getImpulseFrame();
+                            userdata.main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
+                        }
                         c.SDL_UnlockAudioDevice(device);
                     }
                 }

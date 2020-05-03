@@ -19,10 +19,16 @@ pub const CompiledScript = struct {
 };
 
 pub fn compile(
-    source: Source,
+    filename: []const u8,
+    contents: []const u8,
     comptime builtin_packages: []const BuiltinPackage,
     allocator: *std.mem.Allocator,
 ) !CompiledScript {
+    const source: Source = .{
+        .filename = filename,
+        .contents = contents,
+    };
+
     var parse_result = try parse(source, builtin_packages, allocator);
     errdefer parse_result.deinit();
 

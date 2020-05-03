@@ -13,6 +13,8 @@ pub const DESCRIPTION =
     \\example_script_runtime
     \\
     \\Play a scripted sound module with the keyboard.
+    \\
+    \\Press F5 to reload the script.
 ;
 
 const a4 = 440.0;
@@ -36,43 +38,38 @@ pub const MainModule = struct {
     pub const num_temps = 10; // FIXME
     pub const Params = [3]zangscript.Value;
 
-    ok: bool,
+    allocator: *std.mem.Allocator,
+    contents: []const u8,
+    script: *zangscript.CompiledScript,
+
     key: ?i32,
     iq: zang.Notes(Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     instr: zangscript.ScriptModule,
     trig: zang.Trigger(Params),
 
-    pub fn init() MainModule {
+    pub fn init() !MainModule {
         var allocator = std.heap.page_allocator;
+
         const filename = "examples/script.txt";
-        const contents = std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
-            std.debug.warn("failed to read file: {}\n", .{err});
-            var self: MainModule = undefined;
-            self.ok = false;
-            return self;
-        };
-        //defer allocator.free(contents);
-        const source: zangscript.Source = .{ .filename = filename, .contents = contents };
-        var script = zangscript.compile(source, &builtin_packages, allocator) catch |err| {
-            if (err != error.Failed) std.debug.warn("{}\n", .{err});
-            var self: MainModule = undefined;
-            self.ok = false;
-            return self;
-        };
-        //defer script.deinit();
-        var script_ptr = allocator.create(zangscript.CompiledScript) catch @panic("alloc failed");
+
+        const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024);
+        errdefer allocator.free(contents);
+
+        var script = try zangscript.compile(filename, contents, &builtin_packages, allocator);
+        errdefer script.deinit();
+
+        var script_ptr = try allocator.create(zangscript.CompiledScript);
         script_ptr.* = script;
+
         const module_index = for (script.modules) |module, i| {
             if (std.mem.eql(u8, module.name, "Instrument")) break i;
-        } else {
-            std.debug.warn("could not find module \"Instrument\"\n", .{});
-            var self: MainModule = undefined;
-            self.ok = false;
-            return self;
-        };
-        return .{
-            .ok = true,
+        } else return error.ModuleNotFound;
+
+        return MainModule{
+            .allocator = allocator,
+            .contents = contents,
+            .script = script_ptr,
             .key = null,
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
@@ -81,15 +78,13 @@ pub const MainModule = struct {
         };
     }
 
-    pub fn reset(self: *MainModule) void {
-        self.* = init();
+    pub fn deinit(self: *MainModule) void {
+        self.script.deinit();
+        self.allocator.destroy(self.script);
+        self.allocator.free(self.contents);
     }
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
-        if (!self.ok) {
-            return;
-        }
-
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
             self.instr.paint(result.span, &outputs, temps[0..self.instr.base.num_temps], result.note_id_changed, &result.params);
@@ -97,13 +92,6 @@ pub const MainModule = struct {
     }
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        if (down and key == c.SDLK_SPACE) {
-            self.reset();
-            return;
-        }
-        if (!self.ok) {
-            return;
-        }
         const rel_freq = common.getKeyRelFreq(key) orelse return;
         if (down or (if (self.key) |nh| nh == key else false)) {
             self.key = if (down) key else null;
