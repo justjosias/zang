@@ -173,10 +173,10 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
             try self.print(".buffer => |v| zang.copy({str}, {buffer_dest}, v),\n", .{ span, x.out });
             try self.print("}}\n", {});
         },
-        .negate_float_to_float => |x| {
+        .negate_float => |x| {
             try self.print("const temp_float{usize} = -{expression_result};\n", .{ x.out.temp_float_index, x.a });
         },
-        .negate_buffer_to_buffer => |x| {
+        .negate_buffer => |x| {
             try self.print("{{\n", .{});
             try self.print("var i = {str}.start;\n", .{span});
             try self.print("while (i < {str}.end) : (i += 1) {{\n", .{span});
