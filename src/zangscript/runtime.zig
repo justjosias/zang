@@ -9,6 +9,17 @@ const ParseResult = @import("parse.zig").ParseResult;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const BufferDest = @import("codegen.zig").BufferDest;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
+const InstrCopyBuffer = @import("codegen.zig").InstrCopyBuffer;
+const InstrFloatToBuffer = @import("codegen.zig").InstrFloatToBuffer;
+const InstrCobToBuffer = @import("codegen.zig").InstrCobToBuffer;
+const InstrNegateFloat = @import("codegen.zig").InstrNegateFloat;
+const InstrNegateBuffer = @import("codegen.zig").InstrNegateBuffer;
+const InstrArithFloatFloat = @import("codegen.zig").InstrArithFloatFloat;
+const InstrArithFloatBuffer = @import("codegen.zig").InstrArithFloatBuffer;
+const InstrArithBufferFloat = @import("codegen.zig").InstrArithBufferFloat;
+const InstrArithBufferBuffer = @import("codegen.zig").InstrArithBufferBuffer;
+const InstrCall = @import("codegen.zig").InstrCall;
+const InstrDelay = @import("codegen.zig").InstrDelay;
 const Instruction = @import("codegen.zig").Instruction;
 const CodeGenCustomModuleInner = @import("codegen.zig").CodeGenCustomModuleInner;
 const CompiledScript = @import("compile.zig").CompiledScript;
@@ -21,7 +32,7 @@ pub const Value = union(enum) {
     one_of: struct { label: []const u8, payload: ?f32 },
 
     // turn a Value into a zig value
-    pub fn resolve(value: Value, comptime P: type) P {
+    pub fn toZig(value: Value, comptime P: type) P {
         switch (P) {
             bool => switch (value) {
                 .boolean => |v| return v,
@@ -129,7 +140,6 @@ pub const Value = union(enum) {
 };
 
 pub const ModuleBase = struct {
-    allocator: *std.mem.Allocator,
     num_outputs: usize,
     num_temps: usize,
     params: []const ModuleParam,
@@ -138,10 +148,6 @@ pub const ModuleBase = struct {
 
     pub fn deinit(base: *ModuleBase) void {
         base.deinitFn(base);
-        // destroy the allocation created by initModule. technically we're not passing the same object
-        // that was created (it was the full "child class" object that was created), but since they
-        // start on the same memory address, this works (the allocator remembers the allocation size)
-        base.allocator.destroy(base);
     }
 
     pub fn paint(base: *ModuleBase, span: zang.Span, outputs: []const []f32, temps: []const []f32, note_id_changed: bool, params: []const Value) void {
@@ -178,51 +184,50 @@ pub fn initModule(
     module_index: usize,
     comptime builtin_packages: []const BuiltinPackage,
     allocator: *std.mem.Allocator,
-) !*ModuleBase {
-    const inner = switch (script.module_results[module_index].inner) {
+) error{OutOfMemory}!*ModuleBase {
+    switch (script.module_results[module_index].inner) {
         .builtin => {
-            const module_name = script.modules[module_index].name;
             inline for (builtin_packages) |pkg| {
                 inline for (pkg.builtins) |builtin| {
-                    if (std.mem.eql(u8, builtin.name, module_name)) {
-                        const Impl = BuiltinModule(builtin.T);
-                        var impl = try allocator.create(Impl);
-                        impl.* = Impl.init(script, module_index, allocator);
-                        return &impl.base;
+                    if (std.mem.eql(u8, builtin.name, script.modules[module_index].name)) {
+                        return BuiltinModule(builtin.T).init(script, module_index, allocator);
                     }
                 }
             }
+            unreachable;
         },
         .custom => |x| {
-            var impl = try allocator.create(ScriptModule);
-            errdefer allocator.destroy(impl);
-            impl.* = try ScriptModule.init(script, module_index, builtin_packages, allocator);
-            return &impl.base;
+            return ScriptModule.init(script, module_index, builtin_packages, allocator);
         },
-    };
-    unreachable;
+    }
 }
 
 fn BuiltinModule(comptime T: type) type {
     return struct {
         base: ModuleBase,
+        allocator: *std.mem.Allocator,
         mod: T,
+        id: usize,
 
-        fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) @This() {
-            return @This(){
-                .base = .{
-                    .allocator = allocator,
-                    .num_outputs = T.num_outputs,
-                    .num_temps = T.num_temps,
-                    .params = script.modules[module_index].params,
-                    .deinitFn = deinitFn,
-                    .paintFn = paintFn,
-                },
-                .mod = T.init(),
+        fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) !*ModuleBase {
+            var self = try allocator.create(@This());
+            self.base = .{
+                .num_outputs = T.num_outputs,
+                .num_temps = T.num_temps,
+                .params = script.modules[module_index].params,
+                .deinitFn = deinitFn,
+                .paintFn = paintFn,
             };
+            self.allocator = allocator;
+            self.mod = T.init();
+            return &self.base;
         }
 
-        fn deinitFn(base: *ModuleBase) void {}
+        fn deinitFn(base: *ModuleBase) void {
+            var self = @fieldParentPtr(@This(), "base", base);
+
+            self.allocator.destroy(self);
+        }
 
         fn paintFn(
             base: *ModuleBase,
@@ -234,18 +239,13 @@ fn BuiltinModule(comptime T: type) type {
         ) void {
             var self = @fieldParentPtr(@This(), "base", base);
 
-            std.debug.assert(outputs_slice.len == T.num_outputs);
-            var outputs: [T.num_outputs][]f32 = undefined;
-            std.mem.copy([]f32, &outputs, outputs_slice);
-
-            std.debug.assert(temps_slice.len == T.num_temps);
-            var temps: [T.num_temps][]f32 = undefined;
-            std.mem.copy([]f32, &temps, temps_slice);
+            const outputs = outputs_slice[0..T.num_outputs].*;
+            const temps = temps_slice[0..T.num_temps].*;
 
             var params: T.Params = undefined;
             inline for (@typeInfo(T.Params).Struct.fields) |field| {
                 const param_index = getParamIndex(self.base.params, field.name);
-                @field(params, field.name) = param_values[param_index].resolve(field.field_type);
+                @field(params, field.name) = param_values[param_index].toZig(field.field_type);
             }
 
             self.mod.paint(span, outputs, temps, note_id_changed, params);
@@ -264,7 +264,7 @@ fn BuiltinModule(comptime T: type) type {
 
 const ScriptModule = struct {
     base: ModuleBase,
-    arena: std.heap.ArenaAllocator,
+    allocator: *std.mem.Allocator,
     script: *const CompiledScript,
     module_index: usize,
     module_instances: []*ModuleBase,
@@ -277,35 +277,49 @@ const ScriptModule = struct {
         script: *const CompiledScript,
         module_index: usize,
         comptime builtin_packages: []const BuiltinPackage,
-        inner_allocator: *std.mem.Allocator,
-    ) error{OutOfMemory}!ScriptModule {
+        allocator: *std.mem.Allocator,
+    ) !*ModuleBase {
         const inner = switch (script.module_results[module_index].inner) {
             .builtin => unreachable,
             .custom => |x| x,
         };
 
-        var arena = std.heap.ArenaAllocator.init(inner_allocator);
-        errdefer arena.deinit();
+        var self = try allocator.create(ScriptModule);
+        errdefer allocator.destroy(self);
 
-        var module_instances = try arena.allocator.alloc(*ModuleBase, inner.resolved_fields.len);
+        self.base = .{
+            .num_outputs = script.module_results[module_index].num_outputs,
+            .num_temps = script.module_results[module_index].num_temps,
+            .params = script.modules[module_index].params,
+            .deinitFn = deinitFn,
+            .paintFn = paintFn,
+        };
+        self.allocator = allocator;
+        self.script = script;
+        self.module_index = module_index;
+
+        self.module_instances = try allocator.alloc(*ModuleBase, inner.resolved_fields.len);
+        errdefer allocator.free(self.module_instances);
 
         var num_initialized_fields: usize = 0;
-        errdefer for (module_instances[0..num_initialized_fields]) |module_instance| {
+        errdefer for (self.module_instances[0..num_initialized_fields]) |module_instance| {
             module_instance.deinit();
         };
 
         for (inner.resolved_fields) |field_module_index, i| {
-            module_instances[i] = try initModule(script, field_module_index, builtin_packages, inner_allocator);
+            self.module_instances[i] = try initModule(script, field_module_index, builtin_packages, allocator);
             num_initialized_fields += 1;
         }
 
-        var delay_instances = try arena.allocator.alloc(zang.Delay(11025), inner.delays.len);
+        self.delay_instances = try allocator.alloc(zang.Delay(11025), inner.delays.len);
+        errdefer allocator.free(self.delay_instances);
         for (inner.delays) |delay_decl, i| {
             // ignoring delay_decl.num_samples because we need a comptime value
-            delay_instances[i] = zang.Delay(11025).init();
+            self.delay_instances[i] = zang.Delay(11025).init();
         }
 
-        var temp_floats = try arena.allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
+        self.temp_floats = try allocator.alloc(f32, script.module_results[module_index].num_temp_floats);
+        errdefer allocator.free(self.temp_floats);
 
         var most_callee_temps: usize = 0;
         var most_callee_params: usize = 0;
@@ -319,38 +333,31 @@ const ScriptModule = struct {
                 most_callee_params = callee_params.len;
             }
         }
-        var callee_temps = try arena.allocator.alloc([]f32, most_callee_temps);
-        var callee_params = try arena.allocator.alloc(Value, most_callee_params);
+        self.callee_temps = try allocator.alloc([]f32, most_callee_temps);
+        errdefer allocator.free(self.callee_temps);
+        self.callee_params = try allocator.alloc(Value, most_callee_params);
+        errdefer allocator.free(self.callee_params);
 
-        return ScriptModule{
-            .base = .{
-                .allocator = inner_allocator,
-                .num_outputs = script.module_results[module_index].num_outputs,
-                .num_temps = script.module_results[module_index].num_temps,
-                .params = script.modules[module_index].params,
-                .deinitFn = deinitFn,
-                .paintFn = paintFn,
-            },
-            .arena = arena,
-            .script = script,
-            .module_index = module_index,
-            .module_instances = module_instances,
-            .delay_instances = delay_instances,
-            .temp_floats = temp_floats,
-            .callee_temps = callee_temps,
-            .callee_params = callee_params,
-        };
+        return &self.base;
     }
 
     fn deinitFn(base: *ModuleBase) void {
         var self = @fieldParentPtr(ScriptModule, "base", base);
+
+        self.allocator.free(self.callee_params);
+        self.allocator.free(self.callee_temps);
+        self.allocator.free(self.temp_floats);
+        self.allocator.free(self.delay_instances);
         for (self.module_instances) |module_instance| {
             module_instance.deinit();
         }
-        self.arena.deinit();
+        self.allocator.free(self.module_instances);
+
+        self.allocator.destroy(self);
     }
 
     const PaintArgs = struct {
+        inner: CodeGenCustomModuleInner,
         outputs: []const []f32,
         temps: []const []f32,
         note_id_changed: bool,
@@ -370,202 +377,226 @@ const ScriptModule = struct {
         std.debug.assert(outputs.len == self.script.module_results[self.module_index].num_outputs);
         std.debug.assert(temps.len == self.script.module_results[self.module_index].num_temps);
 
-        const inner = switch (self.script.module_results[self.module_index].inner) {
-            .builtin => unreachable,
-            .custom => |x| x,
-        };
         const p: PaintArgs = .{
+            .inner = switch (self.script.module_results[self.module_index].inner) {
+                .builtin => unreachable,
+                .custom => |x| x,
+            },
             .outputs = outputs,
             .temps = temps,
             .note_id_changed = note_id_changed,
             .params = params,
         };
-        for (inner.instructions) |instr| {
-            self.paintInstruction(inner, p, span, instr);
+
+        for (p.inner.instructions) |instr| {
+            self.paintInstruction(p, span, instr);
         }
     }
 
-    fn paintInstruction(self: *const ScriptModule, inner: CodeGenCustomModuleInner, p: PaintArgs, span: zang.Span, instr: Instruction) void {
+    fn paintInstruction(self: *const ScriptModule, p: PaintArgs, span: zang.Span, instr: Instruction) void {
         switch (instr) {
-            .copy_buffer => |x| {
-                zang.copy(span, getOut(p, x.out), self.getResultAsBuffer(p, x.in));
+            .copy_buffer => |x| self.paintCopyBuffer(p, span, x),
+            .float_to_buffer => |x| self.paintFloatToBuffer(p, span, x),
+            .cob_to_buffer => |x| self.paintCobToBuffer(p, span, x),
+            .call => |x| self.paintCall(p, span, x),
+            .negate_float => |x| self.paintNegateFloat(p, span, x),
+            .negate_buffer => |x| self.paintNegateBuffer(p, span, x),
+            .arith_float_float => |x| self.paintArithFloatFloat(p, span, x),
+            .arith_float_buffer => |x| self.paintArithFloatBuffer(p, span, x),
+            .arith_buffer_float => |x| self.paintArithBufferFloat(p, span, x),
+            .arith_buffer_buffer => |x| self.paintArithBufferBuffer(p, span, x),
+            .delay => |x| self.paintDelay(p, span, x),
+        }
+    }
+
+    fn paintCopyBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrCopyBuffer) void {
+        zang.copy(span, getOut(p, x.out), self.getResultAsBuffer(p, x.in));
+    }
+
+    fn paintFloatToBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrFloatToBuffer) void {
+        zang.set(span, getOut(p, x.out), self.getResultAsFloat(p, x.in));
+    }
+
+    fn paintCobToBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrCobToBuffer) void {
+        var out = getOut(p, x.out);
+        switch (p.params[x.in_self_param]) {
+            .cob => |cob| switch (cob) {
+                .constant => |v| zang.set(span, out, v),
+                .buffer => |v| zang.copy(span, out, v),
             },
-            .float_to_buffer => |x| {
-                zang.set(span, getOut(p, x.out), self.getResultAsFloat(p, x.in));
-            },
-            .cob_to_buffer => |x| {
-                var out = getOut(p, x.out);
-                switch (p.params[x.in_self_param]) {
-                    .cob => |cob| switch (cob) {
-                        .constant => |v| zang.set(span, out, v),
-                        .buffer => |v| zang.copy(span, out, v),
-                    },
-                    else => unreachable,
-                }
-            },
-            .call => |x| {
-                var out = getOut(p, x.out);
+            else => unreachable,
+        }
+    }
 
-                const callee_module_index = inner.resolved_fields[x.field_index];
-                const callee_base = self.module_instances[x.field_index];
+    fn paintCall(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrCall) void {
+        var out = getOut(p, x.out);
 
-                for (x.temps) |n, i| {
-                    self.callee_temps[i] = p.temps[n];
-                }
+        const callee_module_index = p.inner.resolved_fields[x.field_index];
+        const callee_base = self.module_instances[x.field_index];
 
-                for (x.args) |arg, i| {
-                    const param_type = self.script.modules[callee_module_index].params[i].param_type;
-                    self.callee_params[i] = self.getResultValue(p, param_type, arg);
-                }
+        for (x.temps) |n, i| {
+            self.callee_temps[i] = p.temps[n];
+        }
 
+        for (x.args) |arg, i| {
+            const param_type = self.script.modules[callee_module_index].params[i].param_type;
+            self.callee_params[i] = self.getResultValue(p, param_type, arg);
+        }
+
+        zang.zero(span, out);
+        callee_base.paintFn(
+            callee_base,
+            span,
+            &[1][]f32{out},
+            self.callee_temps[0..x.temps.len],
+            p.note_id_changed,
+            self.callee_params[0..x.args.len],
+        );
+    }
+
+    fn paintNegateFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrNegateFloat) void {
+        self.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
+    }
+
+    fn paintNegateBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrNegateBuffer) void {
+        var out = getOut(p, x.out);
+        const a = self.getResultAsBuffer(p, x.a);
+        var i: usize = span.start;
+        while (i < span.end) : (i += 1) {
+            out[i] = -a[i];
+        }
+    }
+
+    fn paintArithFloatFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithFloatFloat) void {
+        const a = self.getResultAsFloat(p, x.a);
+        const b = self.getResultAsFloat(p, x.b);
+        self.temp_floats[x.out.temp_float_index] = switch (x.op) {
+            .add => a + b,
+            .sub => a - b,
+            .mul => a * b,
+            .div => a / b,
+            .pow => std.math.pow(f32, a, b),
+        };
+    }
+
+    fn paintArithFloatBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithFloatBuffer) void {
+        var out = getOut(p, x.out);
+        const a = self.getResultAsFloat(p, x.a);
+        const b = self.getResultAsBuffer(p, x.b);
+        switch (x.op) {
+            .add => {
                 zang.zero(span, out);
-                callee_base.paintFn(
-                    callee_base,
-                    span,
-                    &[1][]f32{out},
-                    self.callee_temps[0..x.temps.len],
-                    p.note_id_changed,
-                    self.callee_params[0..x.args.len],
-                );
+                zang.addScalar(span, out, b, a);
             },
-            .negate_float_to_float => |x| {
-                self.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
-            },
-            .negate_buffer_to_buffer => |x| {
-                var out = getOut(p, x.out);
-                const a = self.getResultAsBuffer(p, x.a);
+            .sub => {
                 var i: usize = span.start;
                 while (i < span.end) : (i += 1) {
-                    out[i] = -a[i];
+                    out[i] = a - b[i];
                 }
             },
-            .arith_float_float => |x| {
-                const a = self.getResultAsFloat(p, x.a);
-                const b = self.getResultAsFloat(p, x.b);
-                self.temp_floats[x.out.temp_float_index] = switch (x.op) {
-                    .add => a + b,
-                    .sub => a - b,
-                    .mul => a * b,
-                    .div => a / b,
-                    .pow => std.math.pow(f32, a, b),
-                };
-            },
-            .arith_float_buffer => |x| {
-                var out = getOut(p, x.out);
-                const a = self.getResultAsFloat(p, x.a);
-                const b = self.getResultAsBuffer(p, x.b);
-                switch (x.op) {
-                    .add => {
-                        zang.zero(span, out);
-                        zang.addScalar(span, out, b, a);
-                    },
-                    .sub => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a - b[i];
-                        }
-                    },
-                    .mul => {
-                        zang.zero(span, out);
-                        zang.multiplyScalar(span, out, b, a);
-                    },
-                    .div => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a / b[i];
-                        }
-                    },
-                    .pow => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = std.math.pow(f32, a, b[i]);
-                        }
-                    },
-                }
-            },
-            .arith_buffer_float => |x| {
-                var out = getOut(p, x.out);
-                const a = self.getResultAsBuffer(p, x.a);
-                const b = self.getResultAsFloat(p, x.b);
-                switch (x.op) {
-                    .add => {
-                        zang.zero(span, out);
-                        zang.addScalar(span, out, a, b);
-                    },
-                    .sub => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a[i] - b;
-                        }
-                    },
-                    .mul => {
-                        zang.zero(span, out);
-                        zang.multiplyScalar(span, out, a, b);
-                    },
-                    .div => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a[i] / b;
-                        }
-                    },
-                    .pow => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = std.math.pow(f32, a[i], b);
-                        }
-                    },
-                }
-            },
-            .arith_buffer_buffer => |x| {
-                var out = getOut(p, x.out);
-                const a = self.getResultAsBuffer(p, x.a);
-                const b = self.getResultAsBuffer(p, x.b);
-                switch (x.op) {
-                    .add => {
-                        zang.zero(span, out);
-                        zang.add(span, out, a, b);
-                    },
-                    .sub => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a[i] - b[i];
-                        }
-                    },
-                    .mul => {
-                        zang.zero(span, out);
-                        zang.multiply(span, out, a, b);
-                    },
-                    .div => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = a[i] / b[i];
-                        }
-                    },
-                    .pow => {
-                        var i: usize = span.start;
-                        while (i < span.end) : (i += 1) {
-                            out[i] = std.math.pow(f32, a[i], b[i]);
-                        }
-                    },
-                }
-            },
-            .delay => |x| {
-                var out = getOut(p, x.out);
+            .mul => {
                 zang.zero(span, out);
-                var start = span.start;
-                const end = span.end;
-                while (start < end) {
-                    zang.zero(zang.Span.init(start, end), p.temps[x.feedback_out_temp_buffer_index]);
-                    zang.zero(zang.Span.init(start, end), p.temps[x.feedback_temp_buffer_index]);
-                    const samples_read = self.delay_instances[x.delay_index].readDelayBuffer(p.temps[x.feedback_temp_buffer_index][start..end]);
-                    const inner_span = zang.Span.init(start, start + samples_read);
-                    for (x.instructions) |sub_instr| {
-                        self.paintInstruction(inner, p, inner_span, sub_instr);
-                    }
-                    self.delay_instances[x.delay_index].writeDelayBuffer(p.temps[x.feedback_out_temp_buffer_index][start .. start + samples_read]);
-                    start += samples_read;
+                zang.multiplyScalar(span, out, b, a);
+            },
+            .div => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = a / b[i];
                 }
             },
+            .pow => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.pow(f32, a, b[i]);
+                }
+            },
+        }
+    }
+
+    fn paintArithBufferFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithBufferFloat) void {
+        var out = getOut(p, x.out);
+        const a = self.getResultAsBuffer(p, x.a);
+        const b = self.getResultAsFloat(p, x.b);
+        switch (x.op) {
+            .add => {
+                zang.zero(span, out);
+                zang.addScalar(span, out, a, b);
+            },
+            .sub => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = a[i] - b;
+                }
+            },
+            .mul => {
+                zang.zero(span, out);
+                zang.multiplyScalar(span, out, a, b);
+            },
+            .div => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = a[i] / b;
+                }
+            },
+            .pow => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.pow(f32, a[i], b);
+                }
+            },
+        }
+    }
+
+    fn paintArithBufferBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithBufferBuffer) void {
+        var out = getOut(p, x.out);
+        const a = self.getResultAsBuffer(p, x.a);
+        const b = self.getResultAsBuffer(p, x.b);
+        switch (x.op) {
+            .add => {
+                zang.zero(span, out);
+                zang.add(span, out, a, b);
+            },
+            .sub => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = a[i] - b[i];
+                }
+            },
+            .mul => {
+                zang.zero(span, out);
+                zang.multiply(span, out, a, b);
+            },
+            .div => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = a[i] / b[i];
+                }
+            },
+            .pow => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.pow(f32, a[i], b[i]);
+                }
+            },
+        }
+    }
+
+    fn paintDelay(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrDelay) void {
+        // FIXME - what is `out` here? it's not even used?
+        var out = getOut(p, x.out);
+        zang.zero(span, out);
+        var start = span.start;
+        const end = span.end;
+        while (start < end) {
+            zang.zero(zang.Span.init(start, end), p.temps[x.feedback_out_temp_buffer_index]);
+            zang.zero(zang.Span.init(start, end), p.temps[x.feedback_temp_buffer_index]);
+            const samples_read = self.delay_instances[x.delay_index].readDelayBuffer(p.temps[x.feedback_temp_buffer_index][start..end]);
+            const inner_span = zang.Span.init(start, start + samples_read);
+            for (x.instructions) |sub_instr| {
+                self.paintInstruction(p, inner_span, sub_instr);
+            }
+            self.delay_instances[x.delay_index].writeDelayBuffer(p.temps[x.feedback_out_temp_buffer_index][start .. start + samples_read]);
+            start += samples_read;
         }
     }
 

@@ -47,5 +47,5 @@ def Instrument:
 begin
     let input = 0.5 * InnerInstrument(sample_rate, freq=freq*2, note_on)
 
-    out Echoes(input, echo_volume=0.8, filter_type='low_pass')
+    out Echoes(input, echo_volume=0.6, filter_type='low_pass')
 end

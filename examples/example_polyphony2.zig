@@ -42,11 +42,11 @@ pub const MainModule = struct {
             .note_ids = [1]?usize{null} ** common.key_bindings.len,
             .next_note_id = 1,
             .iq = zang.Notes(Module.Params).ImpulseQueue.init(),
-            .dispatcher = zang.Notes(Module.Params)
-                .PolyphonyDispatcher(polyphony).init(),
+            .dispatcher = zang.Notes(Module.Params).PolyphonyDispatcher(polyphony).init(),
             .voices = undefined,
         };
-        var i: usize = 0; while (i < polyphony) : (i += 1) {
+        var i: usize = 0;
+        while (i < polyphony) : (i += 1) {
             self.voices[i] = .{
                 .module = Module.init(0.3),
                 .trigger = zang.Trigger(Module.Params).init(),
@@ -55,54 +55,38 @@ pub const MainModule = struct {
         return self;
     }
 
-    pub fn paint(
-        self: *MainModule,
-        span: zang.Span,
-        outputs: [num_outputs][]f32,
-        temps: [num_temps][]f32,
-    ) void {
+    pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         const iap = self.iq.consume();
 
         const poly_iap = self.dispatcher.dispatch(iap);
 
-        var i: usize = 0; while (i < polyphony) : (i += 1) {
-            var ctr = self.voices[i].trigger.counter(span, poly_iap[i]);
-            while (self.voices[i].trigger.next(&ctr)) |result| {
-                self.voices[i].module.paint(
-                    result.span,
-                    outputs,
-                    temps,
-                    result.note_id_changed,
-                    result.params,
-                );
+        for (self.voices) |*voice, i| {
+            var ctr = voice.trigger.counter(span, poly_iap[i]);
+            while (voice.trigger.next(&ctr)) |result| {
+                voice.module.paint(result.span, outputs, temps, result.note_id_changed, result.params);
             }
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
         for (common.key_bindings) |kb, i| {
-            if (kb.key == key) {
-                const params: Module.Params = .{
-                    .sample_rate = AUDIO_SAMPLE_RATE,
-                    .freq = a4 * common.key_bindings[i].rel_freq,
-                    .note_on = down,
-                };
+            if (kb.key != key) {
+                continue;
+            }
 
-                if (down) {
-                    self.iq.push(impulse_frame, self.next_note_id, params);
-                    self.note_ids[i] = self.next_note_id;
-                    self.next_note_id += 1;
-                } else {
-                    if (self.note_ids[i]) |note_id| {
-                        self.iq.push(impulse_frame, note_id, params);
-                        self.note_ids[i] = null;
-                    }
-                }
+            const params: Module.Params = .{
+                .sample_rate = AUDIO_SAMPLE_RATE,
+                .freq = a4 * kb.rel_freq,
+                .note_on = down,
+            };
+
+            if (down) {
+                self.iq.push(impulse_frame, self.next_note_id, params);
+                self.note_ids[i] = self.next_note_id;
+                self.next_note_id += 1;
+            } else if (self.note_ids[i]) |note_id| {
+                self.iq.push(impulse_frame, note_id, params);
+                self.note_ids[i] = null;
             }
         }
     }

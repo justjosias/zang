@@ -93,11 +93,11 @@ fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
             const module = self.codegen_state.modules[self.codegen_state.module_index];
             try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
         },
-        .negate_float_to_float => |x| {
-            try self.print("{float_dest} = NEGATE_FLOAT_TO_FLOAT {expression_result}\n", .{ x.out, x.a });
+        .negate_float => |x| {
+            try self.print("{float_dest} = NEGATE_FLOAT {expression_result}\n", .{ x.out, x.a });
         },
-        .negate_buffer_to_buffer => |x| {
-            try self.print("{buffer_dest} = NEGATE_BUFFER_TO_BUFFER {expression_result}\n", .{ x.out, x.a });
+        .negate_buffer => |x| {
+            try self.print("{buffer_dest} = NEGATE_BUFFER {expression_result}\n", .{ x.out, x.a });
         },
         .arith_float_float => |x| {
             try self.print("{float_dest} = ARITH_FLOAT_FLOAT({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });

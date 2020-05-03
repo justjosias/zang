@@ -55,34 +55,47 @@ pub const BufferDest = union(enum) {
     output_index: usize,
 };
 
+pub const InstrCopyBuffer = struct { out: BufferDest, in: ExpressionResult };
+pub const InstrFloatToBuffer = struct { out: BufferDest, in: ExpressionResult };
+pub const InstrCobToBuffer = struct { out: BufferDest, in_self_param: usize };
+pub const InstrNegateFloat = struct { out: FloatDest, a: ExpressionResult };
+pub const InstrNegateBuffer = struct { out: BufferDest, a: ExpressionResult };
+pub const InstrArithFloatFloat = struct { out: FloatDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
+pub const InstrArithFloatBuffer = struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
+pub const InstrArithBufferFloat = struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
+pub const InstrArithBufferBuffer = struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
+
+pub const InstrCall = struct {
+    // paint always results in a buffer.
+    out: BufferDest,
+    // which field of the "self" module we are calling
+    field_index: usize,
+    // list of temp buffers passed along for the callee's internal use
+    temps: []const usize,
+    // list of argument param values (in the order of the callee module's params)
+    args: []const ExpressionResult,
+};
+
+pub const InstrDelay = struct {
+    delay_index: usize,
+    out: BufferDest,
+    feedback_out_temp_buffer_index: usize,
+    feedback_temp_buffer_index: usize,
+    instructions: []const Instruction,
+};
+
 pub const Instruction = union(enum) {
-    copy_buffer: struct { out: BufferDest, in: ExpressionResult },
-    float_to_buffer: struct { out: BufferDest, in: ExpressionResult },
-    cob_to_buffer: struct { out: BufferDest, in_self_param: usize },
-    negate_float_to_float: struct { out: FloatDest, a: ExpressionResult },
-    negate_buffer_to_buffer: struct { out: BufferDest, a: ExpressionResult },
-    arith_float_float: struct { out: FloatDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
-    arith_float_buffer: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
-    arith_buffer_float: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
-    arith_buffer_buffer: struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult },
-    // call one of self's fields (paint the child module)
-    call: struct {
-        // paint always results in a buffer.
-        out: BufferDest,
-        // which field of the "self" module we are calling
-        field_index: usize,
-        // list of temp buffers passed along for the callee's internal use
-        temps: []const usize,
-        // list of argument param values (in the order of the callee module's params)
-        args: []const ExpressionResult,
-    },
-    delay: struct {
-        delay_index: usize,
-        out: BufferDest,
-        feedback_out_temp_buffer_index: usize,
-        feedback_temp_buffer_index: usize,
-        instructions: []const Instruction,
-    },
+    copy_buffer: InstrCopyBuffer,
+    float_to_buffer: InstrFloatToBuffer,
+    cob_to_buffer: InstrCobToBuffer,
+    negate_float: InstrNegateFloat,
+    negate_buffer: InstrNegateBuffer,
+    arith_float_float: InstrArithFloatFloat,
+    arith_float_buffer: InstrArithFloatBuffer,
+    arith_buffer_float: InstrArithBufferFloat,
+    arith_buffer_buffer: InstrArithBufferBuffer,
+    call: InstrCall,
+    delay: InstrDelay,
 };
 
 pub const DelayDecl = struct {
@@ -300,13 +313,13 @@ fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buff
     if (isResultFloat(self, ra)) {
         // float -> float
         const float_dest = try requestFloatDest(self);
-        try addInstruction(self, .{ .negate_float_to_float = .{ .out = float_dest, .a = ra } });
+        try addInstruction(self, .{ .negate_float = .{ .out = float_dest, .a = ra } });
         return commitFloatDest(self, float_dest);
     }
     if (isResultBuffer(self, ra)) {
         // buffer -> buffer
         const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-        try addInstruction(self, .{ .negate_buffer_to_buffer = .{ .out = buffer_dest, .a = ra } });
+        try addInstruction(self, .{ .negate_buffer = .{ .out = buffer_dest, .a = ra } });
         return commitBufferDest(self, maybe_result_loc, buffer_dest);
     }
     return fail(self.source, expr.source_range, "arithmetic can only be performed on numeric types", .{});
