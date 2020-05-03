@@ -17,4 +17,5 @@ pub const generateZig = codegen_zig.generateZig;
 
 const runtime = @import("zangscript/runtime.zig");
 pub const Value = runtime.Value;
-pub const ScriptModule = runtime.ScriptModule;
+pub const ModuleBase = runtime.ModuleBase;
+pub const initModule = runtime.initModule;

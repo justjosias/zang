@@ -13,80 +13,6 @@ const Instruction = @import("codegen.zig").Instruction;
 const CodeGenCustomModuleInner = @import("codegen.zig").CodeGenCustomModuleInner;
 const CompiledScript = @import("compile.zig").CompiledScript;
 
-pub const ModuleBase = struct {
-    num_outputs: usize,
-    num_temps: usize,
-    params: []const ModuleParam,
-    deinitFn: fn (base: *ModuleBase) void,
-    paintFn: fn (
-        base: *ModuleBase,
-        span: zang.Span,
-        outputs: []const []f32,
-        temps: []const []f32,
-        note_id_changed: bool,
-        params: []const Value,
-    ) void,
-};
-
-// implement ModuleBase for a builtin module
-pub fn makeImpl(comptime T: type) type {
-    return struct {
-        base: ModuleBase,
-        mod: T,
-
-        pub fn init(params: []const ModuleParam) @This() {
-            return .{
-                .base = .{
-                    .num_outputs = T.num_outputs,
-                    .num_temps = T.num_temps,
-                    .params = params,
-                    .deinitFn = deinitFn,
-                    .paintFn = paintFn,
-                },
-                .mod = T.init(),
-            };
-        }
-
-        fn deinitFn(base: *ModuleBase) void {}
-
-        fn paintFn(
-            base: *ModuleBase,
-            span: zang.Span,
-            outputs_slice: []const []f32,
-            temps_slice: []const []f32,
-            note_id_changed: bool,
-            param_values: []const Value,
-        ) void {
-            var self = @fieldParentPtr(@This(), "base", base);
-
-            std.debug.assert(outputs_slice.len == T.num_outputs);
-            var outputs: [T.num_outputs][]f32 = undefined;
-            std.mem.copy([]f32, &outputs, outputs_slice);
-
-            std.debug.assert(temps_slice.len == T.num_temps);
-            var temps: [T.num_temps][]f32 = undefined;
-            std.mem.copy([]f32, &temps, temps_slice);
-
-            var params: T.Params = undefined;
-            inline for (@typeInfo(T.Params).Struct.fields) |field| {
-                const param_index = getParamIndex(self.base.params, field.name);
-                @field(params, field.name) = param_values[param_index].resolve(field.field_type);
-            }
-
-            self.mod.paint(span, outputs, temps, note_id_changed, params);
-        }
-
-        fn getParamIndex(params: []const ModuleParam, name: []const u8) usize {
-            for (params) |param, i| {
-                if (std.mem.eql(u8, name, param.name)) {
-                    return i;
-                }
-            }
-            unreachable;
-        }
-    };
-}
-
 pub const Value = union(enum) {
     constant: f32,
     buffer: []const f32,
@@ -94,6 +20,7 @@ pub const Value = union(enum) {
     boolean: bool,
     one_of: struct { label: []const u8, payload: ?f32 },
 
+    // turn a Value into a zig value
     pub fn resolve(value: Value, comptime P: type) P {
         switch (P) {
             bool => switch (value) {
@@ -148,9 +75,194 @@ pub const Value = union(enum) {
             },
         }
     }
+
+    // turn a zig value into a Value
+    fn fromZig(param_type: ParamType, zig_value: var) ?Value {
+        switch (param_type) {
+            .boolean => if (@TypeOf(zig_value) == bool) return Value{ .boolean = zig_value },
+            .buffer => if (@TypeOf(zig_value) == []const f32) return Value{ .buffer = zig_value },
+            .constant => if (@TypeOf(zig_value) == f32) return Value{ .constant = zig_value },
+            .constant_or_buffer => if (@TypeOf(zig_value) == zang.ConstantOrBuffer) return Value{ .cob = zig_value },
+            .one_of => |builtin_enum| {
+                switch (@typeInfo(@TypeOf(zig_value))) {
+                    .Enum => |enum_info| {
+                        // just check if the current value of `zig_value` fits structurally
+                        const label = @tagName(zig_value);
+                        for (builtin_enum.values) |bev| {
+                            if (std.mem.eql(u8, bev.label, label) and bev.payload_type == .none) {
+                                return Value{ .one_of = .{ .label = label, .payload = null } };
+                            }
+                        }
+                    },
+                    .Union => |union_info| {
+                        // just check if the current value of `zig_value` fits structurally
+                        for (builtin_enum.values) |bev| {
+                            inline for (union_info.fields) |field, i| {
+                                if (@enumToInt(zig_value) == i and std.mem.eql(u8, bev.label, field.name)) {
+                                    return payloadFromZig(bev, @field(zig_value, field.name));
+                                }
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            },
+        }
+        return null;
+    }
+
+    fn payloadFromZig(bev: BuiltinEnumValue, zig_payload: var) ?Value {
+        switch (bev.payload_type) {
+            .none => {
+                if (@TypeOf(zig_payload) == void) {
+                    return Value{ .one_of = .{ .label = bev.label, .payload = null } };
+                }
+            },
+            .f32 => {
+                if (@TypeOf(zig_payload) == f32) {
+                    return Value{ .one_of = .{ .label = bev.label, .payload = zig_payload } };
+                }
+            },
+        }
+        return null;
+    }
 };
 
-pub const ScriptModule = struct {
+pub const ModuleBase = struct {
+    allocator: *std.mem.Allocator,
+    num_outputs: usize,
+    num_temps: usize,
+    params: []const ModuleParam,
+    deinitFn: fn (base: *ModuleBase) void,
+    paintFn: fn (base: *ModuleBase, span: zang.Span, outputs: []const []f32, temps: []const []f32, note_id_changed: bool, params: []const Value) void,
+
+    pub fn deinit(base: *ModuleBase) void {
+        base.deinitFn(base);
+        // destroy the allocation created by initModule. technically we're not passing the same object
+        // that was created (it was the full "child class" object that was created), but since they
+        // start on the same memory address, this works (the allocator remembers the allocation size)
+        base.allocator.destroy(base);
+    }
+
+    pub fn paint(base: *ModuleBase, span: zang.Span, outputs: []const []f32, temps: []const []f32, note_id_changed: bool, params: []const Value) void {
+        base.paintFn(base, span, outputs, temps, note_id_changed, params);
+    }
+
+    // convenience function for interfacing with runtime scripts from zig code.
+    // you give it an impromptu struct of params and it will validate and convert that into the array of Values that the runtime expects
+    pub fn makeParams(self: *const ModuleBase, comptime T: type, params: T) ?[@typeInfo(T).Struct.fields.len]Value {
+        const struct_fields = @typeInfo(T).Struct.fields;
+        var values: [struct_fields.len]Value = undefined;
+        for (self.params) |param, i| {
+            var found = false;
+            inline for (struct_fields) |field| {
+                if (std.mem.eql(u8, field.name, param.name)) {
+                    values[i] = Value.fromZig(param.param_type, @field(params, field.name)) orelse {
+                        std.debug.warn("makeParams: type mismatch on param \"{}\"\n", .{param.name});
+                        return null;
+                    };
+                    found = true;
+                }
+            }
+            if (!found) {
+                std.debug.warn("makeParams: missing param \"{}\"\n", .{param.name});
+                return null;
+            }
+        }
+        return values;
+    }
+};
+
+pub fn initModule(
+    script: *const CompiledScript,
+    module_index: usize,
+    comptime builtin_packages: []const BuiltinPackage,
+    allocator: *std.mem.Allocator,
+) !*ModuleBase {
+    const inner = switch (script.module_results[module_index].inner) {
+        .builtin => {
+            const module_name = script.modules[module_index].name;
+            inline for (builtin_packages) |pkg| {
+                inline for (pkg.builtins) |builtin| {
+                    if (std.mem.eql(u8, builtin.name, module_name)) {
+                        const Impl = BuiltinModule(builtin.T);
+                        var impl = try allocator.create(Impl);
+                        impl.* = Impl.init(script, module_index, allocator);
+                        return &impl.base;
+                    }
+                }
+            }
+        },
+        .custom => |x| {
+            var impl = try allocator.create(ScriptModule);
+            errdefer allocator.destroy(impl);
+            impl.* = try ScriptModule.init(script, module_index, builtin_packages, allocator);
+            return &impl.base;
+        },
+    };
+    unreachable;
+}
+
+fn BuiltinModule(comptime T: type) type {
+    return struct {
+        base: ModuleBase,
+        mod: T,
+
+        fn init(script: *const CompiledScript, module_index: usize, allocator: *std.mem.Allocator) @This() {
+            return @This(){
+                .base = .{
+                    .allocator = allocator,
+                    .num_outputs = T.num_outputs,
+                    .num_temps = T.num_temps,
+                    .params = script.modules[module_index].params,
+                    .deinitFn = deinitFn,
+                    .paintFn = paintFn,
+                },
+                .mod = T.init(),
+            };
+        }
+
+        fn deinitFn(base: *ModuleBase) void {}
+
+        fn paintFn(
+            base: *ModuleBase,
+            span: zang.Span,
+            outputs_slice: []const []f32,
+            temps_slice: []const []f32,
+            note_id_changed: bool,
+            param_values: []const Value,
+        ) void {
+            var self = @fieldParentPtr(@This(), "base", base);
+
+            std.debug.assert(outputs_slice.len == T.num_outputs);
+            var outputs: [T.num_outputs][]f32 = undefined;
+            std.mem.copy([]f32, &outputs, outputs_slice);
+
+            std.debug.assert(temps_slice.len == T.num_temps);
+            var temps: [T.num_temps][]f32 = undefined;
+            std.mem.copy([]f32, &temps, temps_slice);
+
+            var params: T.Params = undefined;
+            inline for (@typeInfo(T.Params).Struct.fields) |field| {
+                const param_index = getParamIndex(self.base.params, field.name);
+                @field(params, field.name) = param_values[param_index].resolve(field.field_type);
+            }
+
+            self.mod.paint(span, outputs, temps, note_id_changed, params);
+        }
+
+        fn getParamIndex(params: []const ModuleParam, name: []const u8) usize {
+            for (params) |param, i| {
+                if (std.mem.eql(u8, name, param.name)) {
+                    return i;
+                }
+            }
+            unreachable;
+        }
+    };
+}
+
+const ScriptModule = struct {
     base: ModuleBase,
     arena: std.heap.ArenaAllocator,
     script: *const CompiledScript,
@@ -161,14 +273,14 @@ pub const ScriptModule = struct {
     callee_temps: [][]f32,
     callee_params: []Value,
 
-    pub fn init(
+    fn init(
         script: *const CompiledScript,
         module_index: usize,
         comptime builtin_packages: []const BuiltinPackage,
         inner_allocator: *std.mem.Allocator,
     ) error{OutOfMemory}!ScriptModule {
         const inner = switch (script.module_results[module_index].inner) {
-            .builtin => @panic("builtin passed to ScriptModule"),
+            .builtin => unreachable,
             .custom => |x| x,
         };
 
@@ -179,37 +291,11 @@ pub const ScriptModule = struct {
 
         var num_initialized_fields: usize = 0;
         errdefer for (module_instances[0..num_initialized_fields]) |module_instance| {
-            module_instance.deinitFn(module_instance);
+            module_instance.deinit();
         };
 
         for (inner.resolved_fields) |field_module_index, i| {
-            const field_module_name = script.modules[field_module_index].name;
-            const params = script.modules[field_module_index].params;
-            var done = false;
-
-            inline for (builtin_packages) |pkg| {
-                inline for (pkg.builtins) |builtin| {
-                    if (std.mem.eql(u8, builtin.name, field_module_name)) {
-                        const Impl = makeImpl(builtin.T);
-                        var impl = try arena.allocator.create(Impl);
-                        impl.* = Impl.init(params);
-                        module_instances[i] = &impl.base;
-                        done = true;
-                    }
-                }
-            }
-
-            if (!done) {
-                for (script.modules) |module, j| {
-                    if (std.mem.eql(u8, field_module_name, module.name)) {
-                        var impl = try arena.allocator.create(ScriptModule);
-                        impl.* = try ScriptModule.init(script, j, builtin_packages, inner_allocator);
-                        module_instances[i] = &impl.base;
-                        break;
-                    }
-                } else unreachable;
-            }
-
+            module_instances[i] = try initModule(script, field_module_index, builtin_packages, inner_allocator);
             num_initialized_fields += 1;
         }
 
@@ -238,6 +324,7 @@ pub const ScriptModule = struct {
 
         return ScriptModule{
             .base = .{
+                .allocator = inner_allocator,
                 .num_outputs = script.module_results[module_index].num_outputs,
                 .num_temps = script.module_results[module_index].num_temps,
                 .params = script.modules[module_index].params,
@@ -258,7 +345,7 @@ pub const ScriptModule = struct {
     fn deinitFn(base: *ModuleBase) void {
         var self = @fieldParentPtr(ScriptModule, "base", base);
         for (self.module_instances) |module_instance| {
-            module_instance.deinitFn(module_instance);
+            module_instance.deinit();
         }
         self.arena.deinit();
     }
@@ -269,17 +356,6 @@ pub const ScriptModule = struct {
         note_id_changed: bool,
         params: []const Value,
     };
-
-    pub fn paint(
-        self: *ScriptModule,
-        span: zang.Span,
-        outputs: []const []f32,
-        temps: []const []f32,
-        note_id_changed: bool,
-        params: []const Value,
-    ) void {
-        self.base.paintFn(&self.base, span, outputs, temps, note_id_changed, params);
-    }
 
     fn paintFn(
         base: *ModuleBase,
@@ -572,80 +648,5 @@ pub const ScriptModule = struct {
             },
             .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value => unreachable,
         };
-    }
-
-    // convenience function for interfacing with runtime scripts from zig code.
-    // you give it an impromptu struct of params and it will validate and convert that into the runtime structure
-    pub fn makeParams(self: *const ScriptModule, comptime T: type, params: T) ?[@typeInfo(T).Struct.fields.len]Value {
-        const module_params = self.script.modules[self.module_index].params;
-        const struct_fields = @typeInfo(T).Struct.fields;
-        var values: [struct_fields.len]Value = undefined;
-        for (module_params) |param, i| {
-            var found = false;
-            inline for (struct_fields) |field| {
-                if (std.mem.eql(u8, field.name, param.name)) {
-                    values[i] = valueFromZig(param.param_type, @field(params, field.name)) orelse {
-                        std.debug.warn("makeParams: type mismatch on param \"{}\"\n", .{param.name});
-                        return null;
-                    };
-                    found = true;
-                }
-            }
-            if (!found) {
-                std.debug.warn("makeParams: missing param \"{}\"\n", .{param.name});
-                return null;
-            }
-        }
-        return values;
-    }
-
-    fn valueFromZig(param_type: ParamType, zig_value: var) ?Value {
-        switch (param_type) {
-            .boolean => if (@TypeOf(zig_value) == bool) return Value{ .boolean = zig_value },
-            .buffer => if (@TypeOf(zig_value) == []const f32) return Value{ .buffer = zig_value },
-            .constant => if (@TypeOf(zig_value) == f32) return Value{ .constant = zig_value },
-            .constant_or_buffer => if (@TypeOf(zig_value) == zang.ConstantOrBuffer) return Value{ .cob = zig_value },
-            .one_of => |builtin_enum| {
-                switch (@typeInfo(@TypeOf(zig_value))) {
-                    .Enum => |enum_info| {
-                        // just check if the current value of `zig_value` fits structurally
-                        const label = @tagName(zig_value);
-                        for (builtin_enum.values) |bev| {
-                            if (std.mem.eql(u8, bev.label, label) and bev.payload_type == .none) {
-                                return Value{ .one_of = .{ .label = label, .payload = null } };
-                            }
-                        }
-                    },
-                    .Union => |union_info| {
-                        // just check if the current value of `zig_value` fits structurally
-                        for (builtin_enum.values) |bev| {
-                            inline for (union_info.fields) |field, i| {
-                                if (@enumToInt(zig_value) == i and std.mem.eql(u8, bev.label, field.name)) {
-                                    return payloadFromZig(bev, @field(zig_value, field.name));
-                                }
-                            }
-                        }
-                    },
-                    else => {},
-                }
-            },
-        }
-        return null;
-    }
-
-    fn payloadFromZig(bev: BuiltinEnumValue, zig_payload: var) ?Value {
-        switch (bev.payload_type) {
-            .none => {
-                if (@TypeOf(zig_payload) == void) {
-                    return Value{ .one_of = .{ .label = bev.label, .payload = null } };
-                }
-            },
-            .f32 => {
-                if (@TypeOf(zig_payload) == f32) {
-                    return Value{ .one_of = .{ .label = bev.label, .payload = zig_payload } };
-                }
-            },
-        }
-        return null;
     }
 };

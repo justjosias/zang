@@ -37,6 +37,8 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 10; // FIXME
 
+    const filename = "examples/script.txt";
+    const module_name = "Instrument";
     const Params = struct {
         sample_rate: f32,
         freq: zang.ConstantOrBuffer,
@@ -50,13 +52,11 @@ pub const MainModule = struct {
     key: ?i32,
     iq: zang.Notes(Params).ImpulseQueue,
     idgen: zang.IdGenerator,
-    instr: zangscript.ScriptModule,
+    instr: *zangscript.ModuleBase,
     trig: zang.Trigger(Params),
 
     pub fn init() !MainModule {
         var allocator = std.heap.page_allocator;
-
-        const filename = "examples/script.txt";
 
         const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024);
         errdefer allocator.free(contents);
@@ -68,7 +68,7 @@ pub const MainModule = struct {
         script_ptr.* = script;
 
         const module_index = for (script.modules) |module, i| {
-            if (std.mem.eql(u8, module.name, "Instrument")) break i;
+            if (std.mem.eql(u8, module.name, module_name)) break i;
         } else return error.ModuleNotFound;
 
         return MainModule{
@@ -78,13 +78,13 @@ pub const MainModule = struct {
             .key = null,
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .idgen = zang.IdGenerator.init(),
-            .instr = try zangscript.ScriptModule.init(script_ptr, module_index, &builtin_packages, allocator),
+            .instr = try zangscript.initModule(script_ptr, module_index, &builtin_packages, allocator),
             .trig = zang.Trigger(Params).init(),
         };
     }
 
     pub fn deinit(self: *MainModule) void {
-        self.instr.base.deinitFn(&self.instr.base);
+        self.instr.deinit();
         self.script.deinit();
         self.allocator.destroy(self.script);
         self.allocator.free(self.contents);
@@ -95,7 +95,7 @@ pub const MainModule = struct {
         while (self.trig.next(&ctr)) |result| {
             const params = self.instr.makeParams(Params, result.params) orelse break;
 
-            self.instr.paint(result.span, &outputs, temps[0..self.instr.base.num_temps], result.note_id_changed, &params);
+            self.instr.paint(result.span, &outputs, temps[0..self.instr.num_temps], result.note_id_changed, &params);
         }
     }
 
