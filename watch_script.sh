@@ -11,8 +11,8 @@
 # have to watch the directory. because vim doesn't modify the file directly,
 # it overwrites it with a new copy, which makes inotifywait lose track after
 # the first edit if you were watching the file directly.
-inotifywait -m -e close_write,moved_to --format %e/%f examples |
-while IFS=/ read -r events file; do
+inotifywait -m -e close_write,moved_to --format %f examples |
+while IFS=/ read -r file; do
     if [ "$file" = "script.txt" ]; then
         echo -n reload > /dev/udp/localhost/8888
     fi

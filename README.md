@@ -99,6 +99,6 @@ If you set the `ZANG_LISTEN_PORT` environment variable, the zang example program
 ```
 ZANG_LISTEN_PORT=8888 zang build script_runtime
 
-# then, in another terminal:
+# then, in another terminal (bash only):
 echo -n reload > /dev/udp/localhost/8888
 ```
