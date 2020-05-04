@@ -93,3 +93,12 @@ The scripts can also be evaluated at runtime. The result should be the same as w
 # loads and runs examples/script.txt
 zig build script_runtime
 ```
+
+If you set the `ZANG_LISTEN_PORT` environment variable, the zang example program will open a UDP socket. Send the string `reload` to this port and the example will reload (same as pressing F5). You can hook this up to a filesystem-watching tool to get reload-on-save (see the included script `watch_script.sh` which uses `inotifywait`).
+
+```
+ZANG_LISTEN_PORT=8888 zang build script_runtime
+
+# then, in another terminal:
+echo -n reload > /dev/udp/localhost/8888
+```

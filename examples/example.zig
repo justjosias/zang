@@ -117,6 +117,56 @@ fn audioCallback(
     pushRedrawEvent();
 }
 
+const ListenerEvent = enum {
+    reload,
+};
+
+const Listener = struct {
+    socket: std.os.fd_t,
+
+    fn init(port: u16) !Listener {
+        // open UDP socket on port 8888
+        const socket = try std.os.socket(std.os.AF_INET, std.os.SOCK_DGRAM, std.os.IPPROTO_UDP);
+        _ = try std.os.fcntl(socket, std.os.F_SETFL, std.os.O_NONBLOCK);
+        var addr: std.os.sockaddr_in = .{
+            .port = std.mem.nativeToBig(std.os.in_port_t, port),
+            .addr = 0, // INADDR_ANY
+        };
+        try std.os.bind(socket, @ptrCast(*std.os.sockaddr, &addr), @sizeOf(@TypeOf(addr)));
+        std.debug.warn("listening on port {}\n", .{port});
+        return Listener{ .socket = socket };
+    }
+
+    fn deinit(self: *Listener) void {
+        std.os.close(self.socket);
+    }
+
+    fn checkForEvent(self: *Listener) !?ListenerEvent {
+        var buf: [100]u8 = undefined;
+
+        var from_addr: std.os.sockaddr_in = undefined;
+        var from_addr_len: u32 = @sizeOf(@TypeOf(from_addr));
+
+        const num_bytes = std.os.recvfrom(self.socket, &buf, buf.len, @ptrCast(*std.os.sockaddr, &from_addr), &from_addr_len) catch |err| blk: {
+            if (err == error.WouldBlock) {
+                return null;
+            } else {
+                return err;
+            }
+        };
+
+        if (num_bytes > 0) {
+            const string = buf[0..num_bytes];
+
+            if (std.mem.eql(u8, string, "reload")) {
+                return ListenerEvent.reload;
+            }
+        }
+
+        return null;
+    }
+};
+
 pub fn main() !void {
     var userdata: UserData = .{
         .ok = true,
@@ -185,6 +235,20 @@ pub fn main() !void {
         return error.SDLInitializationFailed;
     }
     errdefer c.SDL_CloseAudio();
+
+    var maybe_listener: ?Listener = null;
+    if (std.process.getEnvVarOwned(std.heap.page_allocator, "ZANG_LISTEN_PORT") catch null) |port_str| {
+        const maybe_port = std.fmt.parseInt(u16, port_str, 10) catch blk: {
+            std.debug.warn("invalid value for ZANG_LISTEN_PORT\n", .{});
+            break :blk null;
+        };
+        if (maybe_port) |port| {
+            maybe_listener = Listener.init(port) catch |err| blk: {
+                std.debug.warn("Listener.init failed: {}\n", .{err});
+                break :blk null;
+            };
+        }
+    }
 
     // this seems to match the value of SDL_GetTicks the first time the audio
     // callback is called
@@ -274,6 +338,39 @@ pub fn main() !void {
             else => {},
         }
 
+        if (maybe_listener) |*listener| {
+            const maybe_event = listener.checkForEvent() catch |err| blk: {
+                std.debug.warn("listener.checkForEvent failed: {}\n", .{err});
+                listener.deinit();
+                maybe_listener = null;
+                break :blk null;
+            };
+
+            if (maybe_event) |listener_event| {
+                switch (listener_event) {
+                    .reload => {
+                        c.SDL_LockAudioDevice(device);
+                        if (userdata.ok) {
+                            if (@hasDecl(example.MainModule, "deinit")) {
+                                userdata.main_module.deinit();
+                            }
+                        }
+                        userdata.ok = true;
+                        if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
+                            userdata.main_module = example.MainModule.init() catch |err| blk: {
+                                std.debug.warn("{}\n", .{err});
+                                userdata.ok = false;
+                                break :blk undefined;
+                            };
+                        } else {
+                            userdata.main_module = example.MainModule.init();
+                        }
+                        c.SDL_UnlockAudioDevice(device);
+                    },
+                }
+            }
+        }
+
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
             c.draw(
@@ -287,6 +384,9 @@ pub fn main() !void {
         }
     }
 
+    if (maybe_listener) |*listener| {
+        listener.deinit();
+    }
     c.SDL_LockAudioDevice(device);
     c.SDL_UnlockAudioDevice(device);
     c.SDL_CloseAudioDevice(device);
