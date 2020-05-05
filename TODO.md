@@ -1,25 +1,9 @@
 # zang todo
 
-## Rename project
-I don't like the new name either.
-
-## New example: Record and play back notes played.
-This one might be tricky. Add an example where you play some notes with the keyboard, then hit a button to say you're finished, then the program repeats what you played. To be clear: this should be done by recording the note events, not by using the delay audio effect.
-
-Maybe like a loop pedal where you press to start, play some stuff, press to end, and it loops what you played, meanwhile you can keep playing on top of it.
-
 ## New module: bitcrusher
 Make a module that lets you artificially alter the sample rate and resolution of the input stream.
 
 Updated: I added decimator, which lets you change the sample rate, but doesn't do anything about the resolution, I guess that would be a separate module.
-
-## Alternate noise types
-Zig's standard library has functions to generate random numbers with different distributions (`floatNorm` and `floatExp`), do those correspond to any "colors" of noise?
-
-## Delay length can't be chosen at runtime
-Right now the delay effect uses a comptime sample count. This was to avoid having to dynamically allocate/reallocate the delay buffer. This was convenient while developing the other parts of the delay code, but now that that's all done, I need to address this.
-
-The caller needs to be able to set the delay length to anything. Perhaps there could be a comptime limit, to avoid any dynamic allocations. That might be acceptable.
 
 ## Recognize when modules are "idle" and skip the paint method
 Maybe as part of this, add an visual indicator to the examples of the number of "active" modules.
