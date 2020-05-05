@@ -12,8 +12,8 @@ const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const InstrCopyBuffer = @import("codegen.zig").InstrCopyBuffer;
 const InstrFloatToBuffer = @import("codegen.zig").InstrFloatToBuffer;
 const InstrCobToBuffer = @import("codegen.zig").InstrCobToBuffer;
-const InstrNegateFloat = @import("codegen.zig").InstrNegateFloat;
-const InstrNegateBuffer = @import("codegen.zig").InstrNegateBuffer;
+const InstrArithFloat = @import("codegen.zig").InstrArithFloat;
+const InstrArithBuffer = @import("codegen.zig").InstrArithBuffer;
 const InstrArithFloatFloat = @import("codegen.zig").InstrArithFloatFloat;
 const InstrArithFloatBuffer = @import("codegen.zig").InstrArithFloatBuffer;
 const InstrArithBufferFloat = @import("codegen.zig").InstrArithBufferFloat;
@@ -399,8 +399,8 @@ const ScriptModule = struct {
             .float_to_buffer => |x| self.paintFloatToBuffer(p, span, x),
             .cob_to_buffer => |x| self.paintCobToBuffer(p, span, x),
             .call => |x| self.paintCall(p, span, x),
-            .negate_float => |x| self.paintNegateFloat(p, span, x),
-            .negate_buffer => |x| self.paintNegateBuffer(p, span, x),
+            .arith_float => |x| self.paintArithFloat(p, span, x),
+            .arith_buffer => |x| self.paintArithBuffer(p, span, x),
             .arith_float_float => |x| self.paintArithFloatFloat(p, span, x),
             .arith_float_buffer => |x| self.paintArithFloatBuffer(p, span, x),
             .arith_buffer_float => |x| self.paintArithBufferFloat(p, span, x),
@@ -454,16 +454,30 @@ const ScriptModule = struct {
         );
     }
 
-    fn paintNegateFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrNegateFloat) void {
-        self.temp_floats[x.out.temp_float_index] = -self.getResultAsFloat(p, x.a);
+    fn paintArithFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithFloat) void {
+        const a = self.getResultAsFloat(p, x.a);
+        self.temp_floats[x.out.temp_float_index] = switch (x.op) {
+            .neg => -a,
+            .abs => std.math.fabs(a),
+        };
     }
 
-    fn paintNegateBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrNegateBuffer) void {
+    fn paintArithBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithBuffer) void {
         var out = getOut(p, x.out);
         const a = self.getResultAsBuffer(p, x.a);
-        var i: usize = span.start;
-        while (i < span.end) : (i += 1) {
-            out[i] = -a[i];
+        switch (x.op) {
+            .neg => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = -a[i];
+                }
+            },
+            .abs => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.fabs(a[i]);
+                }
+            },
         }
     }
 
@@ -476,6 +490,8 @@ const ScriptModule = struct {
             .mul => a * b,
             .div => a / b,
             .pow => std.math.pow(f32, a, b),
+            .min => std.math.min(a, b),
+            .max => std.math.max(a, b),
         };
     }
 
@@ -508,6 +524,18 @@ const ScriptModule = struct {
                 var i: usize = span.start;
                 while (i < span.end) : (i += 1) {
                     out[i] = std.math.pow(f32, a, b[i]);
+                }
+            },
+            .min => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.min(a, b[i]);
+                }
+            },
+            .max => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.max(a, b[i]);
                 }
             },
         }
@@ -544,6 +572,18 @@ const ScriptModule = struct {
                     out[i] = std.math.pow(f32, a[i], b);
                 }
             },
+            .min => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.min(a[i], b);
+                }
+            },
+            .max => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.max(a[i], b);
+                }
+            },
         }
     }
 
@@ -576,6 +616,18 @@ const ScriptModule = struct {
                 var i: usize = span.start;
                 while (i < span.end) : (i += 1) {
                     out[i] = std.math.pow(f32, a[i], b[i]);
+                }
+            },
+            .min => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.min(a[i], b[i]);
+                }
+            },
+            .max => {
+                var i: usize = span.start;
+                while (i < span.end) : (i += 1) {
+                    out[i] = std.math.max(a[i], b[i]);
                 }
             },
         }

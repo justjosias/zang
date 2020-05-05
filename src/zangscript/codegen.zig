@@ -10,6 +10,7 @@ const Module = @import("parse.zig").Module;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
 const CallArg = @import("parse.zig").CallArg;
+const UnArithOp = @import("parse.zig").UnArithOp;
 const BinArithOp = @import("parse.zig").BinArithOp;
 const Delay = @import("parse.zig").Delay;
 const Field = @import("parse.zig").Field;
@@ -58,8 +59,8 @@ pub const BufferDest = union(enum) {
 pub const InstrCopyBuffer = struct { out: BufferDest, in: ExpressionResult };
 pub const InstrFloatToBuffer = struct { out: BufferDest, in: ExpressionResult };
 pub const InstrCobToBuffer = struct { out: BufferDest, in_self_param: usize };
-pub const InstrNegateFloat = struct { out: FloatDest, a: ExpressionResult };
-pub const InstrNegateBuffer = struct { out: BufferDest, a: ExpressionResult };
+pub const InstrArithFloat = struct { out: FloatDest, op: UnArithOp, a: ExpressionResult };
+pub const InstrArithBuffer = struct { out: BufferDest, op: UnArithOp, a: ExpressionResult };
 pub const InstrArithFloatFloat = struct { out: FloatDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
 pub const InstrArithFloatBuffer = struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
 pub const InstrArithBufferFloat = struct { out: BufferDest, op: BinArithOp, a: ExpressionResult, b: ExpressionResult };
@@ -88,8 +89,8 @@ pub const Instruction = union(enum) {
     copy_buffer: InstrCopyBuffer,
     float_to_buffer: InstrFloatToBuffer,
     cob_to_buffer: InstrCobToBuffer,
-    negate_float: InstrNegateFloat,
-    negate_buffer: InstrNegateBuffer,
+    arith_float: InstrArithFloat,
+    arith_buffer: InstrArithBuffer,
     arith_float_float: InstrArithFloatFloat,
     arith_float_buffer: InstrArithFloatBuffer,
     arith_buffer_float: InstrArithBufferFloat,
@@ -306,23 +307,23 @@ fn genLiteralEnum(self: *CodegenModuleState, label: []const u8, payload: ?*const
     }
 }
 
-fn genNegate(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, expr: *const Expression) !ExpressionResult {
-    const ra = try genExpression(self, expr, null);
+fn genUnArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: UnArithOp, ea: *const Expression) !ExpressionResult {
+    const ra = try genExpression(self, ea, null);
     defer releaseExpressionResult(self, ra);
 
     if (isResultFloat(self, ra)) {
         // float -> float
         const float_dest = try requestFloatDest(self);
-        try addInstruction(self, .{ .negate_float = .{ .out = float_dest, .a = ra } });
+        try addInstruction(self, .{ .arith_float = .{ .out = float_dest, .op = op, .a = ra } });
         return commitFloatDest(self, float_dest);
     }
     if (isResultBuffer(self, ra)) {
         // buffer -> buffer
         const buffer_dest = try requestBufferDest(self, maybe_result_loc);
-        try addInstruction(self, .{ .negate_buffer = .{ .out = buffer_dest, .a = ra } });
+        try addInstruction(self, .{ .arith_buffer = .{ .out = buffer_dest, .op = op, .a = ra } });
         return commitBufferDest(self, maybe_result_loc, buffer_dest);
     }
-    return fail(self.source, expr.source_range, "arithmetic can only be performed on numeric types", .{});
+    return fail(self.source, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
 fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression) !ExpressionResult {
@@ -526,7 +527,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
                 return ExpressionResult{ .self_param = param_index };
             }
         },
-        .negate => |expr| return try genNegate(self, sr, maybe_result_loc, expr),
+        .un_arith => |m| return try genUnArith(self, sr, maybe_result_loc, m.op, m.a),
         .bin_arith => |m| return try genBinArith(self, sr, maybe_result_loc, m.op, m.a, m.b),
         .call => |call| return try genCall(self, sr, maybe_result_loc, call.field_index, call.args),
         .delay => |delay| return try genDelay(self, sr, maybe_result_loc, delay),

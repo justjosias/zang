@@ -61,12 +61,24 @@ pub const Delay = struct {
     scope: *Scope,
 };
 
+pub const UnArithOp = enum {
+    neg,
+    abs,
+};
+
+pub const UnArith = struct {
+    op: UnArithOp,
+    a: *const Expression,
+};
+
 pub const BinArithOp = enum {
     add,
     sub,
     mul,
     div,
     pow,
+    min,
+    max,
 };
 
 pub const BinArith = struct {
@@ -98,7 +110,7 @@ pub const ExpressionInner = union(enum) {
     literal_number: NumberLiteral,
     literal_enum_value: EnumLiteral,
     self_param: usize,
-    negate: *const Expression,
+    un_arith: UnArith,
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
     feedback, // only allowed within `delay` expressions
@@ -126,6 +138,13 @@ const ParseModuleState = struct {
     params: []const ModuleParam,
     fields: std.ArrayList(Field),
     locals: std.ArrayList(Local),
+};
+
+// names that you can't use for params or locals because they are builtin functions or constants
+const reserved_names = [_][]const u8{
+    "abs",
+    "max",
+    "min",
 };
 
 fn expectParamType(ps: *ParseState) !ParamType {
@@ -164,6 +183,11 @@ fn defineModule(ps: *ParseState) !void {
             .uppercase_name => return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{}),
             .lowercase_name => {
                 const param_name = ps.tokenizer.source.getString(token.source_range);
+                for (reserved_names) |name| {
+                    if (std.mem.eql(u8, name, param_name)) {
+                        return fail(ps.tokenizer.source, token.source_range, "`<` is a reserved name", .{});
+                    }
+                }
                 for (params.items) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
                         return fail(ps.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
@@ -367,7 +391,7 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
     const loc0 = a.source_range.loc0;
 
     if (negate) {
-        a = try createExpr(ps, loc0, .{ .negate = a });
+        a = try createExpr(ps, loc0, .{ .un_arith = .{ .op = .neg, .a = a } });
     }
 
     while (true) {
@@ -388,6 +412,22 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
     return a;
 }
 
+fn parseUnaryFunction(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, loc0: SourceLocation, op: UnArithOp) !*const Expression {
+    try ps.tokenizer.expectNext(.sym_left_paren);
+    const a = try expectExpression(ps, ps_mod, scope);
+    try ps.tokenizer.expectNext(.sym_right_paren);
+    return try createExpr(ps, loc0, .{ .un_arith = .{ .op = op, .a = a } });
+}
+
+fn parseBinaryFunction(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, loc0: SourceLocation, op: BinArithOp) !*const Expression {
+    try ps.tokenizer.expectNext(.sym_left_paren);
+    const a = try expectExpression(ps, ps_mod, scope);
+    try ps.tokenizer.expectNext(.sym_comma);
+    const b = try expectExpression(ps, ps_mod, scope);
+    try ps.tokenizer.expectNext(.sym_right_paren);
+    return try createExpr(ps, loc0, .{ .bin_arith = .{ .op = op, .a = a, .b = b } });
+}
+
 fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!*const Expression {
     const token = try ps.tokenizer.next();
     const loc0 = token.source_range.loc0;
@@ -405,8 +445,17 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         },
         .lowercase_name => {
             const s = ps.tokenizer.source.getString(token.source_range);
-            const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
-            return try createExpr(ps, loc0, inner);
+            // this list of builtins corresponds to the `reserved_names` list
+            if (std.mem.eql(u8, s, "abs")) {
+                return parseUnaryFunction(ps, ps_mod, scope, loc0, .abs);
+            } else if (std.mem.eql(u8, s, "max")) {
+                return parseBinaryFunction(ps, ps_mod, scope, loc0, .max);
+            } else if (std.mem.eql(u8, s, "min")) {
+                return parseBinaryFunction(ps, ps_mod, scope, loc0, .min);
+            } else {
+                const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
+                return try createExpr(ps, loc0, inner);
+            }
         },
         .kw_false => {
             return try createExpr(ps, loc0, .{ .literal_boolean = false });
@@ -456,8 +505,12 @@ fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope)
         return ps.tokenizer.failExpected("local name", name_token);
     }
     const name = ps.tokenizer.source.getString(name_token.source_range);
-    if (name[0] < 'a' or name[0] > 'z') {}
     try ps.tokenizer.expectNext(.sym_equals);
+    for (reserved_names) |reserved_name| {
+        if (std.mem.eql(u8, name, reserved_name)) {
+            return fail(ps.tokenizer.source, name_token.source_range, "`<` is a reserved name", .{});
+        }
+    }
     // locals are allowed to shadow params, but not other locals
     if (findLocal(ps_mod, scope, name) != null) {
         return fail(ps.tokenizer.source, name_token.source_range, "redeclaration of local `<`", .{});

@@ -82,9 +82,9 @@ const State = struct {
                 }
             },
             .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
-            .negate => |expr| {
-                try self.print("negate\n", .{});
-                try self.printExpression(expr, indentation + 1);
+            .un_arith => |m| {
+                try self.print("{auto}\n", .{m.op});
+                try self.printExpression(m.a, indentation + 1);
             },
             .bin_arith => |m| {
                 try self.print("{auto}\n", .{m.op});
