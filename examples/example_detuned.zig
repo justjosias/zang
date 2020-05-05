@@ -134,7 +134,7 @@ pub const OuterInstrument = struct {
         // (the number is relative to sample rate, so at 96khz it should be at
         // least 8hz)
         zang.zero(span, temps[1]);
-        self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{});
+        self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{ .color = .white });
         zang.zero(span, temps[0]);
         self.noise_filter.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .input = temps[1],

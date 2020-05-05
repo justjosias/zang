@@ -69,7 +69,7 @@ const NoiseModule = struct {
         // temps[0] = filtered noise
         zang.zero(span, temps[0]);
         zang.zero(span, temps[1]);
-        self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{});
+        self.noise.paint(span, .{temps[1]}, .{}, note_id_changed, .{ .color = .white });
         self.flt.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .input = temps[1],
             .type = .low_pass,

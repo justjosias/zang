@@ -60,6 +60,7 @@ pub const Gate = mod_gate.Gate;
 
 const mod_noise = @import("zang/mod_noise.zig");
 pub const Noise = mod_noise.Noise;
+pub const NoiseColor = mod_noise.NoiseColor;
 
 const mod_portamento = @import("zang/mod_portamento.zig");
 pub const Portamento = mod_portamento.Portamento;

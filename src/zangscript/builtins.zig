@@ -126,6 +126,7 @@ pub const zang_builtin_package = BuiltinPackage{
     .enums = &[_]BuiltinEnum{
         getBuiltinEnum(zang.DistortionType),
         getBuiltinEnum(zang.FilterType),
+        getBuiltinEnum(zang.NoiseColor),
         getBuiltinEnum(zang.PaintCurve),
     },
 };
