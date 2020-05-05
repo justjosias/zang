@@ -200,8 +200,8 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                 .mul => try self.print("{expression_result} * {expression_result};\n", .{ x.a, x.b }),
                 .div => try self.print("{expression_result} / {expression_result};\n", .{ x.a, x.b }),
                 .pow => try self.print("std.math.pow(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
-                .max => try self.print("std.math.max(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
-                .min => try self.print("std.math.min(f32, {expression_result}, {expression_result});\n", .{ x.a, x.b }),
+                .max => try self.print("std.math.max({expression_result}, {expression_result});\n", .{ x.a, x.b }),
+                .min => try self.print("std.math.min({expression_result}, {expression_result});\n", .{ x.a, x.b }),
             }
         },
         .arith_float_buffer => |x| {
@@ -214,8 +214,8 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                         .sub => try self.print("{buffer_dest}[i] = {expression_result} - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
                         .div => try self.print("{buffer_dest}[i] = {expression_result} / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
                         .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                        .max => try self.print("{buffer_dest}[i] = std.math.max(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                        .min => try self.print("{buffer_dest}[i] = std.math.min(f32, {expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        .max => try self.print("{buffer_dest}[i] = std.math.max({expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        .min => try self.print("{buffer_dest}[i] = std.math.min({expression_result}, {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
                         else => unreachable,
                     }
                     try self.print("}}\n", .{});
@@ -243,8 +243,8 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                         .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result};\n", .{ x.out, x.a, x.b }),
                         .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result};\n", .{ x.out, x.a, x.b }),
                         .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
-                        .max => try self.print("{buffer_dest}[i] = std.math.max(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
-                        .min => try self.print("{buffer_dest}[i] = std.math.min(f32, {expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
+                        .max => try self.print("{buffer_dest}[i] = std.math.max({expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
+                        .min => try self.print("{buffer_dest}[i] = std.math.min({expression_result}[i], {expression_result});\n", .{ x.out, x.a, x.b }),
                         else => unreachable,
                     }
                     try self.print("}}\n", .{});
@@ -271,8 +271,8 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                         .sub => try self.print("{buffer_dest}[i] = {expression_result}[i] - {expression_result}[i];\n", .{ x.out, x.a, x.b }),
                         .div => try self.print("{buffer_dest}[i] = {expression_result}[i] / {expression_result}[i];\n", .{ x.out, x.a, x.b }),
                         .pow => try self.print("{buffer_dest}[i] = std.math.pow(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                        .max => try self.print("{buffer_dest}[i] = std.math.max(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
-                        .min => try self.print("{buffer_dest}[i] = std.math.min(f32, {expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        .max => try self.print("{buffer_dest}[i] = std.math.max({expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
+                        .min => try self.print("{buffer_dest}[i] = std.math.min({expression_result}[i], {expression_result}[i]);\n", .{ x.out, x.a, x.b }),
                         else => unreachable,
                     }
                     try self.print("}}\n", .{});

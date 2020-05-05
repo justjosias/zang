@@ -145,6 +145,7 @@ const reserved_names = [_][]const u8{
     "abs",
     "max",
     "min",
+    "pi",
 };
 
 fn expectParamType(ps: *ParseState) !ParamType {
@@ -452,6 +453,13 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
                 return parseBinaryFunction(ps, ps_mod, scope, loc0, .max);
             } else if (std.mem.eql(u8, s, "min")) {
                 return parseBinaryFunction(ps, ps_mod, scope, loc0, .min);
+            } else if (std.mem.eql(u8, s, "pi")) {
+                return try createExpr(ps, loc0, .{
+                    .literal_number = .{
+                        .value = std.math.pi,
+                        .verbatim = "std.math.pi",
+                    },
+                });
             } else {
                 const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
                 return try createExpr(ps, loc0, inner);

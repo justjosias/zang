@@ -70,9 +70,13 @@ pub const PrintHelper = struct {
                 } else if (comptime std.mem.eql(u8, arg_format, "number_literal")) {
                     try self.out.writeAll(arg.verbatim);
                     // ensure a decimal is present, so that in generated zig code it's interpreted as a float
-                    // (otherwise expressions like '1 / 10' would mistakenly do integer division)
-                    if (std.mem.indexOfScalar(u8, arg.verbatim, '.') == null) {
-                        try self.out.writeAll(".0");
+                    // (otherwise expressions like '1 / 10' would mistakenly do integer division).
+                    // first check if this is actually a number literal, because builtin constants go
+                    // into `verbatim` by name (e.g. `std.math.pi`).
+                    if (arg.verbatim[0] >= '0' and arg.verbatim[0] <= '9') {
+                        if (std.mem.indexOfScalar(u8, arg.verbatim, '.') == null) {
+                            try self.out.writeAll(".0");
+                        }
                     }
                 } else {
                     try outer_self.printArgValue(arg_format, arg);
