@@ -1,11 +1,9 @@
 def Square:
-    sample_rate: constant,
     freq: cob,
     note_on: boolean,
 begin
-    s = max(0, SineOsc(freq, sample_rate, phase=0) * 0.2)
+    s = max(0, SineOsc(freq, phase=0) * 0.2)
     f = Envelope(
-        sample_rate,
         attack='cubed'(0.01),
         decay='cubed'(0.1),
         release='cubed'(1.0),
@@ -16,27 +14,24 @@ begin
 end
 
 def MySineOsc:
-    sample_rate: constant,
     freq: cob,
     phase: cob,
 begin
     // this is an exact replica of the builtin SineOsc, except that it doesn't
     // have the `t -= trunc(t)` adjustment to keep it from going out of tune
     // (hold it down for a couple seconds and you can hear it going off)
-    out sin((freq * Time(sample_rate) + phase) * 2 * pi)
+    out sin((freq * Time() + phase) * 2 * pi)
 end
 
 def InnerInstrument:
-    sample_rate: constant,
     freq: cob,
     note_on: boolean,
 begin
-    //freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
+    //freq = freq * (1 + 0.02 * SineOsc(freq=4, phase=0))
 
-    //out Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
+    //out Filter(input=PulseOsc(color, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
 
     f = Envelope(
-        sample_rate,
         attack='cubed'(0.25),
         decay='cubed'(0.1),
         release='cubed'(1.0),
@@ -44,15 +39,15 @@ begin
         note_on
     )
     out f * Filter(input=
-        //PulseOsc(color, sample_rate, freq)
-        MySineOsc(sample_rate, freq, phase=
-            MySineOsc(sample_rate, freq=freq * 0.5, phase=
-                MySineOsc(sample_rate, freq=freq * 0.1, phase=0)
+        //PulseOsc(color, freq)
+        MySineOsc(freq, phase=
+            MySineOsc(freq=freq * 0.5, phase=
+                MySineOsc(freq=freq * 0.1, phase=0)
             )
         )
     , type='low_pass', cutoff=0.3, res=0)
 
-    //out FilteredSawtoothInstrument(sample_rate, freq, note_on)
+    //out FilteredSawtoothInstrument(freq, note_on)
 end
 
 def Echoes:
@@ -69,13 +64,12 @@ begin
 end
 
 def Instrument:
-    sample_rate: constant,
     freq: cob,
     note_on: boolean,
 begin
-    input = 0.5 * InnerInstrument(sample_rate, freq=freq*2, note_on)
+    input = 0.5 * InnerInstrument(freq=freq*2, note_on)
 
     out Echoes(input, echo_volume=0.6, filter_type='low_pass')
 
-    //out Square(sample_rate, freq, note_on)
+    //out Square(freq, note_on)
 end

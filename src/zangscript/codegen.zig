@@ -415,6 +415,14 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
             if (maybe_arg != null) return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
             maybe_arg = a;
         }
+        if (maybe_arg == null and std.mem.eql(u8, param.name, "sample_rate")) {
+            // sample_rate is passed implicitly
+            const self_param_index = for (self.modules[self.module_index].params) |self_param, j| {
+                if (std.mem.eql(u8, self_param.name, "sample_rate")) break j;
+            } else unreachable;
+            arg_results[i] = .{ .self_param = self_param_index };
+            continue;
+        }
         const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
         const result = try genExpression(self, arg.value, null);
         arg_results[i] = try commitCalleeParam(self, arg.value.source_range, result, param.param_type);

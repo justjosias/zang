@@ -151,6 +151,7 @@ const reserved_names = [_][]const u8{
     "min",
     "pi",
     "pow",
+    "sample_rate",
     "sin",
     "sqrt",
 };
@@ -183,6 +184,12 @@ fn defineModule(ps: *ParseState) !void {
     try ps.tokenizer.expectNext(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
+
+    // all modules have an implicitly declared param called "sample_rate"
+    try params.append(.{
+        .name = "sample_rate",
+        .param_type = .constant,
+    });
 
     while (true) {
         const token = try ps.tokenizer.next();
