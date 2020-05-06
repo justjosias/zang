@@ -505,13 +505,7 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     }
 }
 
-fn parseLetAssignment(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope) !void {
-    const name_token = try ps.tokenizer.next();
-    if (name_token.tt == .uppercase_name) {
-        return fail(ps.tokenizer.source, name_token.source_range, "local name must start with a lowercase letter", .{});
-    } else if (name_token.tt != .lowercase_name) {
-        return ps.tokenizer.failExpected("local name", name_token);
-    }
+fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, name_token: Token) !void {
     const name = ps.tokenizer.source.getString(name_token.source_range);
     try ps.tokenizer.expectNext(.sym_equals);
     for (reserved_names) |reserved_name| {
@@ -547,8 +541,8 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .kw_end => break,
-            .kw_let => {
-                try parseLetAssignment(ps, ps_mod, scope);
+            .lowercase_name => {
+                try parseLocalDecl(ps, ps_mod, scope, token);
             },
             .kw_out => {
                 const expr = try expectExpression(ps, ps_mod, scope);
@@ -558,7 +552,7 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
                 const expr = try expectExpression(ps, ps_mod, scope);
                 try scope.statements.append(.{ .feedback = expr });
             },
-            else => return ps.tokenizer.failExpected("`let`, `out`, `feedback` or `end`", token),
+            else => return ps.tokenizer.failExpected("local declaration, `out`, `feedback` or `end`", token),
         }
     }
 

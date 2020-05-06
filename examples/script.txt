@@ -1,13 +1,30 @@
+def Square:
+    sample_rate: constant,
+    freq: cob,
+    note_on: boolean,
+begin
+    s = max(0, SineOsc(freq, sample_rate, phase=0) * 0.2)
+    f = Envelope(
+        sample_rate,
+        attack='cubed'(0.01),
+        decay='cubed'(0.1),
+        release='cubed'(1.0),
+        sustain_volume=1,
+        note_on
+    )
+    out s * f * pi
+end
+
 def InnerInstrument:
     sample_rate: constant,
     freq: cob,
     note_on: boolean,
 begin
-    //let freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
+    //freq = freq * (1 + 0.02 * SineOsc(sample_rate, freq=4, phase=0))
 
     //out Filter(input=PulseOsc(color, sample_rate, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
 
-    let f = Envelope(
+    f = Envelope(
         sample_rate,
         attack='cubed'(0.25),
         decay='cubed'(0.1),
@@ -33,7 +50,7 @@ def Echoes:
     filter_type: FilterType,
 begin
     out delay 11025 begin
-        let result = input + feedback * echo_volume
+        result = input + feedback * echo_volume
 
         out result
         feedback Filter(input=result, type=filter_type, cutoff=0.1, res=0)
@@ -45,7 +62,9 @@ def Instrument:
     freq: cob,
     note_on: boolean,
 begin
-    let input = 0.5 * InnerInstrument(sample_rate, freq=freq*2, note_on)
+    //input = 0.5 * InnerInstrument(sample_rate, freq=freq*2, note_on)
 
-    out Echoes(input, echo_volume=0.6, filter_type='low_pass')
+    //out Echoes(input, echo_volume=0.6, filter_type='low_pass')
+
+    out Square(sample_rate, freq, note_on)
 end
