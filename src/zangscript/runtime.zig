@@ -457,26 +457,33 @@ const ScriptModule = struct {
     fn paintArithFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithFloat) void {
         const a = self.getResultAsFloat(p, x.a);
         self.temp_floats[x.out.temp_float_index] = switch (x.op) {
-            .neg => -a,
             .abs => std.math.fabs(a),
+            .cos => std.math.cos(a),
+            .neg => -a,
+            .sin => std.math.sin(a),
+            .sqrt => std.math.sqrt(a),
         };
     }
 
     fn paintArithBuffer(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithBuffer) void {
         var out = getOut(p, x.out);
         const a = self.getResultAsBuffer(p, x.a);
+        var i: usize = span.start;
         switch (x.op) {
-            .neg => {
-                var i: usize = span.start;
-                while (i < span.end) : (i += 1) {
-                    out[i] = -a[i];
-                }
-            },
             .abs => {
-                var i: usize = span.start;
-                while (i < span.end) : (i += 1) {
-                    out[i] = std.math.fabs(a[i]);
-                }
+                while (i < span.end) : (i += 1) out[i] = std.math.fabs(a[i]);
+            },
+            .cos => {
+                while (i < span.end) : (i += 1) out[i] = std.math.cos(a[i]);
+            },
+            .neg => {
+                while (i < span.end) : (i += 1) out[i] = -a[i];
+            },
+            .sin => {
+                while (i < span.end) : (i += 1) out[i] = std.math.sin(a[i]);
+            },
+            .sqrt => {
+                while (i < span.end) : (i += 1) out[i] = std.math.sqrt(a[i]);
             },
         }
     }

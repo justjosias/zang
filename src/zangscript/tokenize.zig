@@ -33,7 +33,6 @@ pub const TokenType = union(enum) {
     sym_asterisk,
     sym_colon,
     sym_comma,
-    sym_dbl_asterisk,
     sym_equals,
     sym_left_paren,
     sym_minus,
@@ -233,7 +232,6 @@ fn getNumber(string: []const u8) ?usize {
 
 fn getSymbolString(tt: TokenType) []const u8 {
     switch (tt) {
-        .sym_dbl_asterisk => return "**",
         .sym_asterisk => return "*",
         .sym_colon => return ":",
         .sym_comma => return ",",

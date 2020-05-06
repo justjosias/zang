@@ -177,7 +177,10 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
             try self.print("const temp_float{usize} = ", .{x.out.temp_float_index});
             switch (x.op) {
                 .abs => try self.print("std.math.fabs({expression_result});\n", .{x.a}),
+                .cos => try self.print("std.math.cos({expression_result});\n", .{x.a}),
                 .neg => try self.print("-{expression_result};\n", .{x.a}),
+                .sin => try self.print("std.math.sin({expression_result});\n", .{x.a}),
+                .sqrt => try self.print("std.math.sqrt({expression_result});\n", .{x.a}),
             }
         },
         .arith_buffer => |x| {
@@ -187,7 +190,10 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
             try self.print("{buffer_dest}[i] = ", .{x.out});
             switch (x.op) {
                 .abs => try self.print("std.math.fabs({expression_result}[i]);\n", .{x.a}),
+                .cos => try self.print("std.math.cos({expression_result}[i]);\n", .{x.a}),
                 .neg => try self.print("-{expression_result}[i];\n", .{x.a}),
+                .sin => try self.print("std.math.sin({expression_result}[i]);\n", .{x.a}),
+                .sqrt => try self.print("std.math.sqrt({expression_result}[i]);\n", .{x.a}),
             }
             try self.print("}}\n", .{});
             try self.print("}}\n", .{});

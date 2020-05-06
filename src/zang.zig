@@ -76,5 +76,8 @@ pub const SampleFormat = mod_sampler.SampleFormat;
 const mod_sineosc = @import("zang/mod_sineosc.zig");
 pub const SineOsc = mod_sineosc.SineOsc;
 
+const mod_time = @import("zang/mod_time.zig");
+pub const Time = mod_time.Time;
+
 const mod_trisawosc = @import("zang/mod_trisawosc.zig");
 pub const TriSawOsc = mod_trisawosc.TriSawOsc;

@@ -121,6 +121,7 @@ pub const zang_builtin_package = BuiltinPackage{
         getBuiltinModule(zang.PulseOsc),
         // zang.Sampler
         getBuiltinModule(zang.SineOsc),
+        getBuiltinModule(zang.Time),
         getBuiltinModule(zang.TriSawOsc),
     },
     .enums = &[_]BuiltinEnum{

@@ -62,8 +62,11 @@ pub const Delay = struct {
 };
 
 pub const UnArithOp = enum {
-    neg,
     abs,
+    cos,
+    neg,
+    sin,
+    sqrt,
 };
 
 pub const UnArith = struct {
@@ -73,12 +76,12 @@ pub const UnArith = struct {
 
 pub const BinArithOp = enum {
     add,
-    sub,
-    mul,
     div,
-    pow,
-    min,
     max,
+    min,
+    mul,
+    pow,
+    sub,
 };
 
 pub const BinArith = struct {
@@ -143,9 +146,13 @@ const ParseModuleState = struct {
 // names that you can't use for params or locals because they are builtin functions or constants
 const reserved_names = [_][]const u8{
     "abs",
+    "cos",
     "max",
     "min",
     "pi",
+    "pow",
+    "sin",
+    "sqrt",
 };
 
 fn expectParamType(ps: *ParseState) !ParamType {
@@ -370,10 +377,6 @@ const binary_operators = [_]BinaryOperator{
     .{ .symbol = .sym_minus, .priority = 1, .op = .sub },
     .{ .symbol = .sym_asterisk, .priority = 2, .op = .mul },
     .{ .symbol = .sym_slash, .priority = 2, .op = .div },
-    // note: exponentiation operator is not associative, unlike add and mul.
-    // maybe i should make it an error to type `x**y**z` without putting one of
-    // the pairs in parentheses.
-    .{ .symbol = .sym_dbl_asterisk, .priority = 3, .op = .pow },
 };
 
 fn expectExpression(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!*const Expression {
@@ -449,6 +452,8 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             // this list of builtins corresponds to the `reserved_names` list
             if (std.mem.eql(u8, s, "abs")) {
                 return parseUnaryFunction(ps, ps_mod, scope, loc0, .abs);
+            } else if (std.mem.eql(u8, s, "cos")) {
+                return parseUnaryFunction(ps, ps_mod, scope, loc0, .cos);
             } else if (std.mem.eql(u8, s, "max")) {
                 return parseBinaryFunction(ps, ps_mod, scope, loc0, .max);
             } else if (std.mem.eql(u8, s, "min")) {
@@ -460,6 +465,12 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
                         .verbatim = "std.math.pi",
                     },
                 });
+            } else if (std.mem.eql(u8, s, "pow")) {
+                return parseBinaryFunction(ps, ps_mod, scope, loc0, .pow);
+            } else if (std.mem.eql(u8, s, "sin")) {
+                return parseUnaryFunction(ps, ps_mod, scope, loc0, .sin);
+            } else if (std.mem.eql(u8, s, "sqrt")) {
+                return parseUnaryFunction(ps, ps_mod, scope, loc0, .sqrt);
             } else {
                 const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
                 return try createExpr(ps, loc0, inner);
