@@ -287,7 +287,7 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
                     g_fft_log = !g_fft_log;
                 }
-                if (event.key.keysym.sym == c.SDLK_F5 and down) {
+                if (event.key.keysym.sym == c.SDLK_RETURN and down) {
                     c.SDL_LockAudioDevice(device);
                     if (userdata.ok) {
                         if (@hasDecl(example.MainModule, "deinit")) {
