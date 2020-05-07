@@ -17,10 +17,7 @@ def MySineOsc:
     freq: cob,
     phase: cob,
 begin
-    // this is an exact replica of the builtin SineOsc, except that it doesn't
-    // have the `t -= trunc(t)` adjustment to keep it from going out of tune
-    // (hold it down for a couple seconds and you can hear it going off)
-    out sin((freq * Time() + phase) * 2 * pi)
+    out sin((Cycle(speed=freq) + phase) * 2 * pi)
 end
 
 def InnerInstrument:

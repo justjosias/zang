@@ -40,6 +40,9 @@ pub const Curve = mod_curve.Curve;
 pub const CurveNode = mod_curve.CurveNode;
 pub const InterpolationFunction = mod_curve.InterpolationFunction;
 
+const mod_cycle = @import("zang/mod_cycle.zig");
+pub const Cycle = mod_cycle.Cycle;
+
 const mod_decimator = @import("zang/mod_decimator.zig");
 pub const Decimator = mod_decimator.Decimator;
 
@@ -75,9 +78,6 @@ pub const SampleFormat = mod_sampler.SampleFormat;
 
 const mod_sineosc = @import("zang/mod_sineosc.zig");
 pub const SineOsc = mod_sineosc.SineOsc;
-
-const mod_time = @import("zang/mod_time.zig");
-pub const Time = mod_time.Time;
 
 const mod_trisawosc = @import("zang/mod_trisawosc.zig");
 pub const TriSawOsc = mod_trisawosc.TriSawOsc;

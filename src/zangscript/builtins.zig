@@ -111,6 +111,7 @@ pub const zang_builtin_package = BuiltinPackage{
     .zig_import_path = "zang",
     .builtins = &[_]BuiltinModule{
         // zang.Curve
+        getBuiltinModule(zang.Cycle),
         getBuiltinModule(zang.Decimator),
         getBuiltinModule(zang.Distortion),
         getBuiltinModule(zang.Envelope),
@@ -121,7 +122,6 @@ pub const zang_builtin_package = BuiltinPackage{
         getBuiltinModule(zang.PulseOsc),
         // zang.Sampler
         getBuiltinModule(zang.SineOsc),
-        getBuiltinModule(zang.Time),
         getBuiltinModule(zang.TriSawOsc),
     },
     .enums = &[_]BuiltinEnum{
