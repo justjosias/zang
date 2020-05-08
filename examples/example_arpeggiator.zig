@@ -67,11 +67,10 @@ const Arpeggiator = struct {
 
         while (self.next_frame < outputs[0].len) {
             const next_note_index = blk: {
-                const start =
-                    if (self.last_note) |last_note|
-                        last_note + 1
-                    else
-                        0;
+                const start = if (self.last_note) |last_note|
+                    last_note + 1
+                else
+                    0;
                 var i: usize = 0;
                 while (i < common.key_bindings.len) : (i += 1) {
                     const index = (start + i) % common.key_bindings.len;
@@ -152,21 +151,13 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
-                self.iq.push(
-                    impulse_frame,
-                    self.idgen.nextId(),
-                    self.current_params,
-                );
+                self.iq.push(impulse_frame, self.idgen.nextId(), self.current_params);
             }
         }
+        return true;
     }
 };

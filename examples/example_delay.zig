@@ -49,7 +49,8 @@ pub const MainModule = struct {
     ) void {
         zang.zero(span, temps[0]);
         var instr_temps: [Instrument.num_temps][]f32 = undefined;
-        var i: usize = 0; while (i < Instrument.num_temps) : (i += 1) {
+        var i: usize = 0;
+        while (i < Instrument.num_temps) : (i += 1) {
             instr_temps[i] = temps[3 + i];
         }
         var ctr = self.trigger.counter(span, self.iq.consume());
@@ -65,7 +66,7 @@ pub const MainModule = struct {
         self.echoes.paint(
             span,
             outputs,
-            .{temps[1], temps[2], temps[3], temps[4]},
+            .{ temps[1], temps[2], temps[3], temps[4] },
             false,
             .{
                 .input = temps[0],
@@ -75,15 +76,12 @@ pub const MainModule = struct {
         );
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE) {
             self.echoes.reset();
-        } else if (common.getKeyRelFreq(key)) |rel_freq| {
+            return false;
+        }
+        if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
                 self.iq.push(impulse_frame, self.idgen.nextId(), .{
@@ -93,5 +91,6 @@ pub const MainModule = struct {
                 });
             }
         }
+        return true;
     }
 };

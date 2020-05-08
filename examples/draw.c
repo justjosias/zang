@@ -170,11 +170,9 @@ static void drawfft(unsigned int *pixels, int pitch) {
     }
 }
 
-static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fontdata, const char *s) {
+static void drawstringat(const int start_x, const int start_y, unsigned int *pixels, int pitch, const unsigned char *fontdata, const char *s) {
     const int fontchar_w = 8;
     const int fontchar_h = 13;
-    const int start_x = 12;
-    const int start_y = 13;
     const unsigned int color = 0xAAAAAAAA;
 
     /* warning: does no checking for drawing off screen */
@@ -197,7 +195,11 @@ static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fon
     }
 }
 
-void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, int full_fft) {
+static void drawstring(unsigned int *pixels, int pitch, const unsigned char *fontdata, const char *s) {
+    drawstringat(12, 13, pixels, pitch, fontdata, s);
+}
+
+void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata, const char *s, const char *s2, int full_fft) {
     SDL_LockSurface(screen);
 
     if (full_fft) {
@@ -217,6 +219,7 @@ void draw(SDL_Window *window, SDL_Surface *screen, const unsigned char *fontdata
         drawwaveform(screen->pixels, screen->pitch >> 2);
         drawfft(screen->pixels, screen->pitch >> 2);
         drawstring(screen->pixels, screen->pitch >> 2, fontdata, s);
+        drawstringat(12, 400, screen->pixels, screen->pitch >> 2, fontdata, s2);
     }
 
     SDL_UnlockSurface(screen);

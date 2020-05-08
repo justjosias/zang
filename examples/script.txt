@@ -24,27 +24,33 @@ def InnerInstrument:
     freq: cob,
     note_on: boolean,
 begin
-    //freq = freq * (1 + 0.02 * SineOsc(freq=4, phase=0))
-
-    //out Filter(input=PulseOsc(color, freq), type='low_pass', cutoff=0.3, res=0) * Gate(note_on)
+    freq = freq * 0.5
+    mfreq = freq * (1 + 0.02 * SineOsc(freq=4, phase=0))
 
     f = Envelope(
-        attack='cubed'(0.25),
+        attack='cubed'(0.05),
         decay='cubed'(0.1),
         release='cubed'(1.0),
         sustain_volume=1,
         note_on
     )
-    out f * Filter(input=
-        //PulseOsc(color, freq)
-        MySineOsc(freq, phase=
-            MySineOsc(freq=freq * 0.5, phase=
-                MySineOsc(freq=freq * 0.1, phase=0)
-            )
-        )
-    , type='low_pass', cutoff=0.3, res=0)
 
-    //out FilteredSawtoothInstrument(freq, note_on)
+    f2 = Envelope(
+        attack='cubed'(0.4),
+        decay='cubed'(6),
+        release='cubed'(6),
+        sustain_volume=0.5,
+        note_on
+    )
+
+    s = f * SineOsc(
+        freq=freq * 4 * f2 * SineOsc(freq=mfreq * 0.25, phase=
+            SineOsc(freq=mfreq*0.5, phase=0)
+        ),
+        phase=0)
+
+    out s
+    //out Filter(input=s, type='high_pass', cutoff=0.1, res=0)
 end
 
 def Echoes:
@@ -66,7 +72,8 @@ def Instrument:
 begin
     input = 0.5 * InnerInstrument(freq=freq*2, note_on)
 
-    out Echoes(input, echo_volume=0.6, filter_type='low_pass')
+    out input
+    //out Echoes(input, echo_volume=0.6, filter_type='low_pass')
 
     //out Square(freq, note_on)
 end

@@ -88,7 +88,7 @@ const Voices = struct {
 
 // this parallels the Voices struct. these values are not necessarily the same
 // as the polyphony amount. they're just a parsing detail
-const COLUMNS_PER_VOICE = [@typeInfo(Voices).Struct.fields.len]usize {
+const COLUMNS_PER_VOICE = [@typeInfo(Voices).Struct.fields.len]usize{
     Pedal.num_columns,
     RegularOrgan.num_columns,
     WeirdOrgan.num_columns,
@@ -104,10 +104,8 @@ const NUM_INSTRUMENTS = COLUMNS_PER_VOICE.len;
 
 // note we can't put params straight into Module.Params because that requires
 // sample_rate which is only known at runtime
-var all_notes_arr:
-    [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongEvent = undefined;
-var all_notes:
-    [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongEvent = undefined;
+var all_notes_arr: [NUM_INSTRUMENTS][20000]zang.Notes(MyNoteParams).SongEvent = undefined;
+var all_notes: [NUM_INSTRUMENTS][]zang.Notes(MyNoteParams).SongEvent = undefined;
 
 fn makeSongNote(
     t: f32,
@@ -135,8 +133,8 @@ fn doParse(parser: *Parser) !void {
         freq: f32,
         id: usize,
     };
-    var column_last_note = [1]?LastNote{ null } ** TOTAL_COLUMNS;
-    var instrument_num_notes = [1]usize{ 0 } ** NUM_INSTRUMENTS;
+    var column_last_note = [1]?LastNote{null} ** TOTAL_COLUMNS;
+    var instrument_num_notes = [1]usize{0} ** NUM_INSTRUMENTS;
     var next_id: usize = 1;
 
     var t: f32 = 0;
@@ -146,7 +144,8 @@ fn doParse(parser: *Parser) !void {
     while (try parser.parseToken()) |token| {
         if (token.isWord("start")) {
             t = 0.0;
-            var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
+            var i: usize = 0;
+            while (i < NUM_INSTRUMENTS) : (i += 1) {
                 instrument_num_notes[i] = 0;
             }
             // TODO what about column_last_note?
@@ -171,9 +170,7 @@ fn doParse(parser: *Parser) !void {
                             unreachable;
                         };
 
-                        var note_ptr = &all_notes_arr
-                            [instrument_index]
-                            [instrument_num_notes[instrument_index]];
+                        var note_ptr = &all_notes_arr[instrument_index][instrument_num_notes[instrument_index]];
 
                         switch (note) {
                             .idle => {},
@@ -188,15 +185,13 @@ fn doParse(parser: *Parser) !void {
                                         false,
                                     );
                                     instrument_num_notes[instrument_index] += 1;
-                                    note_ptr = &all_notes_arr
-                                        [instrument_index]
-                                        [instrument_num_notes[instrument_index]];
+                                    note_ptr = &all_notes_arr[instrument_index][instrument_num_notes[instrument_index]];
                                 }
                                 // note-on event for the new frequency
                                 note_ptr.* =
                                     makeSongNote(t, next_id, freq, true);
                                 instrument_num_notes[instrument_index] += 1;
-                                column_last_note[col] = LastNote {
+                                column_last_note[col] = LastNote{
                                     .id = next_id,
                                     .freq = freq,
                                 };
@@ -221,7 +216,8 @@ fn doParse(parser: *Parser) !void {
 
                     // sort the events at this time frame by note id. this
                     // puts note-offs before note-ons
-                    var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
+                    var i: usize = 0;
+                    while (i < NUM_INSTRUMENTS) : (i += 1) {
                         const start = old_instrument_num_notes[i];
                         const end = instrument_num_notes[i];
                         std.sort.sort(
@@ -247,7 +243,8 @@ fn doParse(parser: *Parser) !void {
     // note on and off events (with a lot of overlapping). the notes need to
     // be identified by their frequency, which kind of sucks. i should
     // probably change the parser above to assign them unique IDs.
-    var i: usize = 0; while (i < NUM_INSTRUMENTS) : (i += 1) {
+    var i: usize = 0;
+    while (i < NUM_INSTRUMENTS) : (i += 1) {
         all_notes[i] = all_notes_arr[i][0..instrument_num_notes[i]];
     }
 
@@ -274,7 +271,7 @@ fn parse() void {
         return;
     };
 
-    var parser = Parser {
+    var parser = Parser{
         .a4 = a4,
         .contents = contents,
         .index = 0,
@@ -282,7 +279,7 @@ fn parse() void {
     };
 
     doParse(&parser) catch {
-        std.debug.warn("parse failed on line {}\n", .{ parser.line_index + 1 });
+        std.debug.warn("parse failed on line {}\n", .{parser.line_index + 1});
     };
 }
 
@@ -304,13 +301,12 @@ fn Voice(comptime T: type) type {
 
         fn init(track_index: usize) @This() {
             var self: @This() = .{
-                .tracker = zang.Notes(MyNoteParams)
-                    .NoteTracker.init(all_notes[track_index]),
-                .dispatcher = zang.Notes(MyNoteParams)
-                    .PolyphonyDispatcher(T.polyphony).init(),
+                .tracker = zang.Notes(MyNoteParams).NoteTracker.init(all_notes[track_index]),
+                .dispatcher = zang.Notes(MyNoteParams).PolyphonyDispatcher(T.polyphony).init(),
                 .sub_voices = undefined,
             };
-            var i: usize = 0; while (i < T.polyphony) : (i += 1) {
+            var i: usize = 0;
+            while (i < T.polyphony) : (i += 1) {
                 self.sub_voices[i] = .{
                     .module = T.initModule(),
                     .trigger = zang.Trigger(MyNoteParams).init(),
@@ -400,16 +396,12 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (down and key == c.SDLK_SPACE) {
             inline for (@typeInfo(Voices).Struct.fields) |field| {
                 @field(self.voices, field.name).reset();
             }
         }
+        return false;
     }
 };

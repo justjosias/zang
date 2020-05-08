@@ -31,7 +31,6 @@ pub const key_bindings = [_]KeyBinding{
     KeyBinding{ .row = 0, .rel_freq = note_frequencies.e4, .key = c.SDLK_SLASH },
     KeyBinding{ .row = 0, .rel_freq = note_frequencies.f4, .key = c.SDLK_RSHIFT },
     // top two rows is one octave up (with fair amount of overlap)
-    KeyBinding{ .row = 1, .rel_freq = note_frequencies.as3, .key = c.SDLK_BACKQUOTE },
     KeyBinding{ .row = 1, .rel_freq = note_frequencies.c4, .key = c.SDLK_q },
     KeyBinding{ .row = 1, .rel_freq = note_frequencies.cs4, .key = c.SDLK_2 },
     KeyBinding{ .row = 1, .rel_freq = note_frequencies.d4, .key = c.SDLK_w },

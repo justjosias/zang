@@ -68,7 +68,7 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         for (common.key_bindings) |kb, i| {
             if (kb.key != key) {
                 continue;
@@ -89,5 +89,6 @@ pub const MainModule = struct {
                 self.note_ids[i] = null;
             }
         }
+        return true;
     }
 };

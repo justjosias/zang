@@ -99,18 +99,15 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE) {
             self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
                 .freq = a4 * note_frequencies.c2,
                 .note_on = down,
             });
+            return true;
         }
+        return false;
     }
 };

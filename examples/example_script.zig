@@ -43,8 +43,8 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
-        const rel_freq = common.getKeyRelFreq(key) orelse return;
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
+        const rel_freq = common.getKeyRelFreq(key) orelse return false;
         if (down or (if (self.key) |nh| nh == key else false)) {
             self.key = if (down) key else null;
 
@@ -54,5 +54,6 @@ pub const MainModule = struct {
                 .note_on = down,
             });
         }
+        return true;
     }
 };

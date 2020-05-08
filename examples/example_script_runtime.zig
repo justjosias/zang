@@ -137,7 +137,7 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         for (common.key_bindings) |kb, i| {
             if (kb.key != key) {
                 continue;
@@ -150,13 +150,16 @@ pub const MainModule = struct {
             };
 
             if (down) {
-                self.iq.push(impulse_frame, self.next_note_id, params);
-                self.note_ids[i] = self.next_note_id;
-                self.next_note_id += 1;
+                if (self.note_ids[i] == null) {
+                    self.iq.push(impulse_frame, self.next_note_id, params);
+                    self.note_ids[i] = self.next_note_id;
+                    self.next_note_id += 1;
+                }
             } else if (self.note_ids[i]) |note_id| {
                 self.iq.push(impulse_frame, note_id, params);
                 self.note_ids[i] = null;
             }
         }
+        return true;
     }
 };

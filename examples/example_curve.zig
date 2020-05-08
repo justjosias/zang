@@ -14,7 +14,7 @@ pub const DESCRIPTION =
     \\frequency of the key you press.
 ;
 
-const carrier_curve = [_]zang.CurveNode {
+const carrier_curve = [_]zang.CurveNode{
     .{ .t = 0.0, .value = 440.0 },
     .{ .t = 0.5, .value = 880.0 },
     .{ .t = 1.0, .value = 110.0 },
@@ -23,7 +23,7 @@ const carrier_curve = [_]zang.CurveNode {
     .{ .t = 3.9, .value = 20.0 },
 };
 
-const modulator_curve = [_]zang.CurveNode {
+const modulator_curve = [_]zang.CurveNode{
     .{ .t = 0.0, .value = 110.0 },
     .{ .t = 1.5, .value = 55.0 },
     .{ .t = 3.0, .value = 220.0 },
@@ -125,19 +125,16 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
-        if (down) {
-            if (common.getKeyRelFreq(key)) |rel_freq| {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
+        if (common.getKeyRelFreq(key)) |rel_freq| {
+            if (down) {
                 self.iq.push(impulse_frame, self.idgen.nextId(), .{
                     .sample_rate = AUDIO_SAMPLE_RATE,
                     .rel_freq = rel_freq,
                 });
             }
+            return true;
         }
+        return false;
     }
 };

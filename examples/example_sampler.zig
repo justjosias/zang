@@ -115,12 +115,7 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (down and key == c.SDLK_SPACE) {
             self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE *
@@ -142,5 +137,6 @@ pub const MainModule = struct {
         if (down and key == c.SDLK_d) {
             self.distort = !self.distort;
         }
+        return false;
     }
 };

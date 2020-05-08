@@ -51,7 +51,7 @@ const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{temps[1], temps[2], temps[3]}, note_id_changed, .{
+        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2], temps[3] }, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,
@@ -192,7 +192,7 @@ pub const MainModule = struct {
                 self.instr.mod.paint(
                     result.span,
                     outputs,
-                    .{temps[2], temps[3], temps[4], temps[5]},
+                    .{ temps[2], temps[3], temps[4], temps[5] },
                     result.note_id_changed,
                     .{
                         .sample_rate = AUDIO_SAMPLE_RATE,
@@ -223,15 +223,11 @@ pub const MainModule = struct {
         });
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE and down) {
             self.mode = (self.mode + 1) % 2;
             self.mode_iq.push(impulse_frame, self.mode_idgen.nextId(), self.mode);
+            return false;
         }
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
@@ -242,5 +238,6 @@ pub const MainModule = struct {
                 });
             }
         }
+        return true;
     }
 };

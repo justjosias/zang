@@ -44,8 +44,9 @@ const Polyphony = struct {
         var self: Polyphony = .{
             .voices = undefined,
         };
-        var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
-            self.voices[i] = Voice {
+        var i: usize = 0;
+        while (i < common.key_bindings.len) : (i += 1) {
+            self.voices[i] = Voice{
                 .down = false,
                 .iq = zang.Notes(Instrument.Params).ImpulseQueue.init(),
                 .idgen = zang.IdGenerator.init(),
@@ -63,7 +64,8 @@ const Polyphony = struct {
         temps: [num_temps][]f32,
         params: Params,
     ) void {
-        var i: usize = 0; while (i < common.key_bindings.len) : (i += 1) {
+        var i: usize = 0;
+        while (i < common.key_bindings.len) : (i += 1) {
             if (params.note_held[i] != self.voices[i].down) {
                 self.voices[i].iq.push(0, self.voices[i].idgen.nextId(), .{
                     .sample_rate = params.sample_rate,
@@ -133,7 +135,7 @@ pub const MainModule = struct {
             self.polyphony.paint(
                 result.span,
                 .{temps[2]},
-                .{temps[0], temps[1]},
+                .{ temps[0], temps[1] },
                 result.params,
             );
         }
@@ -157,25 +159,17 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE and down) {
             self.dec_mode = (self.dec_mode + 1) % 7;
-            return;
+            return false;
         }
         for (common.key_bindings) |kb, i| {
             if (kb.key == key) {
                 self.current_params.note_held[i] = down;
-                self.iq.push(
-                    impulse_frame,
-                    self.idgen.nextId(),
-                    self.current_params,
-                );
+                self.iq.push(impulse_frame, self.idgen.nextId(), self.current_params);
             }
         }
+        return true;
     }
 };

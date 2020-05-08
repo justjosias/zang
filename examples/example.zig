@@ -5,6 +5,7 @@ const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const fft = @import("common/fft.zig").fft;
+const Recorder = @import("recorder.zig").Recorder;
 const example = @import(@import("build_options").example);
 
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
@@ -51,10 +52,7 @@ fn audioCallback(
     var temps: [example.MainModule.num_temps][]f32 = undefined;
     var i: usize = undefined;
 
-    const span = zang.Span{
-        .start = 0,
-        .end = AUDIO_BUFFER_SIZE,
-    };
+    const span = zang.Span.init(0, AUDIO_BUFFER_SIZE);
 
     i = 0;
     while (i < example.MainModule.num_outputs) : (i += 1) {
@@ -74,14 +72,7 @@ fn audioCallback(
 
     i = 0;
     while (i < example.MainModule.num_outputs) : (i += 1) {
-        zang.mixDown(
-            stream,
-            outputs[i][0..],
-            AUDIO_FORMAT,
-            example.MainModule.num_outputs,
-            i,
-            mul,
-        );
+        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
     }
 
     if (!g_drawing) {
@@ -258,6 +249,8 @@ pub fn main() !void {
 
     pushRedrawEvent();
 
+    var recorder = Recorder.init();
+
     var event: c.SDL_Event = undefined;
 
     while (c.SDL_WaitEvent(&event) != 0) {
@@ -286,6 +279,12 @@ pub fn main() !void {
                 }
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
                     g_fft_log = !g_fft_log;
+                }
+                if (event.key.keysym.sym == c.SDLK_BACKQUOTE and down and event.key.repeat == 0) {
+                    c.SDL_LockAudioDevice(device);
+                    recorder.cycleMode();
+                    pushRedrawEvent();
+                    c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_RETURN and down) {
                     c.SDL_LockAudioDevice(device);
@@ -316,7 +315,10 @@ pub fn main() !void {
                             //    start_time,
                             //);
                             const impulse_frame = getImpulseFrame();
-                            userdata.main_module.keyEvent(event.key.keysym.sym, down, impulse_frame);
+                            if (userdata.main_module.keyEvent(event.key.keysym.sym, down, impulse_frame)) {
+                                recorder.recordEvent(event.key.keysym.sym, down);
+                                recorder.trackEvent(event.key.keysym.sym, down);
+                            }
                         }
                         c.SDL_UnlockAudioDevice(device);
                     }
@@ -331,11 +333,24 @@ pub fn main() !void {
                     const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
-                    main_module.mouseEvent(x, y, impulse_frame);
+                    userdata.main_module.mouseEvent(x, y, impulse_frame);
                     c.SDL_UnlockAudioDevice(device);
                 }
             },
             else => {},
+        }
+
+        while (recorder.getNote()) |n| {
+            if (@hasDecl(example.MainModule, "keyEvent")) {
+                c.SDL_LockAudioDevice(device);
+                if (userdata.ok) {
+                    const impulse_frame = 0;
+                    if (userdata.main_module.keyEvent(n.key, n.down, impulse_frame)) {
+                        recorder.trackEvent(n.key, n.down);
+                    }
+                }
+                c.SDL_UnlockAudioDevice(device);
+            }
         }
 
         if (maybe_listener) |*listener| {
@@ -378,6 +393,11 @@ pub fn main() !void {
                 screen,
                 fontdata,
                 example.DESCRIPTION,
+                switch (recorder.state) {
+                    .idle => "",
+                    .recording => "RECORDING",
+                    .playing => "PLAYING BACK",
+                },
                 if (g_full_fft) 1 else 0,
             );
             c.SDL_UnlockAudioDevice(device);
@@ -398,7 +418,7 @@ pub fn main() !void {
 // this is only for testing purposes, because if i start everything at 0 there
 // are some code paths not being hit.
 // TODO - actually time the proper impulse frame
-var r = std.rand.DefaultPrng.init(0);
+//var r = std.rand.DefaultPrng.init(0);
 
 fn getImpulseFrame() usize {
     // FIXME - i was using random values as a kind of test, but this is

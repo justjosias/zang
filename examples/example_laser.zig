@@ -18,19 +18,19 @@ pub const DESCRIPTION =
     \\effects based on the same module.
 ;
 
-const carrier_curve = [_]zang.CurveNode {
+const carrier_curve = [_]zang.CurveNode{
     .{ .t = 0.0, .value = 1000.0 },
     .{ .t = 0.1, .value = 200.0 },
     .{ .t = 0.2, .value = 100.0 },
 };
 
-const modulator_curve = [_]zang.CurveNode {
+const modulator_curve = [_]zang.CurveNode{
     .{ .t = 0.0, .value = 1000.0 },
     .{ .t = 0.1, .value = 200.0 },
     .{ .t = 0.2, .value = 100.0 },
 };
 
-const volume_curve = [_]zang.CurveNode {
+const volume_curve = [_]zang.CurveNode{
     .{ .t = 0.0, .value = 0.0 },
     .{ .t = 0.004, .value = 1.0 },
     .{ .t = 0.2, .value = 0.0 },
@@ -150,12 +150,7 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (down) {
             const variance = 0.3;
             const freq_mul = 1.0 + self.r.random.float(f32) * variance -
@@ -211,8 +206,10 @@ pub const MainModule = struct {
                         .modulator_rad = 1.0,
                     });
                 },
-                else => {},
+                else => return false,
             }
+            return true;
         }
+        return false;
     }
 };

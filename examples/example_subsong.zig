@@ -105,7 +105,7 @@ const SubtrackPlayer = struct {
         const f = note_frequencies;
 
         return .{
-            .tracker = Notes.NoteTracker.init(&[_]Notes.SongEvent {
+            .tracker = Notes.NoteTracker.init(&[_]Notes.SongEvent{
                 comptime makeNote(0.0, 1, a4 * f.c4, true),
                 comptime makeNote(1.0, 2, a4 * f.ab3, true),
                 comptime makeNote(2.0, 3, a4 * f.g3, true),
@@ -130,12 +130,10 @@ const SubtrackPlayer = struct {
             self.tracker.reset();
             self.trigger.reset();
         }
-        const iap =
-            self.tracker.consume(params.sample_rate, span.end - span.start);
+        const iap = self.tracker.consume(params.sample_rate, span.end - span.start);
         var ctr = self.trigger.counter(span, iap);
         while (self.trigger.next(&ctr)) |result| {
-            const new_note =
-                (params.note_on and note_id_changed) or result.note_id_changed;
+            const new_note = (params.note_on and note_id_changed) or result.note_id_changed;
             self.instr.paint(result.span, outputs, temps, new_note, .{
                 .sample_rate = params.sample_rate,
                 .freq = result.params.freq * params.freq / BaseFrequency,
@@ -183,12 +181,7 @@ pub const MainModule = struct {
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
                 self.key = if (down) key else null;
@@ -198,6 +191,8 @@ pub const MainModule = struct {
                     .note_on = down,
                 });
             }
+            return true;
         }
+        return false;
     }
 };

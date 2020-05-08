@@ -3,8 +3,7 @@ const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
 const PMOscInstrument = @import("modules.zig").PMOscInstrument;
-const FilteredSawtoothInstrument = @import("modules.zig")
-    .FilteredSawtoothInstrument;
+const FilteredSawtoothInstrument = @import("modules.zig").FilteredSawtoothInstrument;
 
 pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
@@ -42,8 +41,7 @@ pub const MainModule = struct {
             .idgen0 = zang.IdGenerator.init(),
             .instr0 = PMOscInstrument.init(1.0),
             .trig0 = zang.Trigger(PMOscInstrument.Params).init(),
-            .iq1 = zang.Notes(FilteredSawtoothInstrument.Params)
-                .ImpulseQueue.init(),
+            .iq1 = zang.Notes(FilteredSawtoothInstrument.Params).ImpulseQueue.init(),
             .idgen1 = zang.IdGenerator.init(),
             .instr1 = FilteredSawtoothInstrument.init(),
             .trig1 = zang.Trigger(FilteredSawtoothInstrument.Params).init(),
@@ -71,19 +69,14 @@ pub const MainModule = struct {
             self.instr1.paint(
                 result.span,
                 outputs,
-                .{temps[0], temps[1], temps[2]},
+                .{ temps[0], temps[1], temps[2] },
                 result.note_id_changed,
                 result.params,
             );
         }
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE) {
             self.iq1.push(impulse_frame, self.idgen1.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
@@ -100,5 +93,6 @@ pub const MainModule = struct {
                 });
             }
         }
+        return true;
     }
 };

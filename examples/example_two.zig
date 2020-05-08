@@ -95,56 +95,51 @@ pub const MainModule = struct {
 
         while (start < span.end) {
             // only paint if both impulse queues are active
-
             if (maybe_result0) |result0| {
-            if (maybe_result1) |result1| {
-                const inner_span: zang.Span = .{
-                    .start = start,
-                    .end = std.math.min(result0.span.end, result1.span.end),
-                };
-                self.osc.paint(
-                    inner_span,
-                    .{temps[0]},
-                    .{},
-                    false,
-                    .{
-                        .sample_rate = AUDIO_SAMPLE_RATE,
-                        .freq = zang.constant(result0.params.freq),
-                        .color = result1.params.color,
-                    },
-                );
-                self.env.paint(
-                    inner_span,
-                    .{temps[1]},
-                    .{},
-                    // only reset the envelope when a button is depressed when
-                    // no buttons were previous depressed
-                    (
-                        result0.note_id_changed and result0.params.note_on and
-                            !result1.note_id_changed
-                    ) or (
-                        result1.note_id_changed and result1.params.note_on and
-                            !result0.note_id_changed
-                    ),
-                    .{
-                        .sample_rate = AUDIO_SAMPLE_RATE,
-                        .attack = .{ .cubed = 0.025 },
-                        .decay = .{ .cubed = 0.1 },
-                        .release = .{ .cubed = 1.0 },
-                        .sustain_volume = 0.5,
-                        .note_on =
-                            result0.params.note_on or result1.params.note_on,
-                    },
-                );
-                if (result0.span.end == inner_span.end) {
-                    maybe_result0 = self.trig0.next(&ctr0);
+                if (maybe_result1) |result1| {
+                    const inner_span: zang.Span = .{
+                        .start = start,
+                        .end = std.math.min(result0.span.end, result1.span.end),
+                    };
+                    self.osc.paint(
+                        inner_span,
+                        .{temps[0]},
+                        .{},
+                        false,
+                        .{
+                            .sample_rate = AUDIO_SAMPLE_RATE,
+                            .freq = zang.constant(result0.params.freq),
+                            .color = result1.params.color,
+                        },
+                    );
+                    self.env.paint(
+                        inner_span,
+                        .{temps[1]},
+                        .{},
+                        // only reset the envelope when a button is depressed when
+                        // no buttons were previous depressed
+                        (result0.note_id_changed and result0.params.note_on and
+                            !result1.note_id_changed) or (result1.note_id_changed and result1.params.note_on and
+                            !result0.note_id_changed),
+                        .{
+                            .sample_rate = AUDIO_SAMPLE_RATE,
+                            .attack = .{ .cubed = 0.025 },
+                            .decay = .{ .cubed = 0.1 },
+                            .release = .{ .cubed = 1.0 },
+                            .sustain_volume = 0.5,
+                            .note_on = result0.params.note_on or result1.params.note_on,
+                        },
+                    );
+                    if (result0.span.end == inner_span.end) {
+                        maybe_result0 = self.trig0.next(&ctr0);
+                    }
+                    if (result1.span.end == inner_span.end) {
+                        maybe_result1 = self.trig1.next(&ctr1);
+                    }
+                    start = inner_span.end;
+                    continue;
                 }
-                if (result1.span.end == inner_span.end) {
-                    maybe_result1 = self.trig1.next(&ctr1);
-                }
-                start = inner_span.end;
-                continue;
-            }}
+            }
 
             break;
         }
@@ -152,12 +147,7 @@ pub const MainModule = struct {
         zang.multiply(span, outputs[0], temps[0], temps[1]);
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (common.getKeyRelFreqFromRow(0, key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
@@ -178,5 +168,6 @@ pub const MainModule = struct {
                 });
             }
         }
+        return true;
     }
 };

@@ -235,14 +235,10 @@ pub const MainModule = struct {
         );
     }
 
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE and down) {
             self.mode = (self.mode + 1) & 3;
+            return false;
         }
         if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key) |nh| nh == key else false)) {
@@ -256,6 +252,8 @@ pub const MainModule = struct {
                     .mode = self.mode,
                 });
             }
+            return true;
         }
+        return false;
     }
 };

@@ -124,12 +124,7 @@ pub const MainModule = struct {
     // behaviour of analog monophonic synths with portamento:
     // - the frequency is always that of the highest key held
     // - note-off only occurs when all keys are released
-    pub fn keyEvent(
-        self: *MainModule,
-        key: i32,
-        down: bool,
-        impulse_frame: usize,
-    ) void {
+    pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         for (common.key_bindings) |kb, i| {
             if (kb.key != key) {
                 continue;
@@ -159,8 +154,7 @@ pub const MainModule = struct {
                         .note_on = false,
                     });
                 } else {
-                    const rel_freq = common.key_bindings
-                        [63 - @clz(u64, self.keys_held)].rel_freq;
+                    const rel_freq = common.key_bindings[63 - @clz(u64, self.keys_held)].rel_freq;
                     self.iq.push(impulse_frame, self.idgen.nextId(), .{
                         .sample_rate = AUDIO_SAMPLE_RATE,
                         .freq = a4 * rel_freq,
@@ -169,5 +163,6 @@ pub const MainModule = struct {
                 }
             }
         }
+        return true;
     }
 };

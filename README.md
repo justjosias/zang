@@ -49,6 +49,8 @@ git submodule update
 
 `zig build write_wav`: Writes the melody of the `song` example to a file called "out.wav" in the current directory. It does not use SDL or libc.
 
+In the interactive examples, you can press the backquote/tilde key to begin recording your keypresses. Press it again to stop recording and play back the recorded keypresses in a loop. Press it a third time to turn it off.
+
 ## Features
 Modules:
 
