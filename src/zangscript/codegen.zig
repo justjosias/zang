@@ -170,7 +170,7 @@ const TempManager = struct {
         self.slot_claimed.items[index] = false;
     }
 
-    fn finalCount(self: *const TempManager) usize {
+    pub fn finalCount(self: *const TempManager) usize {
         return self.slot_claimed.items.len;
     }
 };

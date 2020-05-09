@@ -14,7 +14,7 @@ pub const DESCRIPTION =
     \\
     \\Play a scripted sound module with the keyboard.
     \\
-    \\Press F5 to reload the script.
+    \\Press Enter to reload the script.
 ;
 
 const a4 = 440.0;
@@ -48,14 +48,14 @@ pub const MainModule = struct {
         note_on: bool,
     };
 
-    allocator: *std.mem.Allocator,
-    contents: []const u8,
-    script: *zangscript.CompiledScript,
-
     const Voice = struct {
         module: *zangscript.ModuleBase,
         trigger: zang.Trigger(Params),
     };
+
+    allocator: *std.mem.Allocator,
+    contents: []const u8,
+    script: *zangscript.CompiledScript,
 
     dispatcher: zang.Notes(Params).PolyphonyDispatcher(polyphony),
     voices: [polyphony]Voice,
