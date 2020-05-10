@@ -218,27 +218,25 @@ const Visuals = struct {
 
     // called on the main thread with the audio thread locked
     fn blit(self: *Visuals, pixels: []u32, pitch: usize, recorder_state: @TagType(Recorder.State)) void {
-        if (self.disabled) {
-            if (self.redraw_all) {
-                self.redraw_all = false;
-                std.mem.set(u32, pixels, 0);
-                visual.drawString(12, 13, pixels, pitch, "Press F1 to re-enable drawing");
-            }
-            return;
-        }
-        if (self.full_fft_view) {
+        if (self.full_fft_view and !self.disabled) {
             self.redraw_all = false;
             self.draw_spectrum_full.blit(pixels, pitch);
             return;
         }
         if (self.redraw_all) {
-            self.redraw_all = false;
             std.mem.set(u32, pixels, 0);
             visual.drawString(12, 13, pixels, pitch, example.DESCRIPTION);
             self.draw_waveform.reset();
             self.draw_spectrum.reset();
             self.draw_spectrum_full.reset();
             self.recorder_state = .idle;
+            if (self.disabled) {
+                visual.drawString(12, 440, pixels, pitch, "Press F1 to re-enable drawing");
+            }
+            self.redraw_all = false;
+        }
+        if (self.disabled) {
+            return;
         }
         self.draw_waveform.blit(pixels, pitch);
         self.draw_spectrum.blit(pixels, pitch);
