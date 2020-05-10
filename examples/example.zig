@@ -7,6 +7,7 @@ const c = @import("common/c.zig");
 const fft = @import("common/fft.zig").fft;
 const Recorder = @import("recorder.zig").Recorder;
 const example = @import(@import("build_options").example);
+const visual = @import("visual.zig");
 
 const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;
@@ -23,11 +24,6 @@ var g_fft_imag = [1]f32{0.0} ** 1024;
 var g_drawing = true;
 var g_full_fft = false;
 var g_fft_log = false;
-
-const fontdata = @embedFile("font.dat");
-
-const screen_w = 512;
-const screen_h = 512;
 
 fn pushRedrawEvent() void {
     var event: c.SDL_Event = undefined;
@@ -96,12 +92,8 @@ fn audioCallback(
             std.mem.set(f32, g_fft_imag[0..], 0.0);
             fft(1024, g_fft_real[0..], g_fft_imag[0..]);
 
-            c.plot(
-                min * mul,
-                max * mul,
-                &g_fft_real,
-                if (g_fft_log) 1 else 0,
-            );
+            draw_waveform.plot(min * mul, max * mul);
+            draw_spectrum.plot(&g_fft_real, g_fft_log);
         }
     }
 
@@ -158,6 +150,10 @@ const Listener = struct {
     }
 };
 
+var draw_waveform: visual.DrawWaveform = undefined;
+var draw_spectrum: visual.DrawSpectrum = undefined;
+var need_redraw = true;
+
 pub fn main() !void {
     var userdata: UserData = .{
         .ok = true,
@@ -191,8 +187,8 @@ pub fn main() !void {
         "zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        screen_w,
-        screen_h,
+        visual.screen_w,
+        visual.screen_h,
         0,
     ) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
@@ -200,7 +196,10 @@ pub fn main() !void {
     };
     errdefer c.SDL_DestroyWindow(window);
 
-    const screen = c.SDL_GetWindowSurface(window);
+    const screen = @ptrCast(*c.SDL_Surface, c.SDL_GetWindowSurface(window) orelse {
+        c.SDL_Log("Unable to get window surface: %s", c.SDL_GetError());
+        return error.SDLInitializationFailed;
+    });
 
     var want: c.SDL_AudioSpec = undefined;
     want.freq = AUDIO_SAMPLE_RATE;
@@ -266,12 +265,19 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F1 and down) {
                     c.SDL_LockAudioDevice(device);
                     g_drawing = !g_drawing;
-                    c.clear(
-                        window,
-                        screen,
-                        fontdata,
-                        "Press F1 to re-enable drawing",
-                    );
+
+                    _ = c.SDL_LockSurface(screen);
+
+                    const pitch = @intCast(usize, screen.pitch) >> 2;
+                    const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. visual.screen_h * pitch];
+
+                    std.mem.set(u32, pixels, 0);
+                    visual.drawString(12, 13, pixels, pitch, "Press F1 to re-enable drawing");
+                    need_redraw = true;
+
+                    c.SDL_UnlockSurface(screen);
+                    _ = c.SDL_UpdateWindowSurface(window);
+
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {
@@ -327,9 +333,9 @@ pub fn main() !void {
             c.SDL_MOUSEMOTION => {
                 if (@hasDecl(example.MainModule, "mouseEvent")) {
                     const x = @intToFloat(f32, event.motion.x) /
-                        @intToFloat(f32, screen_w - 1);
+                        @intToFloat(f32, visual.screen_w - 1);
                     const y = @intToFloat(f32, event.motion.y) /
-                        @intToFloat(f32, screen_h - 1);
+                        @intToFloat(f32, visual.screen_h - 1);
                     const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
@@ -388,18 +394,35 @@ pub fn main() !void {
 
         if (event.type == g_redraw_event) {
             c.SDL_LockAudioDevice(device);
-            c.draw(
-                window,
-                screen,
-                fontdata,
-                example.DESCRIPTION,
-                switch (recorder.state) {
+
+            _ = c.SDL_LockSurface(screen);
+
+            const pitch = @intCast(usize, screen.pitch) >> 2;
+            const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. visual.screen_h * pitch];
+
+            if (g_full_fft) {
+                draw_spectrum.blitFull(pixels, pitch);
+                need_redraw = true;
+            } else {
+                if (need_redraw) {
+                    need_redraw = false;
+                    std.mem.set(u32, pixels, 0);
+                    draw_waveform.init();
+                    draw_spectrum.init();
+                }
+                draw_waveform.blit(pixels, pitch);
+                draw_spectrum.blitSmall(pixels, pitch);
+                visual.drawString(12, 13, pixels, pitch, example.DESCRIPTION);
+                visual.drawString(12, 400, pixels, pitch, switch (recorder.state) {
                     .idle => "",
                     .recording => "RECORDING",
                     .playing => "PLAYING BACK",
-                },
-                if (g_full_fft) 1 else 0,
-            );
+                });
+            }
+
+            c.SDL_UnlockSurface(screen);
+            _ = c.SDL_UpdateWindowSurface(window);
+
             c.SDL_UnlockAudioDevice(device);
         }
     }
