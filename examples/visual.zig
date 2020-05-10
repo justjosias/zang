@@ -2,15 +2,10 @@ const std = @import("std");
 
 const fontdata = @embedFile("font.dat");
 
-pub const screen_w = 512;
-pub const screen_h = 512;
-
-const waveform_height = 81;
-const bottom_padding = 7;
+pub const fontchar_w = 8;
+pub const fontchar_h = 13;
 
 pub fn drawString(start_x: usize, start_y: usize, pixels: []u32, pitch: usize, s: []const u8) void {
-    const fontchar_w = 8;
-    const fontchar_h = 13;
     const color: u32 = 0xAAAAAAAA;
 
     // warning: does no checking for drawing off screen
@@ -75,184 +70,319 @@ fn hslToRgb(h: f32, s: f32, l: f32) u32 {
         (@floatToInt(u32, r * 255));
 }
 
-pub const DrawSpectrum = struct {
-    lastfft: [512]f32,
-    fftbuf: [screen_w * 512]u32,
-    logarithmic: bool,
-    drawindex: usize,
+fn scrollBlit(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, buffer: []const u32, drawindex: usize) void {
+    var i: usize = 0;
+    while (i < h) : (i += 1) {
+        const dest_start = (y + i) * pitch + x;
+        const dest = pixels[dest_start .. dest_start + w];
 
-    pub fn init(self: *DrawSpectrum) void {
-        self.logarithmic = false;
-        self.drawindex = 0;
+        const src_start = i * w;
+        const src = buffer[src_start .. src_start + w];
+
+        std.mem.copy(u32, dest[w - drawindex ..], src[0..drawindex]);
+        std.mem.copy(u32, dest[0 .. w - drawindex], src[drawindex..]);
+    }
+}
+
+fn getFFTValue(f_: f32, in_fft: []const f32, logarithmic: bool) f32 {
+    var f = f_;
+
+    if (logarithmic) {
+        const exp = 10.0;
+        f = (std.math.pow(f32, exp, f) - 1.0) / (exp - 1.0);
+    }
+
+    f *= 511.5;
+    const f_floor = std.math.floor(f);
+    const index0 = @floatToInt(usize, f_floor);
+    const index1 = std.math.min(511, index0 + 1);
+    const frac = f - f_floor;
+
+    const fft_value0 = in_fft[index0];
+    const fft_value1 = in_fft[index1];
+
+    return fft_value0 * (1.0 - frac) + fft_value1 * frac;
+}
+
+// area chart where x=frequency and y=amplitude
+pub const DrawSpectrum = struct {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    old_y: []u32,
+    fft_value: []f32,
+    logarithmic: bool,
+    state: enum { up_to_date, needs_blit, needs_full_reblit },
+
+    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawSpectrum {
+        var self: DrawSpectrum = .{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .old_y = try allocator.alloc(u32, width),
+            .fft_value = try allocator.alloc(f32, 512),
+            .logarithmic = false,
+            .state = .needs_full_reblit,
+        };
+        // old_y doesn't need to be initialized as long as state is .needs_full_reblit
+        std.mem.set(f32, self.fft_value, 0.0);
+        return self;
+    }
+
+    pub fn deinit(self: *DrawSpectrum, allocator: *std.mem.Allocator) void {
+        allocator.free(self.old_y);
+        allocator.free(self.fft_value);
+    }
+
+    pub fn reset(self: *DrawSpectrum) void {
+        self.state = .needs_full_reblit;
+        std.mem.set(f32, self.fft_value, 0.0);
     }
 
     pub fn plot(self: *DrawSpectrum, in_fft: *[1024]f32, logarithmic: bool) void {
-        const inv_buffer_size = 1.0 / 1024.0;
-        var sx = self.drawindex;
-
-        if (self.logarithmic != logarithmic) {
-            self.logarithmic = logarithmic;
-            std.mem.set(u32, &self.fftbuf, 0);
-        }
-
         var i: usize = 0;
         while (i < 512) : (i += 1) {
-            var v2: f32 = undefined;
-
-            if (logarithmic) {
-                const f = @intToFloat(f32, i) / 511.0;
-
-                const exp = 10.0;
-                const v = (std.math.pow(f32, exp, f) - 1.0) / (exp - 1.0);
-
-                const v0 = @floatToInt(usize, std.math.floor(v * 511.0));
-                const v1 = if (v0 < 512) v0 + 1 else v0;
-                const t = v * 511.0 - @intToFloat(f32, v0);
-
-                const v00 = std.math.fabs(in_fft[v0]) * inv_buffer_size;
-                const v01 = std.math.fabs(in_fft[v1]) * inv_buffer_size;
-
-                v2 = v00 * (1.0 - t) + v01 * t;
-            } else {
-                v2 = std.math.fabs(in_fft[i]) * inv_buffer_size;
-            }
-
-            v2 = std.math.sqrt(v2); // kludge to make things more visible
-
-            self.fftbuf[(512 - 1 - i) * screen_w + sx] = hslToRgb(v2, 1.0, 0.5);
-            self.lastfft[i] = v2;
+            const v = std.math.fabs(in_fft[i]) * (1.0 / 1024.0);
+            const v2 = std.math.sqrt(v); // kludge for visibility
+            self.fft_value[i] = v2;
         }
 
-        self.drawindex += 1;
-        if (self.drawindex == screen_w) {
-            self.drawindex = 0;
+        self.logarithmic = logarithmic;
+        if (self.state == .up_to_date) {
+            self.state = .needs_blit;
         }
     }
 
-    pub fn blitSmall(self: *DrawSpectrum, pixels: []u32, pitch: usize) void {
-        const fft_height = 128;
-        const y: usize = screen_h - bottom_padding - waveform_height - fft_height;
+    pub fn blit(self: *DrawSpectrum, pixels: []u32, pitch: usize) void {
+        if (self.state == .up_to_date) return;
+        defer self.state = .up_to_date;
+
         const background_color: u32 = 0x00000000;
-        const color: u32 = 0x44444444;
+        const color: u32 = 0xFF444444;
 
         var i: usize = 0;
-        while (i < 512) : (i += 1) {
-            const fv = self.lastfft[i] * @intToFloat(f32, fft_height);
+        while (i < self.width) : (i += 1) {
+            const fi = @intToFloat(f32, i) / @intToFloat(f32, self.width - 1);
+            const fv = getFFTValue(fi, self.fft_value, self.logarithmic) * @intToFloat(f32, self.height);
+
             const value = @floatToInt(u32, std.math.floor(fv));
-            const value_clipped = std.math.min(value, fft_height - 1);
-            var sy = y;
-            while (sy < y + fft_height - value_clipped) : (sy += 1) {
-                pixels[sy * pitch + i] = background_color;
-            }
-            if (sy < y + fft_height) {
-                const co: u32 = 0x44 * (@floatToInt(u32, fv) - value);
-                pixels[sy * pitch + i] = @as(u32, 0xFF000000) | (co << 16) | (co << 8) | co;
-                sy += 1;
-            }
-            while (sy < y + fft_height) : (sy += 1) {
-                pixels[sy * pitch + i] = color;
-            }
-        }
-    }
+            const value_clipped = std.math.min(value, self.height - 1);
 
-    pub fn blitFull(self: *DrawSpectrum, pixels: []u32, pitch: usize) void {
-        var i: usize = 0;
-        while (i < 512) : (i += 1) {
-            const dest_start = i * pitch;
-            const dest = pixels[dest_start .. dest_start + screen_w];
+            // new_y is where the graph will transition from background to foreground color
+            const new_y = @intCast(u32, self.height - value_clipped);
 
-            const src_start = i * screen_w;
-            const src = self.fftbuf[src_start .. src_start + screen_w];
+            // the transition pixel will have a blended color value
+            const frac = fv - std.math.floor(fv);
+            const co: u32 = @floatToInt(u32, 0x44 * frac);
+            const transition_color = @as(u32, 0xFF000000) | (co << 16) | (co << 8) | co;
 
-            std.mem.copy(u32, dest[screen_w - self.drawindex ..], src[0..self.drawindex]);
-            std.mem.copy(u32, dest[0 .. screen_w - self.drawindex], src[self.drawindex..]);
+            const sx = self.x + i;
+            var sy = self.y;
+            if (self.state == .needs_full_reblit) {
+                // redraw fully
+                while (sy < self.y + new_y) : (sy += 1) {
+                    pixels[sy * pitch + sx] = background_color;
+                }
+                if (sy < self.y + self.height) {
+                    pixels[sy * pitch + sx] = transition_color;
+                    sy += 1;
+                }
+                while (sy < self.y + self.height) : (sy += 1) {
+                    pixels[sy * pitch + sx] = color;
+                }
+            } else {
+                const old_y = self.old_y[i];
+                if (old_y < new_y) {
+                    // new_y is lower down. fill in the overlap with background color
+                    sy += old_y;
+                    while (sy < self.y + new_y) : (sy += 1) {
+                        pixels[sy * pitch + sx] = background_color;
+                    }
+                    if (sy < self.y + self.height) {
+                        pixels[sy * pitch + sx] = transition_color;
+                        sy += 1;
+                    }
+                } else if (old_y > new_y) {
+                    // new_y is higher up. fill in the overlap with foreground color
+                    sy += new_y;
+                    if (sy < self.y + self.height) {
+                        pixels[sy * pitch + sx] = transition_color;
+                        sy += 1;
+                    }
+                    // add one to cover up the old transition pixel
+                    const until = std.math.min(old_y + 1, self.height);
+                    while (sy < self.y + until) : (sy += 1) {
+                        pixels[sy * pitch + sx] = color;
+                    }
+                }
+            }
+
+            self.old_y[i] = new_y;
         }
     }
 };
 
-pub const DrawWaveform = struct {
-    waveformbuf: [screen_w * waveform_height]u32,
+// scrolling 2d color plot of FFT data
+pub const DrawSpectrumFull = struct {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    buffer: []u32,
+    logarithmic: bool,
     drawindex: usize,
+
+    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawSpectrumFull {
+        var self: DrawSpectrumFull = .{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .buffer = try allocator.alloc(u32, width * height),
+            .logarithmic = false,
+            .drawindex = 0,
+        };
+        std.mem.set(u32, self.buffer, 0);
+        return self;
+    }
+
+    pub fn deinit(self: *DrawSpectrumFull, allocator: *std.mem.Allocator) void {
+        allocator.free(self.buffer);
+    }
+
+    pub fn reset(self: *DrawSpectrumFull) void {
+        std.mem.set(u32, self.buffer, 0.0);
+        self.drawindex = 0;
+    }
+
+    pub fn plot(self: *DrawSpectrumFull, in_fft: *[1024]f32, logarithmic: bool) void {
+        if (self.logarithmic != logarithmic) {
+            self.logarithmic = logarithmic;
+            self.reset();
+        }
+
+        var i: usize = 0;
+        while (i < self.height) : (i += 1) {
+            const f = @intToFloat(f32, i) / @intToFloat(f32, self.height - 1);
+            const fft_value = getFFTValue(f, in_fft, logarithmic);
+
+            // sqrt is a kludge to make things more visible
+            const v = std.math.sqrt(std.math.fabs(fft_value) * (1.0 / 1024.0));
+
+            self.buffer[(self.height - 1 - i) * self.width + self.drawindex] = hslToRgb(v, 1.0, 0.5);
+        }
+
+        self.drawindex += 1;
+        if (self.drawindex == self.width) {
+            self.drawindex = 0;
+        }
+    }
+
+    pub fn blit(self: *DrawSpectrumFull, pixels: []u32, pitch: usize) void {
+        scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
+    }
+};
+
+// scrolling waveform view
+pub const DrawWaveform = struct {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    buffer: []u32,
+    drawindex: usize,
+    dirty: bool,
 
     const background_color: u32 = 0x18181818;
     const waveform_color: u32 = 0x44444444;
     const clipped_color: u32 = 0xFFFF0000;
     const center_line_color: u32 = 0x66666666;
-    const y_mid = waveform_height / 2;
 
-    pub fn init(self: *DrawWaveform) void {
-        std.mem.set(u32, &self.waveformbuf, background_color);
+    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawWaveform {
+        return DrawWaveform{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .buffer = try allocator.alloc(u32, width * height),
+            .drawindex = 0,
+            .dirty = true,
+        };
+    }
 
-        const start = waveform_height / 2 * screen_w;
-        const end = start + screen_w;
-        std.mem.set(u32, self.waveformbuf[start..end], center_line_color);
+    pub fn deinit(self: *DrawWaveform, allocator: *std.mem.Allocator) void {
+        allocator.free(self.buffer);
+    }
 
+    pub fn reset(self: *DrawWaveform) void {
+        std.mem.set(u32, self.buffer, background_color);
+
+        const start = self.height / 2 * self.width;
+        const end = start + self.width;
+        std.mem.set(u32, self.buffer[start..end], center_line_color);
+
+        self.dirty = true;
         self.drawindex = 0;
     }
 
     pub fn plot(self: *DrawWaveform, sample_min: f32, sample_max: f32) void {
+        const y_mid = self.height / 2;
         const sample_min_clipped = std.math.max(-1.0, sample_min);
         const sample_max_clipped = std.math.min(1.0, sample_max);
-        var y0 = @floatToInt(usize, y_mid - sample_max * @intToFloat(f32, waveform_height / 2) + 0.5);
-        var y1 = @floatToInt(usize, y_mid - sample_min * @intToFloat(f32, waveform_height / 2) + 0.5);
+        var y0 = @floatToInt(usize, @intToFloat(f32, y_mid) - sample_max * @intToFloat(f32, self.height / 2) + 0.5);
+        var y1 = @floatToInt(usize, @intToFloat(f32, y_mid) - sample_min * @intToFloat(f32, self.height / 2) + 0.5);
         var sx = self.drawindex;
         var sy: usize = 0;
         var until: usize = undefined;
 
         if (sample_max >= 1.0) {
-            self.waveformbuf[sy * screen_w + sx] = clipped_color;
+            self.buffer[sy * self.width + sx] = clipped_color;
             sy += 1;
         }
         until = std.math.min(y0, y_mid);
         while (sy < until) : (sy += 1) {
-            self.waveformbuf[sy * screen_w + sx] = background_color;
+            self.buffer[sy * self.width + sx] = background_color;
         }
         until = std.math.min(y1, y_mid);
         while (sy < until) : (sy += 1) {
-            self.waveformbuf[sy * screen_w + sx] = waveform_color;
+            self.buffer[sy * self.width + sx] = waveform_color;
         }
         while (sy < y_mid) : (sy += 1) {
-            self.waveformbuf[sy * screen_w + sx] = background_color;
+            self.buffer[sy * self.width + sx] = background_color;
         }
-        self.waveformbuf[sy * screen_w + sx] = center_line_color;
+        self.buffer[sy * self.width + sx] = center_line_color;
         sy += 1;
         if (y0 > y_mid) {
-            until = std.math.min(y0, waveform_height);
+            until = std.math.min(y0, self.height);
             while (sy < until) : (sy += 1) {
-                self.waveformbuf[sy * screen_w + sx] = background_color;
+                self.buffer[sy * self.width + sx] = background_color;
             }
         }
-        until = std.math.min(y1, waveform_height);
+        until = std.math.min(y1, self.height);
         while (sy < until) : (sy += 1) {
-            self.waveformbuf[sy * screen_w + sx] = waveform_color;
+            self.buffer[sy * self.width + sx] = waveform_color;
         }
-        while (sy < waveform_height) : (sy += 1) {
-            self.waveformbuf[sy * screen_w + sx] = background_color;
+        while (sy < self.height) : (sy += 1) {
+            self.buffer[sy * self.width + sx] = background_color;
         }
         if (sample_min <= -1.0) {
             sy -= 1;
-            self.waveformbuf[sy * screen_w + sx] = background_color;
+            self.buffer[sy * self.width + sx] = background_color;
         }
 
+        self.dirty = true;
         self.drawindex += 1;
-        if (self.drawindex == screen_w) {
+        if (self.drawindex == self.width) {
             self.drawindex = 0;
         }
     }
 
     pub fn blit(self: *DrawWaveform, pixels: []u32, pitch: usize) void {
-        const y = screen_h - bottom_padding - waveform_height;
+        if (!self.dirty) return;
+        self.dirty = false;
 
-        var i: usize = 0;
-        while (i < waveform_height) : (i += 1) {
-            const dest_start = (y + i) * pitch;
-            const dest = pixels[dest_start .. dest_start + screen_w];
-
-            const src_start = i * screen_w;
-            const src = self.waveformbuf[src_start .. src_start + screen_w];
-
-            std.mem.copy(u32, dest[screen_w - self.drawindex ..], src[0..self.drawindex]);
-            std.mem.copy(u32, dest[0 .. screen_w - self.drawindex], src[self.drawindex..]);
-        }
+        scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
     }
 };

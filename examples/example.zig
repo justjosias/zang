@@ -13,17 +13,13 @@ const AUDIO_FORMAT = example.AUDIO_FORMAT;
 const AUDIO_SAMPLE_RATE = example.AUDIO_SAMPLE_RATE;
 const AUDIO_BUFFER_SIZE = example.AUDIO_BUFFER_SIZE;
 
+const screen_w = 512;
+const screen_h = 512;
+
 var g_outputs: [example.MainModule.num_outputs][AUDIO_BUFFER_SIZE]f32 = undefined;
 var g_temps: [example.MainModule.num_temps][AUDIO_BUFFER_SIZE]f32 = undefined;
 
 var g_redraw_event: c.Uint32 = undefined;
-
-var g_fft_real = [1]f32{0.0} ** 1024;
-var g_fft_imag = [1]f32{0.0} ** 1024;
-
-var g_drawing = true;
-var g_full_fft = false;
-var g_fft_log = false;
 
 fn pushRedrawEvent() void {
     var event: c.SDL_Event = undefined;
@@ -71,33 +67,10 @@ fn audioCallback(
         zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
     }
 
-    if (!g_drawing) {
-        return;
+    if (!visuals.disabled) {
+        visuals.newInput(outputs[0][0..], mul);
+        pushRedrawEvent();
     }
-
-    // i = 0; while (i < example.MainModule.num_outputs) : (i += 1) {
-    i = 0;
-    {
-        var j: usize = 0;
-        while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
-            const output = outputs[i][j * 1024 .. j * 1024 + 1024];
-            var min = output[0];
-            var max = output[0];
-            for (output[1..]) |sample| {
-                if (sample < min) min = sample;
-                if (sample > max) max = sample;
-            }
-
-            std.mem.copy(f32, g_fft_real[0..], output);
-            std.mem.set(f32, g_fft_imag[0..], 0.0);
-            fft(1024, g_fft_real[0..], g_fft_imag[0..]);
-
-            draw_waveform.plot(min * mul, max * mul);
-            draw_spectrum.plot(&g_fft_real, g_fft_log);
-        }
-    }
-
-    pushRedrawEvent();
 }
 
 const ListenerEvent = enum {
@@ -150,11 +123,147 @@ const Listener = struct {
     }
 };
 
-var draw_waveform: visual.DrawWaveform = undefined;
-var draw_spectrum: visual.DrawSpectrum = undefined;
-var need_redraw = true;
+const Visuals = struct {
+    fft_real: []f32,
+    fft_imag: []f32,
+
+    draw_waveform: visual.DrawWaveform,
+    draw_spectrum: visual.DrawSpectrum,
+    draw_spectrum_full: visual.DrawSpectrumFull,
+    recorder_state: @TagType(Recorder.State),
+
+    disabled: bool,
+    full_fft_view: bool,
+    logarithmic_fft: bool,
+
+    redraw_all: bool,
+
+    fn init(allocator: *std.mem.Allocator) !Visuals {
+        const fft_height = 128;
+        const waveform_height = 81;
+        const bottom_padding = visual.fontchar_h;
+
+        var draw_waveform = try visual.DrawWaveform.init(allocator, 0, screen_h - bottom_padding - waveform_height, screen_w, waveform_height);
+        errdefer draw_waveform.deinit(allocator);
+        var draw_spectrum = try visual.DrawSpectrum.init(allocator, 0, screen_h - bottom_padding - waveform_height - fft_height, screen_w, fft_height);
+        errdefer draw_spectrum.deinit(allocator);
+        var draw_spectrum_full = try visual.DrawSpectrumFull.init(allocator, 0, 0, screen_w, screen_h);
+        errdefer draw_spectrum_full.deinit(allocator);
+
+        return Visuals{
+            .fft_real = try allocator.alloc(f32, 1024),
+            .fft_imag = try allocator.alloc(f32, 1024),
+            .draw_waveform = draw_waveform,
+            .draw_spectrum = draw_spectrum,
+            .draw_spectrum_full = draw_spectrum_full,
+            .recorder_state = .idle,
+            .disabled = false,
+            .full_fft_view = false,
+            .logarithmic_fft = false,
+            .redraw_all = true,
+        };
+    }
+
+    fn deinit(self: *Visuals, allocator: *std.mem.Allocator) void {
+        allocator.free(self.fft_real);
+        allocator.free(self.fft_imag);
+        self.draw_waveform.deinit(allocator);
+        self.draw_spectrum.deinit(allocator);
+        self.draw_spectrum_full.deinit(allocator);
+    }
+
+    fn toggleDisabled(self: *Visuals) void {
+        self.disabled = !self.disabled;
+        self.redraw_all = true;
+    }
+
+    fn toggleFullFFTView(self: *Visuals) void {
+        self.full_fft_view = !self.full_fft_view;
+        self.redraw_all = true;
+    }
+
+    fn toggleLogarithmicFFT(self: *Visuals) void {
+        self.logarithmic_fft = !self.logarithmic_fft;
+    }
+
+    // called on the audio thread
+    fn newInput(self: *Visuals, samples: []const f32, mul: f32) void {
+        if (self.disabled) {
+            return;
+        }
+
+        var j: usize = 0;
+        while (j < samples.len / 1024) : (j += 1) {
+            const output = samples[j * 1024 .. j * 1024 + 1024];
+            var min = output[0];
+            var max = output[0];
+            for (output[1..]) |sample| {
+                if (sample < min) min = sample;
+                if (sample > max) max = sample;
+            }
+
+            // TODO maybe just save the samples and let them be processed on the main thread?
+            std.mem.copy(f32, self.fft_real, output);
+            std.mem.set(f32, self.fft_imag, 0.0);
+            fft(1024, self.fft_real, self.fft_imag);
+
+            if (self.full_fft_view) {
+                self.draw_spectrum_full.plot(self.fft_real[0..1024], self.logarithmic_fft);
+            } else {
+                self.draw_waveform.plot(min * mul, max * mul);
+                self.draw_spectrum.plot(self.fft_real[0..1024], self.logarithmic_fft);
+            }
+        }
+    }
+
+    // called on the main thread with the audio thread locked
+    fn blit(self: *Visuals, pixels: []u32, pitch: usize, recorder_state: @TagType(Recorder.State)) void {
+        if (self.disabled) {
+            if (self.redraw_all) {
+                self.redraw_all = false;
+                std.mem.set(u32, pixels, 0);
+                visual.drawString(12, 13, pixels, pitch, "Press F1 to re-enable drawing");
+            }
+            return;
+        }
+        if (self.full_fft_view) {
+            self.redraw_all = false;
+            self.draw_spectrum_full.blit(pixels, pitch);
+            return;
+        }
+        if (self.redraw_all) {
+            self.redraw_all = false;
+            std.mem.set(u32, pixels, 0);
+            visual.drawString(12, 13, pixels, pitch, example.DESCRIPTION);
+            self.draw_waveform.reset();
+            self.draw_spectrum.reset();
+            self.draw_spectrum_full.reset();
+            self.recorder_state = .idle;
+        }
+        self.draw_waveform.blit(pixels, pitch);
+        self.draw_spectrum.blit(pixels, pitch);
+        if (self.recorder_state != recorder_state) {
+            self.recorder_state = recorder_state;
+            const y = screen_h - visual.fontchar_h;
+            const h = visual.fontchar_h;
+            std.mem.set(u32, pixels[y * pitch .. (y + h) * pitch], 0);
+            visual.drawString(12, y, pixels, pitch, switch (recorder_state) {
+                .idle => "",
+                .recording => "RECORDING",
+                .playing => "PLAYING BACK",
+            });
+        }
+    }
+};
+
+var visuals: Visuals = undefined;
 
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    visuals = try Visuals.init(allocator);
+    defer visuals.deinit(allocator);
+
     var userdata: UserData = .{
         .ok = true,
         .main_module = undefined,
@@ -187,8 +296,8 @@ pub fn main() !void {
         "zang",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        visual.screen_w,
-        visual.screen_h,
+        screen_w,
+        screen_h,
         0,
     ) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
@@ -227,11 +336,12 @@ pub fn main() !void {
     errdefer c.SDL_CloseAudio();
 
     var maybe_listener: ?Listener = null;
-    if (std.process.getEnvVarOwned(std.heap.page_allocator, "ZANG_LISTEN_PORT") catch null) |port_str| {
+    if (std.process.getEnvVarOwned(allocator, "ZANG_LISTEN_PORT") catch null) |port_str| {
         const maybe_port = std.fmt.parseInt(u16, port_str, 10) catch blk: {
             std.debug.warn("invalid value for ZANG_LISTEN_PORT\n", .{});
             break :blk null;
         };
+        allocator.free(port_str);
         if (maybe_port) |port| {
             maybe_listener = Listener.init(port) catch |err| blk: {
                 std.debug.warn("Listener.init failed: {}\n", .{err});
@@ -264,32 +374,34 @@ pub fn main() !void {
                 }
                 if (event.key.keysym.sym == c.SDLK_F1 and down) {
                     c.SDL_LockAudioDevice(device);
-                    g_drawing = !g_drawing;
 
-                    _ = c.SDL_LockSurface(screen);
-
-                    const pitch = @intCast(usize, screen.pitch) >> 2;
-                    const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. visual.screen_h * pitch];
-
-                    std.mem.set(u32, pixels, 0);
-                    visual.drawString(12, 13, pixels, pitch, "Press F1 to re-enable drawing");
-                    need_redraw = true;
-
-                    c.SDL_UnlockSurface(screen);
-                    _ = c.SDL_UpdateWindowSurface(window);
+                    visuals.toggleDisabled();
+                    pushRedrawEvent();
 
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {
-                    g_full_fft = !g_full_fft;
+                    c.SDL_LockAudioDevice(device);
+
+                    visuals.toggleFullFFTView();
+                    pushRedrawEvent();
+
+                    c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
-                    g_fft_log = !g_fft_log;
+                    c.SDL_LockAudioDevice(device);
+
+                    visuals.toggleLogarithmicFFT();
+                    pushRedrawEvent();
+
+                    c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_BACKQUOTE and down and event.key.repeat == 0) {
                     c.SDL_LockAudioDevice(device);
+
                     recorder.cycleMode();
                     pushRedrawEvent();
+
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_RETURN and down) {
@@ -333,9 +445,9 @@ pub fn main() !void {
             c.SDL_MOUSEMOTION => {
                 if (@hasDecl(example.MainModule, "mouseEvent")) {
                     const x = @intToFloat(f32, event.motion.x) /
-                        @intToFloat(f32, visual.screen_w - 1);
+                        @intToFloat(f32, screen_w - 1);
                     const y = @intToFloat(f32, event.motion.y) /
-                        @intToFloat(f32, visual.screen_h - 1);
+                        @intToFloat(f32, screen_h - 1);
                     const impulse_frame = getImpulseFrame();
 
                     c.SDL_LockAudioDevice(device);
@@ -398,27 +510,9 @@ pub fn main() !void {
             _ = c.SDL_LockSurface(screen);
 
             const pitch = @intCast(usize, screen.pitch) >> 2;
-            const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. visual.screen_h * pitch];
+            const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. screen_h * pitch];
 
-            if (g_full_fft) {
-                draw_spectrum.blitFull(pixels, pitch);
-                need_redraw = true;
-            } else {
-                if (need_redraw) {
-                    need_redraw = false;
-                    std.mem.set(u32, pixels, 0);
-                    draw_waveform.init();
-                    draw_spectrum.init();
-                }
-                draw_waveform.blit(pixels, pitch);
-                draw_spectrum.blitSmall(pixels, pitch);
-                visual.drawString(12, 13, pixels, pitch, example.DESCRIPTION);
-                visual.drawString(12, 400, pixels, pitch, switch (recorder.state) {
-                    .idle => "",
-                    .recording => "RECORDING",
-                    .playing => "PLAYING BACK",
-                });
-            }
+            visuals.blit(pixels, pitch, recorder.state);
 
             c.SDL_UnlockSurface(screen);
             _ = c.SDL_UpdateWindowSurface(window);
