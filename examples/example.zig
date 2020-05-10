@@ -81,9 +81,9 @@ fn audioCallback(
         var j: usize = 0;
         while (j < AUDIO_BUFFER_SIZE / 1024) : (j += 1) {
             const output = outputs[i][j * 1024 .. j * 1024 + 1024];
-            var min: f32 = 0.0;
-            var max: f32 = 0.0;
-            for (output) |sample| {
+            var min = output[0];
+            var max = output[0];
+            for (output[1..]) |sample| {
                 if (sample < min) min = sample;
                 if (sample > max) max = sample;
             }
