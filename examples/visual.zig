@@ -1,4 +1,6 @@
 const std = @import("std");
+const fft = @import("common/fft.zig").fft;
+const Recorder = @import("recorder.zig").Recorder;
 
 const fontdata = @embedFile("font.dat");
 
@@ -384,5 +386,167 @@ pub const DrawWaveform = struct {
         self.dirty = false;
 
         scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
+    }
+};
+
+pub const DrawRecorderState = struct {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    recorder_state: @TagType(Recorder.State),
+
+    pub fn init(x: usize, y: usize, width: usize, height: usize) DrawRecorderState {
+        return DrawRecorderState{
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .recorder_state = .idle,
+        };
+    }
+
+    pub fn reset(self: *DrawRecorderState) void {
+        self.recorder_state = .idle;
+    }
+
+    pub fn blit(self: *DrawRecorderState, pixels: []u32, pitch: usize, recorder_state: @TagType(Recorder.State)) void {
+        if (self.recorder_state == recorder_state) return;
+        self.recorder_state = recorder_state;
+
+        var i: usize = 0;
+        while (i < self.height) : (i += 1) {
+            const start = (self.y + i) * pitch + self.x;
+            const end = start + self.width;
+            std.mem.set(u32, pixels[start..end], 0);
+        }
+
+        drawString(self.x, self.y, pixels, pitch, switch (recorder_state) {
+            .idle => "",
+            .recording => "RECORDING",
+            .playing => "PLAYING BACK",
+        });
+    }
+};
+
+pub const Visuals = struct {
+    fft_real: []f32,
+    fft_imag: []f32,
+
+    draw_waveform: DrawWaveform,
+    draw_spectrum: DrawSpectrum,
+    draw_spectrum_full: DrawSpectrumFull,
+    draw_recorder_state: DrawRecorderState,
+
+    disabled: bool,
+    full_fft_view: bool,
+    logarithmic_fft: bool,
+
+    redraw_all: bool,
+
+    pub fn init(allocator: *std.mem.Allocator, screen_w: usize, screen_h: usize) !Visuals {
+        const fft_height = 128;
+        const waveform_height = 81;
+        const bottom_padding = fontchar_h;
+
+        var draw_waveform = try DrawWaveform.init(allocator, 0, screen_h - bottom_padding - waveform_height, screen_w, waveform_height);
+        errdefer draw_waveform.deinit(allocator);
+        var draw_spectrum = try DrawSpectrum.init(allocator, 0, screen_h - bottom_padding - waveform_height - fft_height, screen_w, fft_height);
+        errdefer draw_spectrum.deinit(allocator);
+        var draw_spectrum_full = try DrawSpectrumFull.init(allocator, 0, 0, screen_w, screen_h);
+        errdefer draw_spectrum_full.deinit(allocator);
+        var draw_recorder_state = DrawRecorderState.init(0, screen_h - fontchar_h, screen_w, fontchar_h);
+
+        return Visuals{
+            .fft_real = try allocator.alloc(f32, 1024),
+            .fft_imag = try allocator.alloc(f32, 1024),
+            .draw_waveform = draw_waveform,
+            .draw_spectrum = draw_spectrum,
+            .draw_spectrum_full = draw_spectrum_full,
+            .draw_recorder_state = draw_recorder_state,
+            .disabled = false,
+            .full_fft_view = false,
+            .logarithmic_fft = false,
+            .redraw_all = true,
+        };
+    }
+
+    pub fn deinit(self: *Visuals, allocator: *std.mem.Allocator) void {
+        allocator.free(self.fft_real);
+        allocator.free(self.fft_imag);
+        self.draw_waveform.deinit(allocator);
+        self.draw_spectrum.deinit(allocator);
+        self.draw_spectrum_full.deinit(allocator);
+    }
+
+    pub fn toggleDisabled(self: *Visuals) void {
+        self.disabled = !self.disabled;
+        self.redraw_all = true;
+    }
+
+    pub fn toggleFullFFTView(self: *Visuals) void {
+        self.full_fft_view = !self.full_fft_view;
+        self.redraw_all = true;
+    }
+
+    pub fn toggleLogarithmicFFT(self: *Visuals) void {
+        self.logarithmic_fft = !self.logarithmic_fft;
+    }
+
+    // called on the audio thread
+    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32) void {
+        if (self.disabled) {
+            return;
+        }
+
+        var j: usize = 0;
+        while (j < samples.len / 1024) : (j += 1) {
+            const output = samples[j * 1024 .. j * 1024 + 1024];
+            var min = output[0];
+            var max = output[0];
+            for (output[1..]) |sample| {
+                if (sample < min) min = sample;
+                if (sample > max) max = sample;
+            }
+
+            // TODO maybe just save the samples and let them be processed on the main thread?
+            std.mem.copy(f32, self.fft_real, output);
+            std.mem.set(f32, self.fft_imag, 0.0);
+            fft(1024, self.fft_real, self.fft_imag);
+
+            if (self.full_fft_view) {
+                self.draw_spectrum_full.plot(self.fft_real[0..1024], self.logarithmic_fft);
+            } else {
+                self.draw_waveform.plot(min * mul, max * mul);
+                self.draw_spectrum.plot(self.fft_real[0..1024], self.logarithmic_fft);
+            }
+        }
+    }
+
+    // called on the main thread with the audio thread locked
+    pub fn blit(self: *Visuals, pixels: []u32, pitch: usize, description: []const u8, recorder_state: @TagType(Recorder.State)) void {
+        if (self.full_fft_view and !self.disabled) {
+            self.redraw_all = false;
+            self.draw_spectrum_full.blit(pixels, pitch);
+            return;
+        }
+        if (self.redraw_all) {
+            std.mem.set(u32, pixels, 0);
+            drawString(12, 13, pixels, pitch, description);
+            self.draw_waveform.reset();
+            self.draw_spectrum.reset();
+            self.draw_spectrum_full.reset();
+            self.draw_recorder_state.reset();
+            if (self.disabled) {
+                drawString(12, 440, pixels, pitch, "Press F1 to re-enable drawing");
+            }
+            self.redraw_all = false;
+        }
+        if (self.disabled) {
+            return;
+        }
+        self.draw_waveform.blit(pixels, pitch);
+        self.draw_spectrum.blit(pixels, pitch);
+        self.draw_recorder_state.blit(pixels, pitch, recorder_state);
     }
 };

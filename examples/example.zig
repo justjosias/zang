@@ -4,7 +4,6 @@ const std = @import("std");
 const zang = @import("zang");
 const common = @import("common.zig");
 const c = @import("common/c.zig");
-const fft = @import("common/fft.zig").fft;
 const Recorder = @import("recorder.zig").Recorder;
 const example = @import(@import("build_options").example);
 const visual = @import("visual.zig");
@@ -123,143 +122,12 @@ const Listener = struct {
     }
 };
 
-const Visuals = struct {
-    fft_real: []f32,
-    fft_imag: []f32,
-
-    draw_waveform: visual.DrawWaveform,
-    draw_spectrum: visual.DrawSpectrum,
-    draw_spectrum_full: visual.DrawSpectrumFull,
-    recorder_state: @TagType(Recorder.State),
-
-    disabled: bool,
-    full_fft_view: bool,
-    logarithmic_fft: bool,
-
-    redraw_all: bool,
-
-    fn init(allocator: *std.mem.Allocator) !Visuals {
-        const fft_height = 128;
-        const waveform_height = 81;
-        const bottom_padding = visual.fontchar_h;
-
-        var draw_waveform = try visual.DrawWaveform.init(allocator, 0, screen_h - bottom_padding - waveform_height, screen_w, waveform_height);
-        errdefer draw_waveform.deinit(allocator);
-        var draw_spectrum = try visual.DrawSpectrum.init(allocator, 0, screen_h - bottom_padding - waveform_height - fft_height, screen_w, fft_height);
-        errdefer draw_spectrum.deinit(allocator);
-        var draw_spectrum_full = try visual.DrawSpectrumFull.init(allocator, 0, 0, screen_w, screen_h);
-        errdefer draw_spectrum_full.deinit(allocator);
-
-        return Visuals{
-            .fft_real = try allocator.alloc(f32, 1024),
-            .fft_imag = try allocator.alloc(f32, 1024),
-            .draw_waveform = draw_waveform,
-            .draw_spectrum = draw_spectrum,
-            .draw_spectrum_full = draw_spectrum_full,
-            .recorder_state = .idle,
-            .disabled = false,
-            .full_fft_view = false,
-            .logarithmic_fft = false,
-            .redraw_all = true,
-        };
-    }
-
-    fn deinit(self: *Visuals, allocator: *std.mem.Allocator) void {
-        allocator.free(self.fft_real);
-        allocator.free(self.fft_imag);
-        self.draw_waveform.deinit(allocator);
-        self.draw_spectrum.deinit(allocator);
-        self.draw_spectrum_full.deinit(allocator);
-    }
-
-    fn toggleDisabled(self: *Visuals) void {
-        self.disabled = !self.disabled;
-        self.redraw_all = true;
-    }
-
-    fn toggleFullFFTView(self: *Visuals) void {
-        self.full_fft_view = !self.full_fft_view;
-        self.redraw_all = true;
-    }
-
-    fn toggleLogarithmicFFT(self: *Visuals) void {
-        self.logarithmic_fft = !self.logarithmic_fft;
-    }
-
-    // called on the audio thread
-    fn newInput(self: *Visuals, samples: []const f32, mul: f32) void {
-        if (self.disabled) {
-            return;
-        }
-
-        var j: usize = 0;
-        while (j < samples.len / 1024) : (j += 1) {
-            const output = samples[j * 1024 .. j * 1024 + 1024];
-            var min = output[0];
-            var max = output[0];
-            for (output[1..]) |sample| {
-                if (sample < min) min = sample;
-                if (sample > max) max = sample;
-            }
-
-            // TODO maybe just save the samples and let them be processed on the main thread?
-            std.mem.copy(f32, self.fft_real, output);
-            std.mem.set(f32, self.fft_imag, 0.0);
-            fft(1024, self.fft_real, self.fft_imag);
-
-            if (self.full_fft_view) {
-                self.draw_spectrum_full.plot(self.fft_real[0..1024], self.logarithmic_fft);
-            } else {
-                self.draw_waveform.plot(min * mul, max * mul);
-                self.draw_spectrum.plot(self.fft_real[0..1024], self.logarithmic_fft);
-            }
-        }
-    }
-
-    // called on the main thread with the audio thread locked
-    fn blit(self: *Visuals, pixels: []u32, pitch: usize, recorder_state: @TagType(Recorder.State)) void {
-        if (self.full_fft_view and !self.disabled) {
-            self.redraw_all = false;
-            self.draw_spectrum_full.blit(pixels, pitch);
-            return;
-        }
-        if (self.redraw_all) {
-            std.mem.set(u32, pixels, 0);
-            visual.drawString(12, 13, pixels, pitch, example.DESCRIPTION);
-            self.draw_waveform.reset();
-            self.draw_spectrum.reset();
-            self.draw_spectrum_full.reset();
-            self.recorder_state = .idle;
-            if (self.disabled) {
-                visual.drawString(12, 440, pixels, pitch, "Press F1 to re-enable drawing");
-            }
-            self.redraw_all = false;
-        }
-        if (self.disabled) {
-            return;
-        }
-        self.draw_waveform.blit(pixels, pitch);
-        self.draw_spectrum.blit(pixels, pitch);
-        if (self.recorder_state != recorder_state) {
-            self.recorder_state = recorder_state;
-            const y = screen_h - visual.fontchar_h;
-            const h = visual.fontchar_h;
-            std.mem.set(u32, pixels[y * pitch .. (y + h) * pitch], 0);
-            visual.drawString(12, y, pixels, pitch, switch (recorder_state) {
-                .idle => "",
-                .recording => "RECORDING",
-                .playing => "PLAYING BACK",
-            });
-        }
-    }
-};
-
-var visuals: Visuals = undefined;
+var visuals: visual.Visuals = undefined;
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    visuals = try Visuals.init(allocator);
+    visuals = try visual.Visuals.init(allocator, screen_w, screen_h);
     defer visuals.deinit(allocator);
 
     var userdata: UserData = .{
@@ -510,7 +378,7 @@ pub fn main() !void {
             const pitch = @intCast(usize, screen.pitch) >> 2;
             const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. screen_h * pitch];
 
-            visuals.blit(pixels, pitch, recorder.state);
+            visuals.blit(pixels, pitch, example.DESCRIPTION, recorder.state);
 
             c.SDL_UnlockSurface(screen);
             _ = c.SDL_UpdateWindowSurface(window);
