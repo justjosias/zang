@@ -8,7 +8,7 @@ The library is very low-level. There are no dynamic allocations and the API is o
 ## Examples
 The examples (except `write_wav`) use [SDL2](https://www.libsdl.org/), so make sure that's installed.
 
-Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. All drawing can be toggled by hitting the F1 key (this is useful for profiling the audio code).
+Running the examples (again, except `write_wav`) will display a window with some information, including a waveform and FFT spectrum display. Press F1 for built-in help information.
 
 Before building the examples, you will need to initialize git submodules, as some of the examples use an external dependency ([zig-wav](https://git.sr.ht/~dbandstra/zig-wav)).
 

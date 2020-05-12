@@ -5,18 +5,18 @@ const Recorder = @import("recorder.zig").Recorder;
 
 const fontdata = @embedFile("font.dat");
 
-pub const fontchar_w = 8;
-pub const fontchar_h = 13;
+const fontchar_w = 8;
+const fontchar_h = 13;
 
-pub fn drawFill(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+fn drawFill(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
     var i: usize = 0;
     while (i < h) : (i += 1) {
         const start = (y + i) * pitch + x;
-        std.mem.set(u32, pixels[start .. start + w], 0);
+        std.mem.set(u32, pixels[start .. start + w], color);
     }
 }
 
-pub fn drawString(pixels: []u32, pitch: usize, start_x: usize, start_y: usize, s: []const u8) void {
+fn drawString(pixels: []u32, pitch: usize, start_x: usize, start_y: usize, s: []const u8) void {
     const color: u32 = 0xAAAAAAAA;
 
     // warning: does no checking for drawing off screen
@@ -40,6 +40,11 @@ pub fn drawString(pixels: []u32, pitch: usize, start_x: usize, start_y: usize, s
             x += fontchar_w + 1;
         }
     }
+}
+
+fn stringWidth(s: []const u8) usize {
+    if (s.len == 0) return 0;
+    return s.len * (fontchar_w + 1) - 1;
 }
 
 fn hueToRgb(p: f32, q: f32, t_: f32) f32 {
@@ -508,8 +513,9 @@ pub const DrawStaticString = struct {
     height: usize,
     drawn: bool,
     string: []const u8,
+    bgcolor: u32,
 
-    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize, string: []const u8) !*DrawStaticString {
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize, string: []const u8, bgcolor: u32) !*DrawStaticString {
         var self = try allocator.create(DrawStaticString);
         errdefer allocator.destroy(self);
         self.* = .{
@@ -520,6 +526,7 @@ pub const DrawStaticString = struct {
             .height = height,
             .drawn = false,
             .string = string,
+            .bgcolor = bgcolor,
         };
         return self;
     }
@@ -532,7 +539,7 @@ pub const DrawStaticString = struct {
         if (self.drawn) return;
         self.drawn = true;
 
-        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, 0);
+        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, self.bgcolor);
         drawString(pixels, pitch, self.x, self.y, self.string);
     }
 };
@@ -580,7 +587,7 @@ pub const DrawRecorderState = struct {
 
 pub const Visuals = struct {
     const State = enum {
-        disabled,
+        help,
         main,
         full_fft,
     };
@@ -633,46 +640,112 @@ pub const Visuals = struct {
         const waveform_height = 81;
         const bottom_padding = fontchar_h;
 
+        const str0 = "F1:Help ";
+        try self.addWidget(DrawStaticString.new(
+            self.allocator,
+            0,
+            0,
+            stringWidth(str0),
+            fontchar_h,
+            str0,
+            if (self.state == .help) 0xFF444444 else 0,
+        ));
+        const str1 = "F2:Waveform ";
+        try self.addWidget(DrawStaticString.new(
+            self.allocator,
+            stringWidth(str0),
+            0,
+            stringWidth(str1),
+            fontchar_h,
+            str1,
+            if (self.state == .main) 0xFF444444 else 0,
+        ));
+        const str2 = "F3:Spectrum ";
+        try self.addWidget(DrawStaticString.new(
+            self.allocator,
+            stringWidth(str0) + stringWidth(str1),
+            0,
+            stringWidth(str2),
+            fontchar_h,
+            str2,
+            if (self.state == .full_fft) 0xFF444444 else 0,
+        ));
+
         switch (self.state) {
-            .disabled,
-            .main,
-            => {
+            .help => {
+                const help_h = 247;
                 try self.addWidget(DrawStaticString.new(
                     self.allocator,
                     12,
-                    13,
+                    fontchar_h + 13,
                     self.screen_w - 12,
-                    self.screen_h - bottom_padding - waveform_height - 13,
+                    help_h,
                     example.DESCRIPTION,
+                    0,
                 ));
-                if (self.state == .disabled) {
-                    try self.addWidget(DrawStaticString.new(
-                        self.allocator,
-                        12,
-                        440,
-                        self.screen_w - 12,
-                        fontchar_h,
-                        "Press F1 to re-enable drawing",
-                    ));
-                } else {
-                    try self.addWidget(DrawWaveform.new(
-                        self.allocator,
-                        0,
-                        self.screen_h - bottom_padding - waveform_height,
-                        self.screen_w,
-                        waveform_height,
-                    ));
-                    try self.addWidget(DrawSpectrum.new(
-                        self.allocator,
-                        0,
-                        self.screen_h - bottom_padding - waveform_height - fft_height,
-                        self.screen_w,
-                        fft_height,
-                    ));
-                }
+                const text =
+                    \\-----------------------------------------------------
+                    \\
+                    \\Help reference
+                    \\
+                    \\Press F1, F2, or F3 to change the visualization mode.
+                    \\Stay in this mode for the fastest performance.
+                    \\
+                    \\Press F4 to toggle between linear and logarithmic
+                    \\spectrum display.
+                    \\
+                    \\Press ` (backquote/tilde) to record and play back
+                    \\keypresses (if applicable to the loaded example).
+                    \\
+                    \\Press Enter to reload the loaded example.
+                    \\
+                    \\Press Escape to quit.
+                    \\
+                    \\-----------------------------------------------------
+                ;
+                try self.addWidget(DrawStaticString.new(
+                    self.allocator,
+                    12,
+                    help_h,
+                    self.screen_w - 12,
+                    self.screen_h - bottom_padding - help_h,
+                    text,
+                    0,
+                ));
+            },
+            .main => {
+                try self.addWidget(DrawStaticString.new(
+                    self.allocator,
+                    12,
+                    fontchar_h + 13,
+                    self.screen_w - 12,
+                    self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
+                    example.DESCRIPTION,
+                    0,
+                ));
+                try self.addWidget(DrawWaveform.new(
+                    self.allocator,
+                    0,
+                    self.screen_h - bottom_padding - waveform_height,
+                    self.screen_w,
+                    waveform_height,
+                ));
+                try self.addWidget(DrawSpectrum.new(
+                    self.allocator,
+                    0,
+                    self.screen_h - bottom_padding - waveform_height - fft_height,
+                    self.screen_w,
+                    fft_height,
+                ));
             },
             .full_fft => {
-                try self.addWidget(DrawSpectrumFull.new(self.allocator, 0, 0, self.screen_w, self.screen_h - fontchar_h));
+                try self.addWidget(DrawSpectrumFull.new(
+                    self.allocator,
+                    0,
+                    fontchar_h,
+                    self.screen_w,
+                    self.screen_h - fontchar_h - fontchar_h,
+                ));
             },
         }
 
@@ -692,22 +765,6 @@ pub const Visuals = struct {
             std.debug.warn("error while initializing widgets: {}\n", .{err});
         };
         self.clear = true;
-    }
-
-    pub fn toggleDisabled(self: *Visuals) void {
-        if (self.state == .disabled) {
-            self.setState(.main);
-        } else {
-            self.setState(.disabled);
-        }
-    }
-
-    pub fn toggleFullFFTView(self: *Visuals) void {
-        if (self.state == .full_fft) {
-            self.setState(.main);
-        } else {
-            self.setState(.full_fft);
-        }
     }
 
     pub fn toggleLogarithmicFFT(self: *Visuals) void {

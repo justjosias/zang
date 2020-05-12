@@ -240,7 +240,7 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F1 and down) {
                     c.SDL_LockAudioDevice(device);
 
-                    visuals.toggleDisabled();
+                    visuals.setState(.help);
                     pushRedrawEvent();
 
                     c.SDL_UnlockAudioDevice(device);
@@ -248,12 +248,20 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F2 and down) {
                     c.SDL_LockAudioDevice(device);
 
-                    visuals.toggleFullFFTView();
+                    visuals.setState(.main);
                     pushRedrawEvent();
 
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
+                    c.SDL_LockAudioDevice(device);
+
+                    visuals.setState(.full_fft);
+                    pushRedrawEvent();
+
+                    c.SDL_UnlockAudioDevice(device);
+                }
+                if (event.key.keysym.sym == c.SDLK_F4 and down) {
                     c.SDL_LockAudioDevice(device);
 
                     visuals.toggleLogarithmicFFT();
