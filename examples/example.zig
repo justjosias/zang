@@ -66,8 +66,7 @@ fn audioCallback(
         zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
     }
 
-    if (!visuals.disabled) {
-        visuals.newInput(outputs[0][0..], mul);
+    if (visuals.newInput(outputs[0][0..], mul)) {
         pushRedrawEvent();
     }
 }
@@ -128,7 +127,7 @@ pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
     visuals = try visual.Visuals.init(allocator, screen_w, screen_h);
-    defer visuals.deinit(allocator);
+    defer visuals.deinit();
 
     var userdata: UserData = .{
         .ok = true,
@@ -378,7 +377,7 @@ pub fn main() !void {
             const pitch = @intCast(usize, screen.pitch) >> 2;
             const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. screen_h * pitch];
 
-            visuals.blit(pixels, pitch, example.DESCRIPTION, recorder.state);
+            visuals.blit(pixels, pitch, .{ .recorder_state = recorder.state });
 
             c.SDL_UnlockSurface(screen);
             _ = c.SDL_UpdateWindowSurface(window);

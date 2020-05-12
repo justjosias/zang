@@ -1,5 +1,6 @@
 const std = @import("std");
 const fft = @import("common/fft.zig").fft;
+const example = @import(@import("build_options").example);
 const Recorder = @import("recorder.zig").Recorder;
 
 const fontdata = @embedFile("font.dat");
@@ -7,7 +8,15 @@ const fontdata = @embedFile("font.dat");
 pub const fontchar_w = 8;
 pub const fontchar_h = 13;
 
-pub fn drawString(start_x: usize, start_y: usize, pixels: []u32, pitch: usize, s: []const u8) void {
+pub fn drawFill(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+    var i: usize = 0;
+    while (i < h) : (i += 1) {
+        const start = (y + i) * pitch + x;
+        std.mem.set(u32, pixels[start .. start + w], 0);
+    }
+}
+
+pub fn drawString(pixels: []u32, pitch: usize, start_x: usize, start_y: usize, s: []const u8) void {
     const color: u32 = 0xAAAAAAAA;
 
     // warning: does no checking for drawing off screen
@@ -106,58 +115,122 @@ fn getFFTValue(f_: f32, in_fft: []const f32, logarithmic: bool) f32 {
     return fft_value0 * (1.0 - frac) + fft_value1 * frac;
 }
 
+pub const BlitContext = struct {
+    recorder_state: @TagType(Recorder.State),
+};
+
+pub const VTable = struct {
+    offset: usize, // offset of `vtable: *const VTable` in instance object
+    delFn: fn (self: **const VTable, allocator: *std.mem.Allocator) void,
+    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool) bool,
+    blitFn: fn (self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void,
+};
+
+fn makeVTable(comptime T: type) VTable {
+    const S = struct {
+        const vtable = VTable{
+            .offset = blk: {
+                inline for (@typeInfo(T).Struct.fields) |field| {
+                    if (comptime std.mem.eql(u8, field.name, "vtable")) {
+                        break :blk field.offset.?;
+                    }
+                }
+                @compileError("missing vtable field");
+            },
+            .delFn = delFn,
+            .plotFn = plotFn,
+            .blitFn = blitFn,
+        };
+        fn delFn(self: **const VTable, allocator: *std.mem.Allocator) void {
+            @intToPtr(*T, @ptrToInt(self) - self.*.offset).del(allocator);
+        }
+        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool) bool {
+            if (!@hasDecl(T, "plot")) return false;
+            return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic);
+        }
+        fn blitFn(self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+            @intToPtr(*T, @ptrToInt(self) - self.*.offset).blit(pixels, pitch, ctx);
+        }
+    };
+    return S.vtable;
+}
+
 // area chart where x=frequency and y=amplitude
 pub const DrawSpectrum = struct {
+    const _vtable = makeVTable(@This());
+
+    vtable: *const VTable,
     x: usize,
     y: usize,
     width: usize,
     height: usize,
     old_y: []u32,
-    fft_value: []f32,
+    fft_real: []f32,
+    fft_imag: []f32,
+    fft_out: []f32,
     logarithmic: bool,
     state: enum { up_to_date, needs_blit, needs_full_reblit },
 
-    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawSpectrum {
-        var self: DrawSpectrum = .{
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !*DrawSpectrum {
+        var self = try allocator.create(DrawSpectrum);
+        errdefer allocator.destroy(self);
+        var old_y = try allocator.alloc(u32, width);
+        errdefer allocator.free(old_y);
+        var fft_real = try allocator.alloc(f32, 1024);
+        errdefer allocator.free(fft_real);
+        var fft_imag = try allocator.alloc(f32, 1024);
+        errdefer allocator.free(fft_imag);
+        var fft_out = try allocator.alloc(f32, 512);
+        errdefer allocator.free(fft_out);
+        self.* = .{
+            .vtable = &_vtable,
             .x = x,
             .y = y,
             .width = width,
             .height = height,
-            .old_y = try allocator.alloc(u32, width),
-            .fft_value = try allocator.alloc(f32, 512),
+            .old_y = old_y,
+            .fft_real = fft_real,
+            .fft_imag = fft_imag,
+            .fft_out = fft_out,
             .logarithmic = false,
             .state = .needs_full_reblit,
         };
         // old_y doesn't need to be initialized as long as state is .needs_full_reblit
-        std.mem.set(f32, self.fft_value, 0.0);
+        std.mem.set(f32, self.fft_out, 0.0);
         return self;
     }
 
-    pub fn deinit(self: *DrawSpectrum, allocator: *std.mem.Allocator) void {
+    pub fn del(self: *DrawSpectrum, allocator: *std.mem.Allocator) void {
         allocator.free(self.old_y);
-        allocator.free(self.fft_value);
+        allocator.free(self.fft_real);
+        allocator.free(self.fft_imag);
+        allocator.free(self.fft_out);
+        allocator.destroy(self);
     }
 
-    pub fn reset(self: *DrawSpectrum) void {
-        self.state = .needs_full_reblit;
-        std.mem.set(f32, self.fft_value, 0.0);
-    }
+    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool) bool {
+        std.debug.assert(samples.len == 1024); // FIXME
 
-    pub fn plot(self: *DrawSpectrum, in_fft: *[1024]f32, logarithmic: bool) void {
+        std.mem.copy(f32, self.fft_real, samples);
+        std.mem.set(f32, self.fft_imag, 0.0);
+        fft(1024, self.fft_real, self.fft_imag);
+
         var i: usize = 0;
         while (i < 512) : (i += 1) {
-            const v = std.math.fabs(in_fft[i]) * (1.0 / 1024.0);
+            const v = std.math.fabs(self.fft_real[i]) * (1.0 / 1024.0);
             const v2 = std.math.sqrt(v); // kludge for visibility
-            self.fft_value[i] = v2;
+            self.fft_out[i] = v2;
         }
 
         self.logarithmic = logarithmic;
         if (self.state == .up_to_date) {
             self.state = .needs_blit;
         }
+
+        return true;
     }
 
-    pub fn blit(self: *DrawSpectrum, pixels: []u32, pitch: usize) void {
+    pub fn blit(self: *DrawSpectrum, pixels: []u32, pitch: usize, _context: BlitContext) void {
         if (self.state == .up_to_date) return;
         defer self.state = .up_to_date;
 
@@ -167,7 +240,7 @@ pub const DrawSpectrum = struct {
         var i: usize = 0;
         while (i < self.width) : (i += 1) {
             const fi = @intToFloat(f32, i) / @intToFloat(f32, self.width - 1);
-            const fv = getFFTValue(fi, self.fft_value, self.logarithmic) * @intToFloat(f32, self.height);
+            const fv = getFFTValue(fi, self.fft_out, self.logarithmic) * @intToFloat(f32, self.height);
 
             const value = @floatToInt(u32, std.math.floor(fv));
             const value_clipped = std.math.min(value, self.height - 1);
@@ -228,21 +301,37 @@ pub const DrawSpectrum = struct {
 
 // scrolling 2d color plot of FFT data
 pub const DrawSpectrumFull = struct {
+    const _vtable = makeVTable(@This());
+
+    vtable: *const VTable,
     x: usize,
     y: usize,
     width: usize,
     height: usize,
+    fft_real: []f32,
+    fft_imag: []f32,
     buffer: []u32,
     logarithmic: bool,
     drawindex: usize,
 
-    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawSpectrumFull {
-        var self: DrawSpectrumFull = .{
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !*DrawSpectrumFull {
+        var self = try allocator.create(DrawSpectrumFull);
+        errdefer allocator.destroy(self);
+        var fft_real = try allocator.alloc(f32, 1024);
+        errdefer allocator.free(fft_real);
+        var fft_imag = try allocator.alloc(f32, 1024);
+        errdefer allocator.free(fft_imag);
+        var buffer = try allocator.alloc(u32, width * height);
+        errdefer allocator.free(buffer);
+        self.* = .{
+            .vtable = &_vtable,
             .x = x,
             .y = y,
             .width = width,
             .height = height,
-            .buffer = try allocator.alloc(u32, width * height),
+            .fft_real = fft_real,
+            .fft_imag = fft_imag,
+            .buffer = buffer,
             .logarithmic = false,
             .drawindex = 0,
         };
@@ -250,25 +339,30 @@ pub const DrawSpectrumFull = struct {
         return self;
     }
 
-    pub fn deinit(self: *DrawSpectrumFull, allocator: *std.mem.Allocator) void {
+    pub fn del(self: *DrawSpectrumFull, allocator: *std.mem.Allocator) void {
+        allocator.free(self.fft_real);
+        allocator.free(self.fft_imag);
         allocator.free(self.buffer);
+        allocator.destroy(self);
     }
 
-    pub fn reset(self: *DrawSpectrumFull) void {
-        std.mem.set(u32, self.buffer, 0.0);
-        self.drawindex = 0;
-    }
-
-    pub fn plot(self: *DrawSpectrumFull, in_fft: *[1024]f32, logarithmic: bool) void {
+    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool) bool {
         if (self.logarithmic != logarithmic) {
             self.logarithmic = logarithmic;
-            self.reset();
+            std.mem.set(u32, self.buffer, 0.0);
+            self.drawindex = 0;
         }
+
+        std.debug.assert(samples.len == 1024); // FIXME
+
+        std.mem.copy(f32, self.fft_real, samples);
+        std.mem.set(f32, self.fft_imag, 0.0);
+        fft(1024, self.fft_real, self.fft_imag);
 
         var i: usize = 0;
         while (i < self.height) : (i += 1) {
             const f = @intToFloat(f32, i) / @intToFloat(f32, self.height - 1);
-            const fft_value = getFFTValue(f, in_fft, logarithmic);
+            const fft_value = getFFTValue(f, self.fft_real, logarithmic);
 
             // sqrt is a kludge to make things more visible
             const v = std.math.sqrt(std.math.fabs(fft_value) * (1.0 / 1024.0));
@@ -280,15 +374,20 @@ pub const DrawSpectrumFull = struct {
         if (self.drawindex == self.width) {
             self.drawindex = 0;
         }
+
+        return true;
     }
 
-    pub fn blit(self: *DrawSpectrumFull, pixels: []u32, pitch: usize) void {
+    pub fn blit(self: *DrawSpectrumFull, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
         scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
     }
 };
 
 // scrolling waveform view
 pub const DrawWaveform = struct {
+    const _vtable = makeVTable(@This());
+
+    vtable: *const VTable,
     x: usize,
     y: usize,
     width: usize,
@@ -302,34 +401,42 @@ pub const DrawWaveform = struct {
     const clipped_color: u32 = 0xFFFF0000;
     const center_line_color: u32 = 0x66666666;
 
-    pub fn init(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !DrawWaveform {
-        return DrawWaveform{
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !*DrawWaveform {
+        var self = try allocator.create(DrawWaveform);
+        errdefer allocator.destroy(self);
+        var buffer = try allocator.alloc(u32, width * height);
+        errdefer allocator.free(buffer);
+        self.* = .{
+            .vtable = &_vtable,
             .x = x,
             .y = y,
             .width = width,
             .height = height,
-            .buffer = try allocator.alloc(u32, width * height),
+            .buffer = buffer,
             .drawindex = 0,
             .dirty = true,
         };
-    }
-
-    pub fn deinit(self: *DrawWaveform, allocator: *std.mem.Allocator) void {
-        allocator.free(self.buffer);
-    }
-
-    pub fn reset(self: *DrawWaveform) void {
         std.mem.set(u32, self.buffer, background_color);
-
-        const start = self.height / 2 * self.width;
-        const end = start + self.width;
-        std.mem.set(u32, self.buffer[start..end], center_line_color);
-
-        self.dirty = true;
-        self.drawindex = 0;
+        const start = height / 2 * width;
+        std.mem.set(u32, self.buffer[start .. start + width], center_line_color);
+        return self;
     }
 
-    pub fn plot(self: *DrawWaveform, sample_min: f32, sample_max: f32) void {
+    pub fn del(self: *DrawWaveform, allocator: *std.mem.Allocator) void {
+        allocator.free(self.buffer);
+        allocator.destroy(self);
+    }
+
+    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool) bool {
+        var sample_min = samples[0];
+        var sample_max = samples[0];
+        for (samples[1..]) |sample| {
+            if (sample < sample_min) sample_min = sample;
+            if (sample > sample_max) sample_max = sample;
+        }
+        sample_min *= mul;
+        sample_max *= mul;
+
         const y_mid = self.height / 2;
         const sample_min_clipped = std.math.max(-1.0, sample_min);
         const sample_max_clipped = std.math.min(1.0, sample_max);
@@ -379,9 +486,11 @@ pub const DrawWaveform = struct {
         if (self.drawindex == self.width) {
             self.drawindex = 0;
         }
+
+        return true;
     }
 
-    pub fn blit(self: *DrawWaveform, pixels: []u32, pitch: usize) void {
+    pub fn blit(self: *DrawWaveform, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
         if (!self.dirty) return;
         self.dirty = false;
 
@@ -389,39 +498,79 @@ pub const DrawWaveform = struct {
     }
 };
 
+pub const DrawStaticString = struct {
+    const _vtable = makeVTable(@This());
+
+    vtable: *const VTable,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    drawn: bool,
+    string: []const u8,
+
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize, string: []const u8) !*DrawStaticString {
+        var self = try allocator.create(DrawStaticString);
+        errdefer allocator.destroy(self);
+        self.* = .{
+            .vtable = &_vtable,
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .drawn = false,
+            .string = string,
+        };
+        return self;
+    }
+
+    pub fn del(self: *DrawStaticString, allocator: *std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
+
+    pub fn blit(self: *DrawStaticString, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+        if (self.drawn) return;
+        self.drawn = true;
+
+        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, 0);
+        drawString(pixels, pitch, self.x, self.y, self.string);
+    }
+};
+
 pub const DrawRecorderState = struct {
+    const _vtable = makeVTable(@This());
+
+    vtable: *const VTable,
     x: usize,
     y: usize,
     width: usize,
     height: usize,
     recorder_state: @TagType(Recorder.State),
 
-    pub fn init(x: usize, y: usize, width: usize, height: usize) DrawRecorderState {
-        return DrawRecorderState{
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !*DrawRecorderState {
+        var self = try allocator.create(DrawRecorderState);
+        errdefer allocator.destroy(self);
+        self.* = .{
+            .vtable = &_vtable,
             .x = x,
             .y = y,
             .width = width,
             .height = height,
             .recorder_state = .idle,
         };
+        return self;
     }
 
-    pub fn reset(self: *DrawRecorderState) void {
-        self.recorder_state = .idle;
+    pub fn del(self: *DrawRecorderState, allocator: *std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 
-    pub fn blit(self: *DrawRecorderState, pixels: []u32, pitch: usize, recorder_state: @TagType(Recorder.State)) void {
-        if (self.recorder_state == recorder_state) return;
-        self.recorder_state = recorder_state;
+    pub fn blit(self: *DrawRecorderState, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+        if (self.recorder_state == ctx.recorder_state) return;
+        self.recorder_state = ctx.recorder_state;
 
-        var i: usize = 0;
-        while (i < self.height) : (i += 1) {
-            const start = (self.y + i) * pitch + self.x;
-            const end = start + self.width;
-            std.mem.set(u32, pixels[start..end], 0);
-        }
-
-        drawString(self.x, self.y, pixels, pitch, switch (recorder_state) {
+        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, 0);
+        drawString(pixels, pitch, self.x, self.y, switch (ctx.recorder_state) {
             .idle => "",
             .recording => "RECORDING",
             .playing => "PLAYING BACK",
@@ -430,123 +579,169 @@ pub const DrawRecorderState = struct {
 };
 
 pub const Visuals = struct {
-    fft_real: []f32,
-    fft_imag: []f32,
+    const State = enum {
+        disabled,
+        main,
+        full_fft,
+    };
 
-    draw_waveform: DrawWaveform,
-    draw_spectrum: DrawSpectrum,
-    draw_spectrum_full: DrawSpectrumFull,
-    draw_recorder_state: DrawRecorderState,
+    allocator: *std.mem.Allocator,
+    screen_w: usize,
+    screen_h: usize,
 
-    disabled: bool,
-    full_fft_view: bool,
+    state: State,
+    clear: bool,
+    widgets: std.ArrayList(**const VTable),
+
     logarithmic_fft: bool,
 
-    redraw_all: bool,
-
     pub fn init(allocator: *std.mem.Allocator, screen_w: usize, screen_h: usize) !Visuals {
+        var self: Visuals = .{
+            .allocator = allocator,
+            .screen_w = screen_w,
+            .screen_h = screen_h,
+            .state = .main,
+            .clear = true,
+            .widgets = std.ArrayList(**const VTable).init(allocator),
+            .logarithmic_fft = false,
+        };
+        self.setState(.main);
+        return self;
+    }
+
+    pub fn deinit(self: *Visuals) void {
+        self.clearWidgets();
+        self.widgets.deinit();
+    }
+
+    fn clearWidgets(self: *Visuals) void {
+        while (self.widgets.popOrNull()) |widget| {
+            widget.*.delFn(widget, self.allocator);
+        }
+    }
+
+    fn addWidget(self: *Visuals, inew: var) !void {
+        var instance = try inew;
+        self.widgets.append(&instance.vtable) catch |err| {
+            instance.del(self.allocator);
+            return err;
+        };
+    }
+
+    fn addWidgets(self: *Visuals) !void {
         const fft_height = 128;
         const waveform_height = 81;
         const bottom_padding = fontchar_h;
 
-        var draw_waveform = try DrawWaveform.init(allocator, 0, screen_h - bottom_padding - waveform_height, screen_w, waveform_height);
-        errdefer draw_waveform.deinit(allocator);
-        var draw_spectrum = try DrawSpectrum.init(allocator, 0, screen_h - bottom_padding - waveform_height - fft_height, screen_w, fft_height);
-        errdefer draw_spectrum.deinit(allocator);
-        var draw_spectrum_full = try DrawSpectrumFull.init(allocator, 0, 0, screen_w, screen_h);
-        errdefer draw_spectrum_full.deinit(allocator);
-        var draw_recorder_state = DrawRecorderState.init(0, screen_h - fontchar_h, screen_w, fontchar_h);
+        switch (self.state) {
+            .disabled,
+            .main,
+            => {
+                try self.addWidget(DrawStaticString.new(
+                    self.allocator,
+                    12,
+                    13,
+                    self.screen_w - 12,
+                    self.screen_h - bottom_padding - waveform_height - 13,
+                    example.DESCRIPTION,
+                ));
+                if (self.state == .disabled) {
+                    try self.addWidget(DrawStaticString.new(
+                        self.allocator,
+                        12,
+                        440,
+                        self.screen_w - 12,
+                        fontchar_h,
+                        "Press F1 to re-enable drawing",
+                    ));
+                } else {
+                    try self.addWidget(DrawWaveform.new(
+                        self.allocator,
+                        0,
+                        self.screen_h - bottom_padding - waveform_height,
+                        self.screen_w,
+                        waveform_height,
+                    ));
+                    try self.addWidget(DrawSpectrum.new(
+                        self.allocator,
+                        0,
+                        self.screen_h - bottom_padding - waveform_height - fft_height,
+                        self.screen_w,
+                        fft_height,
+                    ));
+                }
+            },
+            .full_fft => {
+                try self.addWidget(DrawSpectrumFull.new(self.allocator, 0, 0, self.screen_w, self.screen_h - fontchar_h));
+            },
+        }
 
-        return Visuals{
-            .fft_real = try allocator.alloc(f32, 1024),
-            .fft_imag = try allocator.alloc(f32, 1024),
-            .draw_waveform = draw_waveform,
-            .draw_spectrum = draw_spectrum,
-            .draw_spectrum_full = draw_spectrum_full,
-            .draw_recorder_state = draw_recorder_state,
-            .disabled = false,
-            .full_fft_view = false,
-            .logarithmic_fft = false,
-            .redraw_all = true,
-        };
+        try self.addWidget(DrawRecorderState.new(
+            self.allocator,
+            0,
+            self.screen_h - fontchar_h,
+            self.screen_w,
+            fontchar_h,
+        ));
     }
 
-    pub fn deinit(self: *Visuals, allocator: *std.mem.Allocator) void {
-        allocator.free(self.fft_real);
-        allocator.free(self.fft_imag);
-        self.draw_waveform.deinit(allocator);
-        self.draw_spectrum.deinit(allocator);
-        self.draw_spectrum_full.deinit(allocator);
+    pub fn setState(self: *Visuals, state: State) void {
+        self.clearWidgets();
+        self.state = state;
+        self.addWidgets() catch |err| {
+            std.debug.warn("error while initializing widgets: {}\n", .{err});
+        };
+        self.clear = true;
     }
 
     pub fn toggleDisabled(self: *Visuals) void {
-        self.disabled = !self.disabled;
-        self.redraw_all = true;
+        if (self.state == .disabled) {
+            self.setState(.main);
+        } else {
+            self.setState(.disabled);
+        }
     }
 
     pub fn toggleFullFFTView(self: *Visuals) void {
-        self.full_fft_view = !self.full_fft_view;
-        self.redraw_all = true;
+        if (self.state == .full_fft) {
+            self.setState(.main);
+        } else {
+            self.setState(.full_fft);
+        }
     }
 
     pub fn toggleLogarithmicFFT(self: *Visuals) void {
         self.logarithmic_fft = !self.logarithmic_fft;
     }
 
-    // called on the audio thread
-    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32) void {
-        if (self.disabled) {
-            return;
-        }
+    // called on the audio thread.
+    // return true if a redraw should be triggered
+    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32) bool {
+        var redraw = false;
 
         var j: usize = 0;
         while (j < samples.len / 1024) : (j += 1) {
             const output = samples[j * 1024 .. j * 1024 + 1024];
-            var min = output[0];
-            var max = output[0];
-            for (output[1..]) |sample| {
-                if (sample < min) min = sample;
-                if (sample > max) max = sample;
-            }
 
-            // TODO maybe just save the samples and let them be processed on the main thread?
-            std.mem.copy(f32, self.fft_real, output);
-            std.mem.set(f32, self.fft_imag, 0.0);
-            fft(1024, self.fft_real, self.fft_imag);
-
-            if (self.full_fft_view) {
-                self.draw_spectrum_full.plot(self.fft_real[0..1024], self.logarithmic_fft);
-            } else {
-                self.draw_waveform.plot(min * mul, max * mul);
-                self.draw_spectrum.plot(self.fft_real[0..1024], self.logarithmic_fft);
+            for (self.widgets.items) |widget| {
+                if (widget.*.plotFn(widget, output, mul, self.logarithmic_fft)) {
+                    redraw = true;
+                }
             }
         }
+
+        return redraw;
     }
 
     // called on the main thread with the audio thread locked
-    pub fn blit(self: *Visuals, pixels: []u32, pitch: usize, description: []const u8, recorder_state: @TagType(Recorder.State)) void {
-        if (self.full_fft_view and !self.disabled) {
-            self.redraw_all = false;
-            self.draw_spectrum_full.blit(pixels, pitch);
-            return;
-        }
-        if (self.redraw_all) {
+    pub fn blit(self: *Visuals, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+        if (self.clear) {
+            self.clear = false;
             std.mem.set(u32, pixels, 0);
-            drawString(12, 13, pixels, pitch, description);
-            self.draw_waveform.reset();
-            self.draw_spectrum.reset();
-            self.draw_spectrum_full.reset();
-            self.draw_recorder_state.reset();
-            if (self.disabled) {
-                drawString(12, 440, pixels, pitch, "Press F1 to re-enable drawing");
-            }
-            self.redraw_all = false;
         }
-        if (self.disabled) {
-            return;
+
+        for (self.widgets.items) |widget| {
+            widget.*.blitFn(widget, pixels, pitch, ctx);
         }
-        self.draw_waveform.blit(pixels, pitch);
-        self.draw_spectrum.blit(pixels, pitch);
-        self.draw_recorder_state.blit(pixels, pitch, recorder_state);
     }
 };
