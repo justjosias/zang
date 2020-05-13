@@ -71,6 +71,7 @@ pub const MainModule = struct {
     idgen: zang.IdGenerator,
     instr: Instrument,
     trig: zang.Trigger(Instrument.Params),
+    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -78,6 +79,7 @@ pub const MainModule = struct {
             .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
             .trig = zang.Trigger(Instrument.Params).init(),
+            .oscil_freq = null,
         };
     }
 
@@ -101,11 +103,15 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE) {
+            const freq = a4 * note_frequencies.c2;
             self.iq.push(impulse_frame, self.idgen.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = a4 * note_frequencies.c2,
+                .freq = freq,
                 .note_on = down,
             });
+            if (down) {
+                self.oscil_freq = freq;
+            }
             return true;
         }
         return false;

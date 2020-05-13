@@ -65,6 +65,8 @@ pub const MainModule = struct {
 
     iq: zang.Notes(Params).ImpulseQueue,
 
+    oscil_freq: ?f32,
+
     pub fn init() !MainModule {
         var allocator = std.heap.page_allocator;
 
@@ -90,6 +92,7 @@ pub const MainModule = struct {
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .dispatcher = zang.Notes(Params).PolyphonyDispatcher(polyphony).init(),
             .voices = undefined,
+            .oscil_freq = null,
         };
         var num_voices_initialized: usize = 0;
         errdefer for (self.voices[0..num_voices_initialized]) |*voice| {
@@ -143,9 +146,10 @@ pub const MainModule = struct {
                 continue;
             }
 
+            const freq = a4 * kb.rel_freq;
             const params: Params = .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = zang.constant(a4 * kb.rel_freq),
+                .freq = zang.constant(freq),
                 .note_on = down,
             };
 
@@ -155,6 +159,7 @@ pub const MainModule = struct {
                     self.note_ids[i] = self.next_note_id;
                     self.next_note_id += 1;
                 }
+                self.oscil_freq = freq;
             } else if (self.note_ids[i]) |note_id| {
                 self.iq.push(impulse_frame, note_id, params);
                 self.note_ids[i] = null;

@@ -28,6 +28,7 @@ fn pushRedrawEvent() void {
 
 const UserData = struct {
     main_module: example.MainModule, // only valid if ok is true
+    oscil_freq: f32,
     ok: bool,
 };
 
@@ -66,7 +67,7 @@ fn audioCallback(
         zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
     }
 
-    if (visuals.newInput(outputs[0][0..], mul)) {
+    if (visuals.newInput(outputs[0][0..], mul, AUDIO_SAMPLE_RATE, userdata.oscil_freq)) {
         pushRedrawEvent();
     }
 }
@@ -131,6 +132,7 @@ pub fn main() !void {
 
     var userdata: UserData = .{
         .ok = true,
+        .oscil_freq = 440,
         .main_module = undefined,
     };
     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
@@ -256,12 +258,20 @@ pub fn main() !void {
                 if (event.key.keysym.sym == c.SDLK_F3 and down) {
                     c.SDL_LockAudioDevice(device);
 
-                    visuals.setState(.full_fft);
+                    visuals.setState(.oscil);
                     pushRedrawEvent();
 
                     c.SDL_UnlockAudioDevice(device);
                 }
                 if (event.key.keysym.sym == c.SDLK_F4 and down) {
+                    c.SDL_LockAudioDevice(device);
+
+                    visuals.setState(.full_fft);
+                    pushRedrawEvent();
+
+                    c.SDL_UnlockAudioDevice(device);
+                }
+                if (event.key.keysym.sym == c.SDLK_F5 and down) {
                     c.SDL_LockAudioDevice(device);
 
                     visuals.toggleLogarithmicFFT();
@@ -309,6 +319,11 @@ pub fn main() !void {
                             if (userdata.main_module.keyEvent(event.key.keysym.sym, down, impulse_frame)) {
                                 recorder.recordEvent(event.key.keysym.sym, down);
                                 recorder.trackEvent(event.key.keysym.sym, down);
+                            }
+                            if (@hasField(example.MainModule, "oscil_freq")) {
+                                if (userdata.main_module.oscil_freq) |freq| {
+                                    userdata.oscil_freq = freq;
+                                }
                             }
                         }
                         c.SDL_UnlockAudioDevice(device);

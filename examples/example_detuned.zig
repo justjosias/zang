@@ -176,6 +176,7 @@ pub const MainModule = struct {
     trigger: zang.Trigger(OuterInstrument.Params),
     echoes: StereoEchoes,
     mode: u32,
+    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -186,6 +187,7 @@ pub const MainModule = struct {
             .trigger = zang.Trigger(OuterInstrument.Params).init(),
             .echoes = StereoEchoes.init(),
             .mode = 0,
+            .oscil_freq = null,
         };
     }
 
@@ -251,6 +253,9 @@ pub const MainModule = struct {
                     // take effect until you press a new key
                     .mode = self.mode,
                 });
+                if (down) {
+                    self.oscil_freq = a4 * rel_freq * 0.5;
+                }
             }
             return true;
         }

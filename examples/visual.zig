@@ -127,7 +127,7 @@ pub const BlitContext = struct {
 pub const VTable = struct {
     offset: usize, // offset of `vtable: *const VTable` in instance object
     delFn: fn (self: **const VTable, allocator: *std.mem.Allocator) void,
-    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool) bool,
+    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: f32) bool,
     blitFn: fn (self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void,
 };
 
@@ -149,9 +149,9 @@ fn makeVTable(comptime T: type) VTable {
         fn delFn(self: **const VTable, allocator: *std.mem.Allocator) void {
             @intToPtr(*T, @ptrToInt(self) - self.*.offset).del(allocator);
         }
-        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool) bool {
+        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: f32) bool {
             if (!@hasDecl(T, "plot")) return false;
-            return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic);
+            return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic, sr, oscil_freq);
         }
         fn blitFn(self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void {
             @intToPtr(*T, @ptrToInt(self) - self.*.offset).blit(pixels, pitch, ctx);
@@ -213,7 +213,7 @@ pub const DrawSpectrum = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool) bool {
+    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
         std.debug.assert(samples.len == 1024); // FIXME
 
         std.mem.copy(f32, self.fft_real, samples);
@@ -351,7 +351,7 @@ pub const DrawSpectrumFull = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool) bool {
+    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
         if (self.logarithmic != logarithmic) {
             self.logarithmic = logarithmic;
             std.mem.set(u32, self.buffer, 0.0);
@@ -432,7 +432,7 @@ pub const DrawWaveform = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool) bool {
+    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
         var sample_min = samples[0];
         var sample_max = samples[0];
         for (samples[1..]) |sample| {
@@ -500,6 +500,136 @@ pub const DrawWaveform = struct {
         self.dirty = false;
 
         scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
+    }
+};
+
+pub const DrawOscilloscope = struct {
+    const _vtable = makeVTable(@This());
+
+    const PaintedSpan = struct {
+        y0: usize,
+        y1: usize,
+    };
+
+    vtable: *const VTable,
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    samples: []f32,
+    num_samples: usize,
+    painted_spans: []PaintedSpan,
+    accum: f32,
+    state: enum { up_to_date, needs_blit, needs_full_reblit },
+
+    const background_color: u32 = 0xFF181818;
+    const waveform_color: u32 = 0xFFAAAAAA;
+
+    pub fn new(allocator: *std.mem.Allocator, x: usize, y: usize, width: usize, height: usize) !*DrawOscilloscope {
+        var self = try allocator.create(DrawOscilloscope);
+        errdefer allocator.destroy(self);
+        var samples = try allocator.alloc(f32, width);
+        errdefer allocator.free(samples);
+        var painted_spans = try allocator.alloc(PaintedSpan, width);
+        errdefer allocator.free(old_y);
+        self.* = .{
+            .vtable = &_vtable,
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .samples = samples,
+            .num_samples = 0,
+            .painted_spans = painted_spans,
+            .accum = 0,
+            .state = .needs_full_reblit,
+        };
+        return self;
+    }
+
+    pub fn del(self: *DrawOscilloscope, allocator: *std.mem.Allocator) void {
+        allocator.free(self.samples);
+        allocator.free(self.painted_spans);
+        allocator.destroy(self);
+    }
+
+    pub fn plot(self: *DrawOscilloscope, samples: []const f32, mul: f32, _logarithmic: bool, sr: f32, oscil_freq: f32) bool {
+        const start = @floatToInt(usize, std.math.floor(self.accum));
+        const end = std.math.min(start + self.width, samples.len);
+        for (samples[start..end]) |sample, i| {
+            self.samples[i] = sample * mul;
+        }
+        self.num_samples = end - start;
+
+        while (self.accum < @intToFloat(f32, samples.len)) {
+            self.accum += sr / oscil_freq;
+        }
+        self.accum -= @intToFloat(f32, samples.len);
+
+        if (self.state == .up_to_date) {
+            self.state = .needs_blit;
+        }
+        return true;
+    }
+
+    pub fn blit(self: *DrawOscilloscope, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
+        if (self.state == .up_to_date) return;
+        defer self.state = .up_to_date;
+
+        const y_mid = self.height / 2;
+        var old_y: usize = undefined;
+
+        var i: usize = 0;
+        while (i < self.width) : (i += 1) {
+            const sx = self.x + i;
+            if (i >= self.num_samples) {
+                // no data for this x position - just draw full background here
+                if (self.state == .needs_full_reblit) {
+                    var sy: usize = 0;
+                    while (sy < self.height) : (sy += 1) {
+                        pixels[(self.y + sy) * pitch + sx] = background_color;
+                    }
+                } else {
+                    const old_span = self.painted_spans[i];
+                    var sy = old_span.y0;
+                    while (sy < old_span.y1) : (sy += 1) {
+                        pixels[(self.y + sy) * pitch + sx] = background_color;
+                    }
+                }
+                self.painted_spans[i] = .{ .y0 = 0, .y1 = 0 };
+                continue;
+            }
+            const sample = std.math.max(-1.0, std.math.min(1.0, self.samples[i]));
+            const y = @floatToInt(usize, @intToFloat(f32, y_mid) - sample * @intToFloat(f32, self.height / 2) + 0.5);
+            const y_0 = if (i == 0) y else old_y;
+            const y_1 = y;
+            const y0 = std.math.min(y_0, y_1);
+            const y1 = if (y_0 == y_1) std.math.min(y_0 + 1, self.height) else std.math.max(y_0, y_1);
+            if (self.state == .needs_full_reblit) {
+                var sy: usize = 0;
+                while (sy < y0) : (sy += 1) {
+                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                }
+                while (sy < y1) : (sy += 1) {
+                    pixels[(self.y + sy) * pitch + sx] = waveform_color;
+                }
+                while (sy < self.height) : (sy += 1) {
+                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                }
+            } else {
+                const old_span = self.painted_spans[i];
+                var sy = old_span.y0;
+                while (sy < old_span.y1) : (sy += 1) {
+                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                }
+                sy = y0;
+                while (sy < y1) : (sy += 1) {
+                    pixels[(self.y + sy) * pitch + sx] = waveform_color;
+                }
+            }
+            self.painted_spans[i] = .{ .y0 = y0, .y1 = y1 };
+            old_y = y;
+        }
     }
 };
 
@@ -589,6 +719,7 @@ pub const Visuals = struct {
     const State = enum {
         help,
         main,
+        oscil,
         full_fft,
     };
 
@@ -660,7 +791,7 @@ pub const Visuals = struct {
             str1,
             if (self.state == .main) 0xFF444444 else 0,
         ));
-        const str2 = "F3:Spectrum ";
+        const str2 = "F3:Oscil ";
         try self.addWidget(DrawStaticString.new(
             self.allocator,
             stringWidth(str0) + stringWidth(str1),
@@ -668,6 +799,16 @@ pub const Visuals = struct {
             stringWidth(str2),
             fontchar_h,
             str2,
+            if (self.state == .oscil) 0xFF444444 else 0,
+        ));
+        const str3 = "F4:Spectrum ";
+        try self.addWidget(DrawStaticString.new(
+            self.allocator,
+            stringWidth(str0) + stringWidth(str1) + stringWidth(str2),
+            0,
+            stringWidth(str3),
+            fontchar_h,
+            str3,
             if (self.state == .full_fft) 0xFF444444 else 0,
         ));
 
@@ -688,10 +829,10 @@ pub const Visuals = struct {
                     \\
                     \\Help reference
                     \\
-                    \\Press F1, F2, or F3 to change the visualization mode.
-                    \\Stay in this mode for the fastest performance.
+                    \\Press F1, F2, F3, or F4 to change the visualization
+                    \\mode. Stay in this mode for the fastest performance.
                     \\
-                    \\Press F4 to toggle between linear and logarithmic
+                    \\Press F5 to toggle between linear and logarithmic
                     \\spectrum display.
                     \\
                     \\Press ` (backquote/tilde) to record and play back
@@ -738,6 +879,16 @@ pub const Visuals = struct {
                     fft_height,
                 ));
             },
+            .oscil => {
+                const height = 350;
+                try self.addWidget(DrawOscilloscope.new(
+                    self.allocator,
+                    0,
+                    self.screen_h - bottom_padding - height,
+                    self.screen_w,
+                    height,
+                ));
+            },
             .full_fft => {
                 try self.addWidget(DrawSpectrumFull.new(
                     self.allocator,
@@ -773,7 +924,7 @@ pub const Visuals = struct {
 
     // called on the audio thread.
     // return true if a redraw should be triggered
-    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32) bool {
+    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32, sr: f32, oscil_freq: f32) bool {
         var redraw = false;
 
         var j: usize = 0;
@@ -781,7 +932,7 @@ pub const Visuals = struct {
             const output = samples[j * 1024 .. j * 1024 + 1024];
 
             for (self.widgets.items) |widget| {
-                if (widget.*.plotFn(widget, output, mul, self.logarithmic_fft)) {
+                if (widget.*.plotFn(widget, output, mul, self.logarithmic_fft, sr, oscil_freq)) {
                     redraw = true;
                 }
             }

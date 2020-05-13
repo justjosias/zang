@@ -33,6 +33,7 @@ pub const MainModule = struct {
     idgen1: zang.IdGenerator,
     instr1: FilteredSawtoothInstrument,
     trig1: zang.Trigger(FilteredSawtoothInstrument.Params),
+    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -45,6 +46,7 @@ pub const MainModule = struct {
             .idgen1 = zang.IdGenerator.init(),
             .instr1 = FilteredSawtoothInstrument.init(),
             .trig1 = zang.Trigger(FilteredSawtoothInstrument.Params).init(),
+            .oscil_freq = null,
         };
     }
 
@@ -78,11 +80,15 @@ pub const MainModule = struct {
 
     pub fn keyEvent(self: *MainModule, key: i32, down: bool, impulse_frame: usize) bool {
         if (key == c.SDLK_SPACE) {
+            const freq = a4 * note_frequencies.c4 / 4.0;
             self.iq1.push(impulse_frame, self.idgen1.nextId(), .{
                 .sample_rate = AUDIO_SAMPLE_RATE,
-                .freq = zang.constant(a4 * note_frequencies.c4 / 4.0),
+                .freq = zang.constant(freq),
                 .note_on = down,
             });
+            if (down) {
+                self.oscil_freq = freq;
+            }
         } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
@@ -91,6 +97,9 @@ pub const MainModule = struct {
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });
+                if (down) {
+                    self.oscil_freq = a4 * rel_freq;
+                }
             }
         }
         return true;
