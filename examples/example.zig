@@ -400,7 +400,14 @@ pub fn main() !void {
             const pitch = @intCast(usize, screen.pitch) >> 2;
             const pixels = @ptrCast([*]u32, @alignCast(@alignOf(u32), screen.pixels))[0 .. screen_h * pitch];
 
-            visuals.blit(pixels, pitch, .{ .recorder_state = recorder.state });
+            const vis_screen: visual.Screen = .{
+                .width = screen_w,
+                .height = screen_h,
+                .pixels = pixels,
+                .pitch = pitch,
+            };
+
+            visuals.blit(vis_screen, .{ .recorder_state = recorder.state });
 
             c.SDL_UnlockSurface(screen);
             _ = c.SDL_UpdateWindowSurface(window);

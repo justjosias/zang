@@ -4,41 +4,75 @@ const example = @import(@import("build_options").example);
 const Recorder = @import("recorder.zig").Recorder;
 
 const fontdata = @embedFile("font.dat");
-
 const fontchar_w = 8;
 const fontchar_h = 13;
 
-fn drawFill(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+pub const Screen = struct {
+    width: usize,
+    height: usize,
+    pixels: []u32,
+    pitch: usize,
+};
+
+// guaranteed to already be clipped to within the screen's bounds
+pub const ClipRect = struct { x: usize, y: usize, w: usize, h: usize };
+fn clipRect(screen: Screen, x: usize, y: usize, w: usize, h: usize) ?ClipRect {
+    if (x >= screen.width or y >= screen.height) return null;
+    if (w == 0 or h == 0) return null;
+    return ClipRect{
+        .x = x,
+        .y = y,
+        .w = std.math.min(w, screen.width - x),
+        .h = std.math.min(h, screen.height - y),
+    };
+}
+
+fn drawFill(screen: Screen, rect: ClipRect, color: u32) void {
     var i: usize = 0;
-    while (i < h) : (i += 1) {
-        const start = (y + i) * pitch + x;
-        std.mem.set(u32, pixels[start .. start + w], color);
+    while (i < rect.h) : (i += 1) {
+        const start = (rect.y + i) * screen.pitch + rect.x;
+        std.mem.set(u32, screen.pixels[start .. start + rect.w], color);
     }
 }
 
-fn drawString(pixels: []u32, pitch: usize, start_x: usize, start_y: usize, s: []const u8) void {
+fn drawString(screen: Screen, rect: ClipRect, s: []const u8) void {
     const color: u32 = 0xAAAAAAAA;
 
-    // warning: does no checking for drawing off screen
-    var x = start_x;
-    var y = start_y;
+    var x = rect.x;
+    var y = rect.y;
     for (s) |ch| {
-        if (ch == '\n') {
-            x = start_x;
-            y += fontchar_h + 1;
-        } else if (ch >= 32) {
-            const index = @intCast(usize, ch - 32) * fontchar_h;
-            var sy: usize = 0;
-            while (sy < fontchar_h) : (sy += 1) {
-                var sx: usize = 0;
-                while (sx < fontchar_w) : (sx += 1) {
-                    if ((fontdata[index + sy] & (@as(u8, 1) << @intCast(u3, sx))) != 0) {
-                        pixels[(y + sy) * pitch + x + sx] = color;
-                    }
-                }
-            }
-            x += fontchar_w + 1;
+        if (y >= rect.y + rect.h) {
+            break;
         }
+        if (ch == '\n') {
+            x = rect.x;
+            y += fontchar_h + 1;
+            continue;
+        }
+        if (ch < 32 or ch >= 128) {
+            continue;
+        }
+        if (x >= rect.x + rect.w) {
+            continue;
+        }
+        const index = @intCast(usize, ch - 32) * fontchar_h;
+        var out_index = y * screen.pitch + x;
+        var sy: usize = 0;
+        const sy_end = std.math.min(fontchar_h, rect.y + rect.h - y);
+        while (sy < sy_end) : (sy += 1) {
+            const fontrow = fontdata[index + sy];
+            var bit: u8 = 1;
+            var sx: usize = 0;
+            const sx_end = std.math.min(fontchar_w, rect.x + rect.w - x);
+            while (sx < sx_end) : (sx += 1) {
+                if ((fontrow & bit) != 0) {
+                    screen.pixels[out_index + sx] = color;
+                }
+                bit <<= 1;
+            }
+            out_index += screen.pitch;
+        }
+        x += fontchar_w + 1;
     }
 }
 
@@ -86,11 +120,11 @@ fn hslToRgb(h: f32, s: f32, l: f32) u32 {
         (@floatToInt(u32, r * 255));
 }
 
-fn scrollBlit(pixels: []u32, pitch: usize, x: usize, y: usize, w: usize, h: usize, buffer: []const u32, drawindex: usize) void {
+fn scrollBlit(screen: Screen, x: usize, y: usize, w: usize, h: usize, buffer: []const u32, drawindex: usize) void {
     var i: usize = 0;
     while (i < h) : (i += 1) {
-        const dest_start = (y + i) * pitch + x;
-        const dest = pixels[dest_start .. dest_start + w];
+        const dest_start = (y + i) * screen.pitch + x;
+        const dest = screen.pixels[dest_start .. dest_start + w];
 
         const src_start = i * w;
         const src = buffer[src_start .. src_start + w];
@@ -128,7 +162,7 @@ pub const VTable = struct {
     offset: usize, // offset of `vtable: *const VTable` in instance object
     delFn: fn (self: **const VTable, allocator: *std.mem.Allocator) void,
     plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: f32) bool,
-    blitFn: fn (self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void,
+    blitFn: fn (self: **const VTable, screen: Screen, ctx: BlitContext) void,
 };
 
 fn makeVTable(comptime T: type) VTable {
@@ -153,8 +187,8 @@ fn makeVTable(comptime T: type) VTable {
             if (!@hasDecl(T, "plot")) return false;
             return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic, sr, oscil_freq);
         }
-        fn blitFn(self: **const VTable, pixels: []u32, pitch: usize, ctx: BlitContext) void {
-            @intToPtr(*T, @ptrToInt(self) - self.*.offset).blit(pixels, pitch, ctx);
+        fn blitFn(self: **const VTable, screen: Screen, ctx: BlitContext) void {
+            @intToPtr(*T, @ptrToInt(self) - self.*.offset).blit(screen, ctx);
         }
     };
     return S.vtable;
@@ -235,7 +269,7 @@ pub const DrawSpectrum = struct {
         return true;
     }
 
-    pub fn blit(self: *DrawSpectrum, pixels: []u32, pitch: usize, _context: BlitContext) void {
+    pub fn blit(self: *DrawSpectrum, screen: Screen, _context: BlitContext) void {
         if (self.state == .up_to_date) return;
         defer self.state = .up_to_date;
 
@@ -263,14 +297,14 @@ pub const DrawSpectrum = struct {
             if (self.state == .needs_full_reblit) {
                 // redraw fully
                 while (sy < self.y + new_y) : (sy += 1) {
-                    pixels[sy * pitch + sx] = background_color;
+                    screen.pixels[sy * screen.pitch + sx] = background_color;
                 }
                 if (sy < self.y + self.height) {
-                    pixels[sy * pitch + sx] = transition_color;
+                    screen.pixels[sy * screen.pitch + sx] = transition_color;
                     sy += 1;
                 }
                 while (sy < self.y + self.height) : (sy += 1) {
-                    pixels[sy * pitch + sx] = color;
+                    screen.pixels[sy * screen.pitch + sx] = color;
                 }
             } else {
                 const old_y = self.old_y[i];
@@ -278,23 +312,23 @@ pub const DrawSpectrum = struct {
                     // new_y is lower down. fill in the overlap with background color
                     sy += old_y;
                     while (sy < self.y + new_y) : (sy += 1) {
-                        pixels[sy * pitch + sx] = background_color;
+                        screen.pixels[sy * screen.pitch + sx] = background_color;
                     }
                     if (sy < self.y + self.height) {
-                        pixels[sy * pitch + sx] = transition_color;
+                        screen.pixels[sy * screen.pitch + sx] = transition_color;
                         sy += 1;
                     }
                 } else if (old_y > new_y) {
                     // new_y is higher up. fill in the overlap with foreground color
                     sy += new_y;
                     if (sy < self.y + self.height) {
-                        pixels[sy * pitch + sx] = transition_color;
+                        screen.pixels[sy * screen.pitch + sx] = transition_color;
                         sy += 1;
                     }
                     // add one to cover up the old transition pixel
                     const until = std.math.min(old_y + 1, self.height);
                     while (sy < self.y + until) : (sy += 1) {
-                        pixels[sy * pitch + sx] = color;
+                        screen.pixels[sy * screen.pitch + sx] = color;
                     }
                 }
             }
@@ -383,8 +417,8 @@ pub const DrawSpectrumFull = struct {
         return true;
     }
 
-    pub fn blit(self: *DrawSpectrumFull, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
-        scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
+    pub fn blit(self: *DrawSpectrumFull, screen: Screen, _ctx: BlitContext) void {
+        scrollBlit(screen, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
     }
 };
 
@@ -495,11 +529,11 @@ pub const DrawWaveform = struct {
         return true;
     }
 
-    pub fn blit(self: *DrawWaveform, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
+    pub fn blit(self: *DrawWaveform, screen: Screen, _ctx: BlitContext) void {
         if (!self.dirty) return;
         self.dirty = false;
 
-        scrollBlit(pixels, pitch, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
+        scrollBlit(screen, self.x, self.y, self.width, self.height, self.buffer, self.drawindex);
     }
 };
 
@@ -572,7 +606,7 @@ pub const DrawOscilloscope = struct {
         return true;
     }
 
-    pub fn blit(self: *DrawOscilloscope, pixels: []u32, pitch: usize, _ctx: BlitContext) void {
+    pub fn blit(self: *DrawOscilloscope, screen: Screen, _ctx: BlitContext) void {
         if (self.state == .up_to_date) return;
         defer self.state = .up_to_date;
 
@@ -587,13 +621,13 @@ pub const DrawOscilloscope = struct {
                 if (self.state == .needs_full_reblit) {
                     var sy: usize = 0;
                     while (sy < self.height) : (sy += 1) {
-                        pixels[(self.y + sy) * pitch + sx] = background_color;
+                        screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
                     }
                 } else {
                     const old_span = self.painted_spans[i];
                     var sy = old_span.y0;
                     while (sy < old_span.y1) : (sy += 1) {
-                        pixels[(self.y + sy) * pitch + sx] = background_color;
+                        screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
                     }
                 }
                 self.painted_spans[i] = .{ .y0 = 0, .y1 = 0 };
@@ -608,23 +642,23 @@ pub const DrawOscilloscope = struct {
             if (self.state == .needs_full_reblit) {
                 var sy: usize = 0;
                 while (sy < y0) : (sy += 1) {
-                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                    screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
                 }
                 while (sy < y1) : (sy += 1) {
-                    pixels[(self.y + sy) * pitch + sx] = waveform_color;
+                    screen.pixels[(self.y + sy) * screen.pitch + sx] = waveform_color;
                 }
                 while (sy < self.height) : (sy += 1) {
-                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                    screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
                 }
             } else {
                 const old_span = self.painted_spans[i];
                 var sy = old_span.y0;
                 while (sy < old_span.y1) : (sy += 1) {
-                    pixels[(self.y + sy) * pitch + sx] = background_color;
+                    screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
                 }
                 sy = y0;
                 while (sy < y1) : (sy += 1) {
-                    pixels[(self.y + sy) * pitch + sx] = waveform_color;
+                    screen.pixels[(self.y + sy) * screen.pitch + sx] = waveform_color;
                 }
             }
             self.painted_spans[i] = .{ .y0 = y0, .y1 = y1 };
@@ -665,12 +699,13 @@ pub const DrawStaticString = struct {
         allocator.destroy(self);
     }
 
-    pub fn blit(self: *DrawStaticString, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+    pub fn blit(self: *DrawStaticString, screen: Screen, ctx: BlitContext) void {
         if (self.drawn) return;
         self.drawn = true;
 
-        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, self.bgcolor);
-        drawString(pixels, pitch, self.x, self.y, self.string);
+        const rect = clipRect(screen, self.x, self.y, self.width, self.height) orelse return;
+        drawFill(screen, rect, self.bgcolor);
+        drawString(screen, rect, self.string);
     }
 };
 
@@ -702,12 +737,13 @@ pub const DrawRecorderState = struct {
         allocator.destroy(self);
     }
 
-    pub fn blit(self: *DrawRecorderState, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+    pub fn blit(self: *DrawRecorderState, screen: Screen, ctx: BlitContext) void {
         if (self.recorder_state == ctx.recorder_state) return;
         self.recorder_state = ctx.recorder_state;
 
-        drawFill(pixels, pitch, self.x, self.y, self.width, self.height, 0);
-        drawString(pixels, pitch, self.x, self.y, switch (ctx.recorder_state) {
+        const rect = clipRect(screen, self.x, self.y, self.width, self.height) orelse return;
+        drawFill(screen, rect, 0);
+        drawString(screen, rect, switch (ctx.recorder_state) {
             .idle => "",
             .recording => "RECORDING",
             .playing => "PLAYING BACK",
@@ -791,7 +827,7 @@ pub const Visuals = struct {
             str1,
             if (self.state == .main) 0xFF444444 else 0,
         ));
-        const str2 = "F3:Oscil ";
+        const str2 = "F3:Oscillo ";
         try self.addWidget(DrawStaticString.new(
             self.allocator,
             stringWidth(str0) + stringWidth(str1),
@@ -942,14 +978,14 @@ pub const Visuals = struct {
     }
 
     // called on the main thread with the audio thread locked
-    pub fn blit(self: *Visuals, pixels: []u32, pitch: usize, ctx: BlitContext) void {
+    pub fn blit(self: *Visuals, screen: Screen, ctx: BlitContext) void {
         if (self.clear) {
             self.clear = false;
-            std.mem.set(u32, pixels, 0);
+            drawFill(screen, .{ .x = 0, .y = 0, .w = screen.width, .h = screen.height }, 0);
         }
 
         for (self.widgets.items) |widget| {
-            widget.*.blitFn(widget, pixels, pitch, ctx);
+            widget.*.blitFn(widget, screen, ctx);
         }
     }
 };
