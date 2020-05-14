@@ -1,4 +1,5 @@
 const std = @import("std");
+const Context = @import("tokenize.zig").Context;
 const Source = @import("tokenize.zig").Source;
 const SourceLocation = @import("tokenize.zig").SourceLocation;
 const SourceRange = @import("tokenize.zig").SourceRange;
@@ -158,7 +159,7 @@ const reserved_names = [_][]const u8{
 
 fn expectParamType(ps: *ParseState) !ParamType {
     const type_token = try ps.tokenizer.next();
-    const type_name = ps.tokenizer.source.getString(type_token.source_range);
+    const type_name = ps.tokenizer.ctx.source.getString(type_token.source_range);
     if (type_token.tt == .lowercase_name or type_token.tt == .uppercase_name) {
         if (std.mem.eql(u8, type_name, "boolean")) return .boolean;
         if (std.mem.eql(u8, type_name, "constant")) return .constant;
@@ -176,11 +177,11 @@ fn expectParamType(ps: *ParseState) !ParamType {
 fn defineModule(ps: *ParseState) !void {
     const module_name_token = try ps.tokenizer.next();
     if (module_name_token.tt == .lowercase_name) {
-        return fail(ps.tokenizer.source, module_name_token.source_range, "module name must start with a capital letter", .{});
+        return fail(ps.tokenizer.ctx, module_name_token.source_range, "module name must start with a capital letter", .{});
     } else if (module_name_token.tt != .uppercase_name) {
         return ps.tokenizer.failExpected("module name", module_name_token);
     }
-    const module_name = ps.tokenizer.source.getString(module_name_token.source_range);
+    const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
     try ps.tokenizer.expectNext(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
@@ -195,17 +196,17 @@ fn defineModule(ps: *ParseState) !void {
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .kw_begin => break,
-            .uppercase_name => return fail(ps.tokenizer.source, token.source_range, "param name must start with a lowercase letter", .{}),
+            .uppercase_name => return fail(ps.tokenizer.ctx, token.source_range, "param name must start with a lowercase letter", .{}),
             .lowercase_name => {
-                const param_name = ps.tokenizer.source.getString(token.source_range);
+                const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
                 for (reserved_names) |name| {
                     if (std.mem.eql(u8, name, param_name)) {
-                        return fail(ps.tokenizer.source, token.source_range, "`<` is a reserved name", .{});
+                        return fail(ps.tokenizer.ctx, token.source_range, "`<` is a reserved name", .{});
                     }
                 }
                 for (params.items) |param| {
                     if (std.mem.eql(u8, param.name, param_name)) {
-                        return fail(ps.tokenizer.source, token.source_range, "redeclaration of param `<`", .{});
+                        return fail(ps.tokenizer.ctx, token.source_range, "redeclaration of param `<`", .{});
                     }
                 }
                 try ps.tokenizer.expectNext(.sym_colon);
@@ -270,7 +271,7 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
         if (token.tt != .lowercase_name) {
             return ps.tokenizer.failExpected("callee param name", token);
         }
-        const param_name = ps.tokenizer.source.getString(token.source_range);
+        const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
         const equals_token = try ps.tokenizer.next();
         if (equals_token.tt == .sym_equals) {
             const subexpr = try expectExpression(ps, ps_mod, scope);
@@ -305,9 +306,9 @@ fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
         if (token.tt != .number) {
             return ps.tokenizer.failExpected("number", token);
         }
-        const s = ps.tokenizer.source.getString(token.source_range);
+        const s = ps.tokenizer.ctx.source.getString(token.source_range);
         const n = std.fmt.parseInt(usize, s, 10) catch {
-            return fail(ps.tokenizer.source, token.source_range, "malformatted integer", .{});
+            return fail(ps.tokenizer.ctx, token.source_range, "malformatted integer", .{});
         };
         break :blk n;
     };
@@ -363,14 +364,14 @@ fn findParam(ps_mod: *ParseModuleState, name: []const u8) ?usize {
 }
 
 fn requireLocalOrParam(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, name_source_range: SourceRange) !ExpressionInner {
-    const name = ps.tokenizer.source.getString(name_source_range);
+    const name = ps.tokenizer.ctx.source.getString(name_source_range);
     if (findLocal(ps_mod, scope, name)) |local_index| {
         return ExpressionInner{ .local = local_index };
     }
     if (findParam(ps_mod, name)) |param_index| {
         return ExpressionInner{ .self_param = param_index };
     }
-    return fail(ps.tokenizer.source, name_source_range, "no local or param called `<`", .{});
+    return fail(ps.tokenizer.ctx, name_source_range, "no local or param called `<`", .{});
 }
 
 const BinaryOperator = struct {
@@ -450,12 +451,12 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             return a;
         },
         .uppercase_name => {
-            const s = ps.tokenizer.source.getString(token.source_range);
+            const s = ps.tokenizer.ctx.source.getString(token.source_range);
             const call = try parseCall(ps, ps_mod, scope, token, s);
             return try createExpr(ps, loc0, .{ .call = call });
         },
         .lowercase_name => {
-            const s = ps.tokenizer.source.getString(token.source_range);
+            const s = ps.tokenizer.ctx.source.getString(token.source_range);
             // this list of builtins corresponds to the `reserved_names` list
             if (std.mem.eql(u8, s, "abs")) {
                 return parseUnaryFunction(ps, ps_mod, scope, loc0, .abs);
@@ -493,12 +494,12 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             return try createExpr(ps, loc0, .{
                 .literal_number = .{
                     .value = n,
-                    .verbatim = ps.tokenizer.source.getString(token.source_range),
+                    .verbatim = ps.tokenizer.ctx.source.getString(token.source_range),
                 },
             });
         },
         .enum_value => {
-            const s = ps.tokenizer.source.getString(token.source_range);
+            const s = ps.tokenizer.ctx.source.getString(token.source_range);
             const peeked_token = try ps.tokenizer.peek();
             if (peeked_token.tt == .sym_left_paren) {
                 _ = try ps.tokenizer.next();
@@ -524,16 +525,16 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
 }
 
 fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, name_token: Token) !void {
-    const name = ps.tokenizer.source.getString(name_token.source_range);
+    const name = ps.tokenizer.ctx.source.getString(name_token.source_range);
     try ps.tokenizer.expectNext(.sym_equals);
     for (reserved_names) |reserved_name| {
         if (std.mem.eql(u8, name, reserved_name)) {
-            return fail(ps.tokenizer.source, name_token.source_range, "`<` is a reserved name", .{});
+            return fail(ps.tokenizer.ctx, name_token.source_range, "`<` is a reserved name", .{});
         }
     }
     // locals are allowed to shadow params, but not other locals
     if (findLocal(ps_mod, scope, name) != null) {
-        return fail(ps.tokenizer.source, name_token.source_range, "redeclaration of local `<`", .{});
+        return fail(ps.tokenizer.ctx, name_token.source_range, "redeclaration of local `<`", .{});
     }
     const expr = try expectExpression(ps, ps_mod, scope);
     const local_index = ps_mod.locals.items.len;
@@ -587,7 +588,7 @@ pub const ParseResult = struct {
 };
 
 pub fn parse(
-    source: Source,
+    ctx: Context,
     comptime builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
 ) !ParseResult {
@@ -596,7 +597,7 @@ pub fn parse(
 
     var ps: ParseState = .{
         .arena_allocator = &arena.allocator,
-        .tokenizer = Tokenizer.init(source),
+        .tokenizer = Tokenizer.init(ctx),
         .enums = std.ArrayList(BuiltinEnum).init(&arena.allocator),
         .modules = std.ArrayList(Module).init(&arena.allocator),
     };
@@ -630,7 +631,7 @@ pub fn parse(
 
     // diagnostic print
     for (modules) |module| {
-        parsePrintModule(source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+        parsePrintModule(ctx.source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
     }
 
     return ParseResult{

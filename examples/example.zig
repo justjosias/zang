@@ -136,8 +136,10 @@ pub fn main() !void {
         .main_module = undefined,
     };
     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
-        userdata.main_module = example.MainModule.init() catch |err| blk: {
-            std.debug.warn("{}\n", .{err});
+        var script_error: ?[]const u8 = null;
+        userdata.main_module = example.MainModule.init(&script_error) catch blk: {
+            visuals.setScriptError(script_error);
+            visuals.setState(visuals.state);
             userdata.ok = false;
             break :blk undefined;
         };
@@ -294,10 +296,14 @@ pub fn main() !void {
                             userdata.main_module.deinit();
                         }
                     }
+                    visuals.setScriptError("");
+                    visuals.setState(visuals.state);
                     userdata.ok = true;
                     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
-                        userdata.main_module = example.MainModule.init() catch |err| blk: {
-                            std.debug.warn("{}\n", .{err});
+                        var script_error: ?[]const u8 = null;
+                        userdata.main_module = example.MainModule.init(&script_error) catch blk: {
+                            visuals.setScriptError(script_error);
+                            visuals.setState(visuals.state);
                             userdata.ok = false;
                             break :blk undefined;
                         };
@@ -376,10 +382,14 @@ pub fn main() !void {
                                 userdata.main_module.deinit();
                             }
                         }
+                        visuals.setScriptError("");
+                        visuals.setState(visuals.state);
                         userdata.ok = true;
                         if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
-                            userdata.main_module = example.MainModule.init() catch |err| blk: {
-                                std.debug.warn("{}\n", .{err});
+                            var script_error: ?[]const u8 = null;
+                            userdata.main_module = example.MainModule.init(&script_error) catch blk: {
+                                visuals.setScriptError(script_error);
+                                visuals.setState(visuals.state);
                                 userdata.ok = false;
                                 break :blk undefined;
                             };

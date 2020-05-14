@@ -768,6 +768,7 @@ pub const Visuals = struct {
     widgets: std.ArrayList(**const VTable),
 
     logarithmic_fft: bool,
+    script_error: ?[]const u8,
 
     pub fn init(allocator: *std.mem.Allocator, screen_w: usize, screen_h: usize) !Visuals {
         var self: Visuals = .{
@@ -778,6 +779,7 @@ pub const Visuals = struct {
             .clear = true,
             .widgets = std.ArrayList(**const VTable).init(allocator),
             .logarithmic_fft = false,
+            .script_error = null,
         };
         self.setState(.main);
         return self;
@@ -891,15 +893,27 @@ pub const Visuals = struct {
                 ));
             },
             .main => {
-                try self.addWidget(DrawStaticString.new(
-                    self.allocator,
-                    12,
-                    fontchar_h + 13,
-                    self.screen_w - 12,
-                    self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
-                    example.DESCRIPTION,
-                    0,
-                ));
+                if (self.script_error) |script_error| {
+                    try self.addWidget(DrawStaticString.new(
+                        self.allocator,
+                        12,
+                        fontchar_h + 13,
+                        self.screen_w - 12,
+                        self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
+                        script_error,
+                        0,
+                    ));
+                } else {
+                    try self.addWidget(DrawStaticString.new(
+                        self.allocator,
+                        12,
+                        fontchar_h + 13,
+                        self.screen_w - 12,
+                        self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
+                        example.DESCRIPTION,
+                        0,
+                    ));
+                }
                 try self.addWidget(DrawWaveform.new(
                     self.allocator,
                     0,
@@ -956,6 +970,10 @@ pub const Visuals = struct {
 
     pub fn toggleLogarithmicFFT(self: *Visuals) void {
         self.logarithmic_fft = !self.logarithmic_fft;
+    }
+
+    pub fn setScriptError(self: *Visuals, script_error: ?[]const u8) void {
+        self.script_error = script_error;
     }
 
     // called on the audio thread.

@@ -34,7 +34,9 @@ pub fn main() u8 {
     };
     defer allocator.free(contents);
 
-    var script = zangscript.compile(filename, contents, &builtin_packages, allocator) catch |err| {
+    var errors_stream: std.io.StreamSource = .{ .file = std.io.getStdErr() };
+    const errors_color = true;
+    var script = zangscript.compile(filename, contents, &builtin_packages, allocator, errors_stream.outStream(), errors_color) catch |err| {
         if (err != error.Failed) std.debug.warn("{}\n", .{err});
         return 1;
     };

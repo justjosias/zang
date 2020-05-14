@@ -1,4 +1,5 @@
 const std = @import("std");
+const Context = @import("tokenize.zig").Context;
 const Source = @import("tokenize.zig").Source;
 const SourceRange = @import("tokenize.zig").SourceRange;
 const fail = @import("fail.zig").fail;
@@ -110,7 +111,7 @@ pub const CurrentDelay = struct {
 
 pub const CodegenModuleState = struct {
     arena_allocator: *std.mem.Allocator,
-    source: Source,
+    ctx: Context,
     modules: []const Module,
     module_results: []const CodeGenModuleResult,
     module_index: usize,
@@ -323,7 +324,7 @@ fn genUnArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buf
         try addInstruction(self, .{ .arith_buffer = .{ .out = buffer_dest, .op = op, .a = ra } });
         return commitBufferDest(self, maybe_result_loc, buffer_dest);
     }
-    return fail(self.source, sr, "arithmetic can only be performed on numeric types", .{});
+    return fail(self.ctx, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
 fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression) !ExpressionResult {
@@ -360,7 +361,7 @@ fn genBinArith(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Bu
             return commitBufferDest(self, maybe_result_loc, buffer_dest);
         }
     }
-    return fail(self.source, sr, "arithmetic can only be performed on numeric types", .{});
+    return fail(self.ctx, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
 // typecheck (coercing if possible) and return a value that matches the callee param's type
@@ -368,7 +369,7 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
     switch (callee_param_type) {
         .boolean => {
             if (isResultBoolean(self, result)) return result;
-            return fail(self.source, sr, "expected boolean value", .{});
+            return fail(self.ctx, sr, "expected boolean value", .{});
         },
         .buffer => {
             if (isResultBuffer(self, result)) return result;
@@ -377,20 +378,20 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
                 try addInstruction(self, .{ .float_to_buffer = .{ .out = .{ .temp_buffer_index = temp_buffer_index }, .in = result } });
                 return ExpressionResult{ .temp_buffer = TempRef.strong(temp_buffer_index) };
             }
-            return fail(self.source, sr, "expected buffer value", .{});
+            return fail(self.ctx, sr, "expected buffer value", .{});
         },
         .constant_or_buffer => {
             if (isResultBuffer(self, result)) return result;
             if (isResultFloat(self, result)) return result;
-            return fail(self.source, sr, "expected float or buffer value", .{});
+            return fail(self.ctx, sr, "expected float or buffer value", .{});
         },
         .constant => {
             if (isResultFloat(self, result)) return result;
-            return fail(self.source, sr, "expected float value", .{});
+            return fail(self.ctx, sr, "expected float value", .{});
         },
         .one_of => |e| {
             if (isResultEnumValue(self, result, e.values)) return result;
-            return fail(self.source, sr, "expected one of |", .{e.values});
+            return fail(self.ctx, sr, "expected one of |", .{e.values});
         },
     }
 }
@@ -404,7 +405,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
     for (args) |a| {
         for (callee_module.params) |param| {
             if (std.mem.eql(u8, a.param_name, param.name)) break;
-        } else return fail(self.source, a.param_name_token.source_range, "module `#` has no param called `<`", .{callee_module.name});
+        } else return fail(self.ctx, a.param_name_token.source_range, "module `#` has no param called `<`", .{callee_module.name});
     }
     var arg_results = try self.arena_allocator.alloc(ExpressionResult, callee_module.params.len);
     for (callee_module.params) |param, i| {
@@ -412,7 +413,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
         var maybe_arg: ?CallArg = null;
         for (args) |a| {
             if (!std.mem.eql(u8, a.param_name, param.name)) continue;
-            if (maybe_arg != null) return fail(self.source, a.param_name_token.source_range, "param `<` provided more than once", .{});
+            if (maybe_arg != null) return fail(self.ctx, a.param_name_token.source_range, "param `<` provided more than once", .{});
             maybe_arg = a;
         }
         if (maybe_arg == null and std.mem.eql(u8, param.name, "sample_rate")) {
@@ -423,7 +424,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
             arg_results[i] = .{ .self_param = self_param_index };
             continue;
         }
-        const arg = maybe_arg orelse return fail(self.source, sr, "call is missing param `#`", .{param.name});
+        const arg = maybe_arg orelse return fail(self.ctx, sr, "call is missing param `#`", .{param.name});
         const result = try genExpression(self, arg.value, null);
         arg_results[i] = try commitCalleeParam(self, arg.value.source_range, result, param.param_type);
     }
@@ -448,7 +449,7 @@ fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?Buffer
 
 fn genDelay(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay) !ExpressionResult {
     if (self.current_delay != null) {
-        return fail(self.source, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
+        return fail(self.ctx, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
     }
 
     const delay_index = self.delays.items.len;
@@ -543,7 +544,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
             const feedback_temp_index = if (self.current_delay) |current_delay|
                 current_delay.feedback_temp_index
             else
-                return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+                return fail(self.ctx, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
             return ExpressionResult{ .temp_buffer = TempRef.weak(feedback_temp_index) };
         },
     }
@@ -561,18 +562,18 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
         .temp_float, .literal_number => {
             try addInstruction(self, .{ .float_to_buffer = .{ .out = buffer_dest, .in = result } });
         },
-        .literal_boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
-        .literal_enum_value => return fail(self.source, sr, "expected buffer value, found enum value", .{}),
+        .literal_boolean => return fail(self.ctx, sr, "expected buffer value, found boolean", .{}),
+        .literal_enum_value => return fail(self.ctx, sr, "expected buffer value, found enum value", .{}),
         .self_param => |param_index| {
             switch (self.modules[self.module_index].params[param_index].param_type) {
-                .boolean => return fail(self.source, sr, "expected buffer value, found boolean", .{}),
+                .boolean => return fail(self.ctx, sr, "expected buffer value, found boolean", .{}),
                 .buffer, .constant_or_buffer => { // constant_or_buffer are immediately unwrapped to buffers in codegen (for now)
                     try addInstruction(self, .{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
                 .constant => {
                     try addInstruction(self, .{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
-                .one_of => |e| return fail(self.source, sr, "expected buffer value, found enum value", .{}),
+                .one_of => |e| return fail(self.ctx, sr, "expected buffer value, found enum value", .{}),
             }
         },
     }
@@ -592,7 +593,7 @@ fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
             releaseExpressionResult(self, result); // this should do nothing (because we passed a result loc)
         },
         .feedback => |expression| {
-            return fail(self.source, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+            return fail(self.ctx, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
         },
     }
 }
@@ -627,7 +628,7 @@ pub const CodeGenResult = struct {
 const CodeGenVisitor = struct {
     arena_allocator: *std.mem.Allocator, // for persistent allocations (used in result)
     inner_allocator: *std.mem.Allocator, // for temporary allocations
-    source: Source,
+    ctx: Context,
     parse_result: ParseResult,
     module_results: []CodeGenModuleResult, // filled in as we go
     module_visited: []bool, // ditto
@@ -635,7 +636,7 @@ const CodeGenVisitor = struct {
 
 // codegen entry point
 pub fn codegen(
-    source: Source,
+    ctx: Context,
     comptime builtin_packages: []const BuiltinPackage,
     parse_result: ParseResult,
     inner_allocator: *std.mem.Allocator,
@@ -667,7 +668,7 @@ pub fn codegen(
     var self: CodeGenVisitor = .{
         .arena_allocator = &arena.allocator,
         .inner_allocator = inner_allocator,
-        .source = source,
+        .ctx = ctx,
         .parse_result = parse_result,
         .module_results = module_results,
         .module_visited = module_visited,
@@ -696,18 +697,18 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
 
     for (module_info.fields) |field, field_index| {
         // find the module index for this field name
-        const field_name = self.source.getString(field.type_token.source_range);
+        const field_name = self.ctx.source.getString(field.type_token.source_range);
         const resolved_module_index = for (self.parse_result.modules) |m, i| {
             if (std.mem.eql(u8, field_name, m.name)) {
                 break i;
             }
         } else {
-            return fail(self.source, field.type_token.source_range, "no module called `<`", .{});
+            return fail(self.ctx, field.type_token.source_range, "no module called `<`", .{});
         };
 
         // check for dependency loops and then recurse
         if (resolved_module_index == self_module_index) {
-            return fail(self.source, field.type_token.source_range, "circular dependency in module fields", .{});
+            return fail(self.ctx, field.type_token.source_range, "circular dependency in module fields", .{});
         }
         try visitModule(self, self_module_index, resolved_module_index);
 
@@ -722,7 +723,7 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
 fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: ParsedModuleInfo, resolved_fields: []const usize) !CodeGenModuleResult {
     var state: CodegenModuleState = .{
         .arena_allocator = self.arena_allocator,
-        .source = self.source,
+        .ctx = self.ctx,
         .modules = self.parse_result.modules,
         .module_results = self.module_results,
         .module_index = module_index,

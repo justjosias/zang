@@ -34,6 +34,8 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
     custom_builtin_package,
 };
 
+var error_buffer: [8000]u8 = undefined;
+
 pub const MainModule = struct {
     // FIXME (must be at least as many outputs/temps are used in the script)
     // to fix this i would have to change the interface of all example MainModules to be something more dynamic
@@ -67,21 +69,41 @@ pub const MainModule = struct {
 
     oscil_freq: ?f32,
 
-    pub fn init() !MainModule {
+    pub fn init(out_script_error: *?[]const u8) !MainModule {
         var allocator = std.heap.page_allocator;
 
-        const contents = try std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024);
+        const contents = std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
+            out_script_error.* = "couldn't open file: " ++ filename;
+            return err;
+        };
         errdefer allocator.free(contents);
 
-        var script = try zangscript.compile(filename, contents, &builtin_packages, allocator);
+        var errors_stream: std.io.StreamSource = .{ .buffer = std.io.fixedBufferStream(&error_buffer) };
+        const errors_color = false;
+        var script = zangscript.compile(filename, contents, &builtin_packages, allocator, errors_stream.outStream(), errors_color) catch |err| {
+            // StreamSource api flaw, see https://github.com/ziglang/zig/issues/5338
+            const fbs = switch (errors_stream) {
+                .buffer => |*f| f,
+                else => unreachable,
+            };
+            out_script_error.* = fbs.getWritten();
+            return err;
+        };
         errdefer script.deinit();
 
-        var script_ptr = try allocator.create(zangscript.CompiledScript);
+        var script_ptr = allocator.create(zangscript.CompiledScript) catch |err| {
+            out_script_error.* = "out of memory";
+            return err;
+        };
+        errdefer allocator.destroy(script_ptr);
         script_ptr.* = script;
 
         const module_index = for (script.modules) |module, i| {
             if (std.mem.eql(u8, module.name, module_name)) break i;
-        } else return error.ModuleNotFound;
+        } else {
+            out_script_error.* = "module \"" ++ module_name ++ "\" not found";
+            return error.ModuleNotFound;
+        };
 
         var self: MainModule = .{
             .allocator = allocator,

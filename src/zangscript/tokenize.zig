@@ -10,6 +10,12 @@ pub const Source = struct {
     }
 };
 
+pub const Context = struct {
+    source: Source,
+    errors_out: std.io.StreamSource.OutStream,
+    errors_color: bool,
+};
+
 pub const SourceLocation = struct {
     // which line in the source file (starts at 0)
     line: usize,
@@ -55,12 +61,12 @@ pub const Token = struct {
 };
 
 pub const Tokenizer = struct {
-    source: Source,
+    ctx: Context,
     loc: SourceLocation,
 
-    pub fn init(source: Source) Tokenizer {
+    pub fn init(ctx: Context) Tokenizer {
         return .{
-            .source = source,
+            .ctx = ctx,
             .loc = .{ .line = 0, .index = 0 },
         };
     }
@@ -73,7 +79,7 @@ pub const Tokenizer = struct {
     }
 
     pub fn next(self: *Tokenizer) !Token {
-        const src = self.source.contents;
+        const src = self.ctx.source.contents;
 
         var loc = self.loc;
         defer self.loc = loc;
@@ -118,7 +124,7 @@ pub const Tokenizer = struct {
                 while (true) {
                     if (loc.index == src.len or src[loc.index] == '\r' or src[loc.index] == '\n') {
                         const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                        return fail(self.source, sr, "expected closing `'`, found end of line", .{});
+                        return fail(self.ctx, sr, "expected closing `'`, found end of line", .{});
                     }
                     if (src[loc.index] == '\'') {
                         break;
@@ -132,7 +138,7 @@ pub const Tokenizer = struct {
                     // know about the quote characters and can include them in the underlining
                     loc.index += 1;
                     const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                    return fail(self.source, sr, "enum literal cannot be empty", .{});
+                    return fail(self.ctx, sr, "enum literal cannot be empty", .{});
                 }
                 const token = makeToken(start2, loc, .enum_value);
                 loc.index += 1;
@@ -142,7 +148,7 @@ pub const Tokenizer = struct {
                 loc.index += len;
                 const n = std.fmt.parseFloat(f32, src[start.index..loc.index]) catch {
                     const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                    return fail(self.source, sr, "malformatted number", .{});
+                    return fail(self.ctx, sr, "malformatted number", .{});
                 };
                 return makeToken(start, loc, .{ .number = n });
             }
@@ -183,9 +189,9 @@ pub const Tokenizer = struct {
 
     pub fn failExpected(self: *Tokenizer, desc: []const u8, found: Token) error{Failed} {
         if (found.tt == .end_of_file) {
-            return fail(self.source, found.source_range, "expected #, found end of file", .{desc});
+            return fail(self.ctx, found.source_range, "expected #, found end of file", .{desc});
         } else {
-            return fail(self.source, found.source_range, "expected #, found `<`", .{desc});
+            return fail(self.ctx, found.source_range, "expected #, found `<`", .{desc});
         }
     }
 
