@@ -28,7 +28,7 @@ fn pushRedrawEvent() void {
 
 const UserData = struct {
     main_module: example.MainModule, // only valid if ok is true
-    oscil_freq: f32,
+    oscil_freq: ?f32,
     ok: bool,
 };
 
@@ -132,7 +132,7 @@ pub fn main() !void {
 
     var userdata: UserData = .{
         .ok = true,
-        .oscil_freq = 440,
+        .oscil_freq = null,
         .main_module = undefined,
     };
     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
@@ -327,9 +327,7 @@ pub fn main() !void {
                                 recorder.trackEvent(event.key.keysym.sym, down);
                             }
                             if (@hasField(example.MainModule, "oscil_freq")) {
-                                if (userdata.main_module.oscil_freq) |freq| {
-                                    userdata.oscil_freq = freq;
-                                }
+                                userdata.oscil_freq = userdata.main_module.oscil_freq;
                             }
                         }
                         c.SDL_UnlockAudioDevice(device);

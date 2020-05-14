@@ -164,7 +164,7 @@ pub const BlitContext = struct {
 pub const VTable = struct {
     offset: usize, // offset of `vtable: *const VTable` in instance object
     delFn: fn (self: **const VTable, allocator: *std.mem.Allocator) void,
-    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: f32) bool,
+    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?f32) bool,
     blitFn: fn (self: **const VTable, screen: Screen, ctx: BlitContext) void,
 };
 
@@ -186,7 +186,7 @@ fn makeVTable(comptime T: type) VTable {
         fn delFn(self: **const VTable, allocator: *std.mem.Allocator) void {
             @intToPtr(*T, @ptrToInt(self) - self.*.offset).del(allocator);
         }
-        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: f32) bool {
+        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?f32) bool {
             if (!@hasDecl(T, "plot")) return false;
             return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic, sr, oscil_freq);
         }
@@ -250,7 +250,7 @@ pub const DrawSpectrum = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
+    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
         std.debug.assert(samples.len == 1024); // FIXME
 
         std.mem.copy(f32, self.fft_real, samples);
@@ -388,7 +388,7 @@ pub const DrawSpectrumFull = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
+    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
         if (self.logarithmic != logarithmic) {
             self.logarithmic = logarithmic;
             std.mem.set(u32, self.buffer, 0.0);
@@ -469,7 +469,7 @@ pub const DrawWaveform = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool, _sr: f32, _oscil_freq: f32) bool {
+    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
         var sample_min = samples[0];
         var sample_max = samples[0];
         for (samples[1..]) |sample| {
@@ -553,8 +553,10 @@ pub const DrawOscilloscope = struct {
     y: usize,
     width: usize,
     height: usize,
+    mul: f32,
     samples: []f32,
-    num_samples: usize,
+    buffered_samples: []f32,
+    num_buffered_samples: usize,
     painted_spans: []PaintedSpan,
     accum: f32,
     state: enum { up_to_date, needs_blit, needs_full_reblit },
@@ -567,6 +569,8 @@ pub const DrawOscilloscope = struct {
         errdefer allocator.destroy(self);
         var samples = try allocator.alloc(f32, width);
         errdefer allocator.free(samples);
+        var buffered_samples = try allocator.alloc(f32, width);
+        errdefer allocator.free(buffered_samples);
         var painted_spans = try allocator.alloc(PaintedSpan, width);
         errdefer allocator.free(old_y);
         self.* = .{
@@ -575,33 +579,105 @@ pub const DrawOscilloscope = struct {
             .y = y,
             .width = width,
             .height = height,
+            .mul = 1.0,
             .samples = samples,
-            .num_samples = 0,
+            .buffered_samples = buffered_samples,
+            .num_buffered_samples = 0,
             .painted_spans = painted_spans,
             .accum = 0,
             .state = .needs_full_reblit,
         };
+        std.mem.set(f32, samples, 0.0);
         return self;
     }
 
     pub fn del(self: *DrawOscilloscope, allocator: *std.mem.Allocator) void {
         allocator.free(self.samples);
+        allocator.free(self.buffered_samples);
         allocator.free(self.painted_spans);
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawOscilloscope, samples: []const f32, mul: f32, _logarithmic: bool, sr: f32, oscil_freq: f32) bool {
-        const start = @floatToInt(usize, std.math.floor(self.accum));
-        const end = std.math.min(start + self.width, samples.len);
-        for (samples[start..end]) |sample, i| {
-            self.samples[i] = sample * mul;
+    pub fn plot(self: *DrawOscilloscope, samples: []const f32, mul: f32, _logarithmic: bool, sr: f32, oscil_freq: ?f32) bool {
+        self.mul = mul; // meh
+        // TODO can i refactor this into two classes? - one doesn't know about buffering.
+        // the other wraps it and implements buffering. would that work?
+        const inv_sr = 1.0 / sr;
+        var n: usize = 0;
+        var drain_buffer = false;
+        if (oscil_freq) |freq| {
+            // sync to oscil_freq
+            for (samples) |_, i| {
+                self.accum += freq * inv_sr;
+                // if frequency is so high that self.accum >= 2.0, you have bigger problems...
+                if (self.accum >= 1.0) {
+                    n = i;
+                    self.accum -= 1.0;
+                    drain_buffer = true;
+                }
+            }
+        } else {
+            // no syncing
+            n = samples.len;
+            drain_buffer = true;
         }
-        self.num_samples = end - start;
-
-        while (self.accum < @intToFloat(f32, samples.len)) {
-            self.accum += sr / oscil_freq;
+        // `n` is the number of new samples to move from `samples` to `self.samples`.
+        const num_to_push = n + (if (drain_buffer) self.num_buffered_samples else 0);
+        // move down existing self.samples to make room for the new stuff.
+        if (num_to_push < self.samples.len) {
+            const diff = self.samples.len - num_to_push;
+            std.mem.copy(f32, self.samples[0..diff], self.samples[num_to_push..]);
         }
-        self.accum -= @intToFloat(f32, samples.len);
+        // now add in buffered samples
+        if (drain_buffer) {
+            if (n >= self.samples.len) {
+                // buffered samples will be immediately pushed all the way off by new samples
+            } else {
+                const buf = self.buffered_samples[0..self.num_buffered_samples];
+                if (buf.len + n <= self.samples.len) {
+                    // whole of buf fits in self.samples
+                    const start = self.samples.len - n - buf.len;
+                    std.mem.copy(f32, self.samples[start .. start + buf.len], buf);
+                } else {
+                    // only the latter part of buf will fit in self.samples
+                    const num_to_copy = self.samples.len - n;
+                    const b_start = buf.len - num_to_copy;
+                    std.mem.copy(f32, self.samples[0..num_to_copy], buf[b_start..]);
+                }
+            }
+            self.num_buffered_samples = 0;
+        }
+        // now add in new samples
+        if (n <= self.samples.len) {
+            // whole of new samples fits in self.samples
+            const start = self.samples.len - n;
+            std.mem.copy(f32, self.samples[start..], samples[0..n]);
+        } else {
+            // only the latter part of new samples will fit in self.samples
+            std.mem.copy(f32, self.samples, samples[n - self.samples.len .. n]);
+        }
+        // everything after `n`, we add to self.buffered_samples.
+        // it's possible there are still some old buffered_samples there.
+        if (n < samples.len) {
+            const to_buffer = samples[n..];
+            const nbs = self.num_buffered_samples;
+            if (nbs + to_buffer.len <= self.buffered_samples.len) {
+                // there's empty space to fit all of it, just append it.
+                std.mem.copy(f32, self.buffered_samples[nbs .. nbs + to_buffer.len], to_buffer);
+                self.num_buffered_samples += to_buffer.len;
+            } else if (to_buffer.len >= self.buffered_samples.len) {
+                // new stuff will take up the entire buffer
+                const start = to_buffer.len - self.buffered_samples.len;
+                std.mem.copy(f32, self.buffered_samples, to_buffer[start..]);
+                self.num_buffered_samples = self.buffered_samples.len;
+            } else {
+                // new stuff fits but has to push back old stuff.
+                const to_keep = self.buffered_samples.len - to_buffer.len;
+                std.mem.copy(f32, self.buffered_samples[0..to_keep], self.buffered_samples[nbs - to_keep .. 0]);
+                std.mem.copy(f32, self.buffered_samples[to_keep..], to_buffer);
+                self.num_buffered_samples = self.buffered_samples.len;
+            }
+        }
 
         if (self.state == .up_to_date) {
             self.state = .needs_blit;
@@ -619,24 +695,7 @@ pub const DrawOscilloscope = struct {
         var i: usize = 0;
         while (i < self.width) : (i += 1) {
             const sx = self.x + i;
-            if (i >= self.num_samples) {
-                // no data for this x position - just draw full background here
-                if (self.state == .needs_full_reblit) {
-                    var sy: usize = 0;
-                    while (sy < self.height) : (sy += 1) {
-                        screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
-                    }
-                } else {
-                    const old_span = self.painted_spans[i];
-                    var sy = old_span.y0;
-                    while (sy < old_span.y1) : (sy += 1) {
-                        screen.pixels[(self.y + sy) * screen.pitch + sx] = background_color;
-                    }
-                }
-                self.painted_spans[i] = .{ .y0 = 0, .y1 = 0 };
-                continue;
-            }
-            const sample = std.math.max(-1.0, std.math.min(1.0, self.samples[i]));
+            const sample = std.math.max(-1.0, std.math.min(1.0, self.samples[i] * self.mul));
             const y = @floatToInt(usize, @intToFloat(f32, y_mid) - sample * @intToFloat(f32, self.height / 2) + 0.5);
             const y_0 = if (i == 0) y else old_y;
             const y_1 = y;
@@ -981,7 +1040,7 @@ pub const Visuals = struct {
 
     // called on the audio thread.
     // return true if a redraw should be triggered
-    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32, sr: f32, oscil_freq: f32) bool {
+    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32, sr: f32, oscil_freq: ?f32) bool {
         var redraw = false;
 
         var j: usize = 0;
