@@ -296,7 +296,7 @@ pub fn main() !void {
                             userdata.main_module.deinit();
                         }
                     }
-                    visuals.setScriptError("");
+                    visuals.setScriptError(null);
                     visuals.setState(visuals.state);
                     userdata.ok = true;
                     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
@@ -382,7 +382,7 @@ pub fn main() !void {
                                 userdata.main_module.deinit();
                             }
                         }
-                        visuals.setScriptError("");
+                        visuals.setScriptError(null);
                         visuals.setState(visuals.state);
                         userdata.ok = true;
                         if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {

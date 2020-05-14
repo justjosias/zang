@@ -41,16 +41,19 @@ fn drawString(screen: Screen, rect: ClipRect, s: []const u8) void {
     var x = rect.x;
     var y = rect.y;
     for (s) |ch| {
-        if (y >= rect.y + rect.h) {
-            break;
+        if (ch != '\n' and (ch < 32 or ch >= 128)) {
+            continue;
         }
-        if (ch == '\n') {
+        // wrap long lines
+        if (ch == '\n' or x + fontchar_w >= rect.x + rect.w) {
             x = rect.x;
             y += fontchar_h + 1;
-            continue;
+            if (ch == '\n') {
+                continue;
+            }
         }
-        if (ch < 32 or ch >= 128) {
-            continue;
+        if (y >= rect.y + rect.h) {
+            break;
         }
         if (x >= rect.x + rect.w) {
             continue;
@@ -857,7 +860,7 @@ pub const Visuals = struct {
                     self.allocator,
                     12,
                     fontchar_h + 13,
-                    self.screen_w - 12,
+                    self.screen_w - 12 * 2,
                     help_h,
                     example.DESCRIPTION,
                     0,
@@ -886,7 +889,7 @@ pub const Visuals = struct {
                     self.allocator,
                     12,
                     help_h,
-                    self.screen_w - 12,
+                    self.screen_w - 12 * 2,
                     self.screen_h - bottom_padding - help_h,
                     text,
                     0,
@@ -898,7 +901,7 @@ pub const Visuals = struct {
                         self.allocator,
                         12,
                         fontchar_h + 13,
-                        self.screen_w - 12,
+                        self.screen_w - 12 * 2,
                         self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
                         script_error,
                         0,
@@ -908,7 +911,7 @@ pub const Visuals = struct {
                         self.allocator,
                         12,
                         fontchar_h + 13,
-                        self.screen_w - 12,
+                        self.screen_w - 12 * 2,
                         self.screen_h - bottom_padding - waveform_height - (fontchar_h + 13),
                         example.DESCRIPTION,
                         0,
