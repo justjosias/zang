@@ -1,3 +1,4 @@
+const std = @import("std");
 const zang = @import("zang");
 const note_frequencies = @import("zang-12tet");
 const common = @import("common.zig");
@@ -17,15 +18,21 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 pub const MainModule = struct {
-    pub const num_outputs = Instrument.num_outputs;
+    comptime {
+        std.debug.assert(Instrument.num_outputs == 1);
+    }
+    pub const num_outputs = 2;
     pub const num_temps = Instrument.num_temps;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     instr: Instrument,
     trig: zang.Trigger(Instrument.Params),
-    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -34,14 +41,17 @@ pub const MainModule = struct {
             .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
             .trig = zang.Trigger(Instrument.Params).init(),
-            .oscil_freq = null,
         };
     }
 
     pub fn paint(self: *MainModule, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32) void {
         var ctr = self.trig.counter(span, self.iq.consume());
         while (self.trig.next(&ctr)) |result| {
-            self.instr.paint(result.span, outputs, temps, result.note_id_changed, result.params);
+            self.instr.paint(result.span, .{outputs[0]}, temps, result.note_id_changed, result.params);
+            switch (result.params.freq) {
+                .constant => |freq| zang.addScalarInto(result.span, outputs[1], freq),
+                .buffer => |freq| zang.addInto(result.span, outputs[1], freq),
+            }
         }
     }
 
@@ -54,9 +64,6 @@ pub const MainModule = struct {
                 .freq = zang.constant(a4 * rel_freq),
                 .note_on = down,
             });
-            if (down) {
-                self.oscil_freq = a4 * rel_freq;
-            }
         }
         return true;
     }

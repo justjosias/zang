@@ -19,6 +19,7 @@ const examples = [_][]const u8{
     "two",
     "script",
     "script_runtime",
+    "vibrato",
 };
 
 pub fn build(b: *std.build.Builder) void {

@@ -164,7 +164,7 @@ pub const BlitContext = struct {
 pub const VTable = struct {
     offset: usize, // offset of `vtable: *const VTable` in instance object
     delFn: fn (self: **const VTable, allocator: *std.mem.Allocator) void,
-    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?f32) bool,
+    plotFn: fn (self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?[]const f32) bool,
     blitFn: fn (self: **const VTable, screen: Screen, ctx: BlitContext) void,
 };
 
@@ -186,7 +186,7 @@ fn makeVTable(comptime T: type) VTable {
         fn delFn(self: **const VTable, allocator: *std.mem.Allocator) void {
             @intToPtr(*T, @ptrToInt(self) - self.*.offset).del(allocator);
         }
-        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?f32) bool {
+        fn plotFn(self: **const VTable, samples: []const f32, mul: f32, logarithmic: bool, sr: f32, oscil_freq: ?[]const f32) bool {
             if (!@hasDecl(T, "plot")) return false;
             return @intToPtr(*T, @ptrToInt(self) - self.*.offset).plot(samples, mul, logarithmic, sr, oscil_freq);
         }
@@ -250,7 +250,7 @@ pub const DrawSpectrum = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
+    pub fn plot(self: *DrawSpectrum, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?[]const f32) bool {
         std.debug.assert(samples.len == 1024); // FIXME
 
         std.mem.copy(f32, self.fft_real, samples);
@@ -388,7 +388,7 @@ pub const DrawSpectrumFull = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
+    pub fn plot(self: *DrawSpectrumFull, samples: []const f32, _mul: f32, logarithmic: bool, _sr: f32, _oscil_freq: ?[]const f32) bool {
         if (self.logarithmic != logarithmic) {
             self.logarithmic = logarithmic;
             std.mem.set(u32, self.buffer, 0.0);
@@ -469,7 +469,7 @@ pub const DrawWaveform = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool, _sr: f32, _oscil_freq: ?f32) bool {
+    pub fn plot(self: *DrawWaveform, samples: []const f32, mul: f32, _logarithmic: bool, _sr: f32, _oscil_freq: ?[]const f32) bool {
         var sample_min = samples[0];
         var sample_max = samples[0];
         for (samples[1..]) |sample| {
@@ -598,7 +598,7 @@ pub const DrawOscilloscope = struct {
         allocator.destroy(self);
     }
 
-    pub fn plot(self: *DrawOscilloscope, samples: []const f32, mul: f32, _logarithmic: bool, sr: f32, oscil_freq: ?f32) bool {
+    pub fn plot(self: *DrawOscilloscope, samples: []const f32, mul: f32, _logarithmic: bool, sr: f32, oscil_freq: ?[]const f32) bool {
         self.mul = mul; // meh
         // TODO can i refactor this into two classes? - one doesn't know about buffering.
         // the other wraps it and implements buffering. would that work?
@@ -608,7 +608,7 @@ pub const DrawOscilloscope = struct {
         if (oscil_freq) |freq| {
             // sync to oscil_freq
             for (samples) |_, i| {
-                self.accum += freq * inv_sr;
+                self.accum += freq[i] * inv_sr;
                 // if frequency is so high that self.accum >= 2.0, you have bigger problems...
                 if (self.accum >= 1.0) {
                     n = i;
@@ -1040,7 +1040,7 @@ pub const Visuals = struct {
 
     // called on the audio thread.
     // return true if a redraw should be triggered
-    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32, sr: f32, oscil_freq: ?f32) bool {
+    pub fn newInput(self: *Visuals, samples: []const f32, mul: f32, sr: f32, oscil_freq: ?[]const f32) bool {
         var redraw = false;
 
         var j: usize = 0;

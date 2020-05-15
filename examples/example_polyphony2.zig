@@ -24,6 +24,9 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 2;
 
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+
     const Voice = struct {
         module: Module,
         trigger: zang.Trigger(Module.Params),

@@ -23,6 +23,9 @@ pub const MainModule = struct {
     pub const num_outputs = 2;
     pub const num_temps = 3 + Instrument.num_temps;
 
+    pub const output_audio = common.AudioOut{ .stereo = .{ .left = 0, .right = 1 } };
+    pub const output_visualize = 0;
+
     key: ?i32,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
     idgen: zang.IdGenerator,

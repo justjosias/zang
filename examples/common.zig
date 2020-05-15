@@ -1,6 +1,11 @@
 const note_frequencies = @import("zang-12tet");
 const c = @import("common/c.zig");
 
+pub const AudioOut = union(enum) {
+    mono: usize,
+    stereo: struct { left: usize, right: usize },
+};
+
 pub const KeyBinding = struct {
     row: u1,
     key: i32,

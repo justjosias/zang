@@ -28,7 +28,6 @@ fn pushRedrawEvent() void {
 
 const UserData = struct {
     main_module: example.MainModule, // only valid if ok is true
-    oscil_freq: ?f32,
     ok: bool,
 };
 
@@ -62,13 +61,27 @@ fn audioCallback(
 
     const mul = 0.25;
 
-    i = 0;
-    while (i < example.MainModule.num_outputs) : (i += 1) {
-        zang.mixDown(stream, outputs[i][0..], AUDIO_FORMAT, example.MainModule.num_outputs, i, mul);
+    switch (example.MainModule.output_audio) {
+        .mono => |both| {
+            zang.mixDown(stream, outputs[both][0..], AUDIO_FORMAT, 1, 0, mul);
+        },
+        .stereo => |p| {
+            zang.mixDown(stream, outputs[p.left][0..], AUDIO_FORMAT, 2, 0, mul);
+            zang.mixDown(stream, outputs[p.right][0..], AUDIO_FORMAT, 2, 1, mul);
+        },
     }
 
-    if (visuals.newInput(outputs[0][0..], mul, AUDIO_SAMPLE_RATE, userdata.oscil_freq)) {
-        pushRedrawEvent();
+    if (@hasDecl(example.MainModule, "output_visualize")) {
+        const visualize = outputs[example.MainModule.output_visualize][0..];
+
+        const sync = if (@hasDecl(example.MainModule, "output_sync_oscilloscope"))
+            outputs[example.MainModule.output_sync_oscilloscope][0..]
+        else
+            null;
+
+        if (visuals.newInput(visualize, mul, AUDIO_SAMPLE_RATE, sync)) {
+            pushRedrawEvent();
+        }
     }
 }
 
@@ -132,7 +145,6 @@ pub fn main() !void {
 
     var userdata: UserData = .{
         .ok = true,
-        .oscil_freq = null,
         .main_module = undefined,
     };
     if (@typeInfo(@typeInfo(@TypeOf(example.MainModule.init)).Fn.return_type.?) == .ErrorUnion) {
@@ -185,7 +197,10 @@ pub fn main() !void {
         .signed8 => c.AUDIO_S8,
         .signed16_lsb => c.AUDIO_S16LSB,
     };
-    want.channels = example.MainModule.num_outputs;
+    want.channels = switch (example.MainModule.output_audio) {
+        .mono => 1,
+        .stereo => 2,
+    };
     want.samples = AUDIO_BUFFER_SIZE;
     want.callback = audioCallback;
     want.userdata = &userdata;
@@ -325,9 +340,6 @@ pub fn main() !void {
                             if (userdata.main_module.keyEvent(event.key.keysym.sym, down, impulse_frame)) {
                                 recorder.recordEvent(event.key.keysym.sym, down);
                                 recorder.trackEvent(event.key.keysym.sym, down);
-                            }
-                            if (@hasField(example.MainModule, "oscil_freq")) {
-                                userdata.oscil_freq = userdata.main_module.oscil_freq;
                             }
                         }
                         c.SDL_UnlockAudioDevice(device);

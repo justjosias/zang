@@ -67,11 +67,13 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 2;
 
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+
     iq: zang.Notes(Instrument.Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     instr: Instrument,
     trig: zang.Trigger(Instrument.Params),
-    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -79,7 +81,6 @@ pub const MainModule = struct {
             .idgen = zang.IdGenerator.init(),
             .instr = Instrument.init(),
             .trig = zang.Trigger(Instrument.Params).init(),
-            .oscil_freq = null,
         };
     }
 
@@ -109,9 +110,6 @@ pub const MainModule = struct {
                 .freq = freq,
                 .note_on = down,
             });
-            if (down) {
-                self.oscil_freq = freq;
-            }
             return true;
         }
         return false;

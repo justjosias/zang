@@ -4,7 +4,7 @@ const note_frequencies = @import("zang-12tet");
 
 pub const PhaseModOscillator = struct {
     pub const num_outputs = 1;
-    pub const num_temps = 3;
+    pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -38,48 +38,47 @@ pub const PhaseModOscillator = struct {
         note_id_changed: bool,
         params: Params,
     ) void {
-        zang.set(span, temps[0], params.freq);
         switch (params.ratio) {
             .constant => |ratio| {
                 if (params.relative) {
-                    zang.set(span, temps[1], params.freq * ratio);
+                    zang.set(span, temps[0], params.freq * ratio);
                 } else {
-                    zang.set(span, temps[1], ratio);
+                    zang.set(span, temps[0], ratio);
                 }
             },
             .buffer => |ratio| {
                 if (params.relative) {
-                    zang.multiplyScalar(span, temps[1], ratio, params.freq);
+                    zang.multiplyScalar(span, temps[0], ratio, params.freq);
                 } else {
-                    zang.copy(span, temps[1], ratio);
+                    zang.copy(span, temps[0], ratio);
                 }
             },
         }
-        zang.zero(span, temps[2]);
-        self.modulator.paint(span, .{temps[2]}, .{}, note_id_changed, .{
-            .sample_rate = params.sample_rate,
-            .freq = zang.buffer(temps[1]),
-            .phase = zang.constant(0.0),
-        });
         zang.zero(span, temps[1]);
-        switch (params.multiplier) {
-            .constant => |multiplier| zang.multiplyScalar(span, temps[1], temps[2], multiplier),
-            .buffer => |multiplier| zang.multiply(span, temps[1], temps[2], multiplier),
-        }
-        zang.zero(span, temps[2]);
-        self.carrier.paint(span, .{temps[2]}, .{}, note_id_changed, .{
+        self.modulator.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
-            .phase = zang.buffer(temps[1]),
+            .phase = zang.constant(0.0),
         });
-        zang.addInto(span, outputs[0], temps[2]);
+        zang.zero(span, temps[0]);
+        switch (params.multiplier) {
+            .constant => |multiplier| zang.multiplyScalar(span, temps[0], temps[1], multiplier),
+            .buffer => |multiplier| zang.multiply(span, temps[0], temps[1], multiplier),
+        }
+        zang.zero(span, temps[1]);
+        self.carrier.paint(span, .{temps[1]}, .{}, note_id_changed, .{
+            .sample_rate = params.sample_rate,
+            .freq = zang.constant(params.freq),
+            .phase = zang.buffer(temps[0]),
+        });
+        zang.addInto(span, outputs[0], temps[1]);
     }
 };
 
 // PhaseModOscillator packaged with an envelope
 pub const PMOscInstrument = struct {
     pub const num_outputs = 1;
-    pub const num_temps = 4;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -107,7 +106,7 @@ pub const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2], temps[3] }, note_id_changed, .{
+        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2] }, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = true,

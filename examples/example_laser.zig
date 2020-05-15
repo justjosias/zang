@@ -115,6 +115,9 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 3;
 
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+
     iq: zang.Notes(LaserPlayer.Params).ImpulseQueue,
     idgen: zang.IdGenerator,
     player: LaserPlayer,

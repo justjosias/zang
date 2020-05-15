@@ -17,7 +17,7 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 pub const Instrument = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
@@ -79,12 +79,19 @@ pub const Instrument = struct {
         });
 
         zang.multiply(span, outputs[0], temps[1], temps[2]);
+
+        // output frequency for oscilloscope sync
+        zang.addInto(span, outputs[1], temps[0]);
     }
 };
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 3;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     keys_held: u64,
     iq: zang.Notes(Instrument.Params).ImpulseQueue,

@@ -22,7 +22,7 @@ const a4 = 440.0;
 
 const PMOscInstrument = struct {
     pub const num_outputs = 1;
-    pub const num_temps = 4;
+    pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
         freq: f32,
@@ -51,7 +51,7 @@ const PMOscInstrument = struct {
         params: Params,
     ) void {
         zang.zero(span, temps[0]);
-        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2], temps[3] }, note_id_changed, .{
+        self.osc.paint(span, .{temps[0]}, .{ temps[1], temps[2] }, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = params.freq,
             .relative = params.relative,
@@ -73,7 +73,10 @@ const PMOscInstrument = struct {
 
 pub const MainModule = struct {
     pub const num_outputs = 1;
-    pub const num_temps = 6;
+    pub const num_temps = 5;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
 
     const Instr = struct {
         const Params = struct { freq: f32, note_on: bool };
@@ -192,7 +195,7 @@ pub const MainModule = struct {
                 self.instr.mod.paint(
                     result.span,
                     outputs,
-                    .{ temps[2], temps[3], temps[4], temps[5] },
+                    .{ temps[2], temps[3], temps[4] },
                     result.note_id_changed,
                     .{
                         .sample_rate = AUDIO_SAMPLE_RATE,

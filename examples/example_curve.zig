@@ -30,7 +30,7 @@ const modulator_curve = [_]zang.CurveNode{
 };
 
 const CurvePlayer = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 2;
     pub const Params = struct {
         sample_rate: f32,
@@ -81,17 +81,23 @@ const CurvePlayer = struct {
             .curve = &carrier_curve,
             .freq_mul = freq_mul,
         });
-        self.carrier.paint(span, outputs, .{}, note_id_changed, .{
+        self.carrier.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
         });
+
+        zang.addInto(span, outputs[1], temps[0]);
     }
 };
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 2;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     iq: zang.Notes(CurvePlayer.Params).ImpulseQueue,
     idgen: zang.IdGenerator,

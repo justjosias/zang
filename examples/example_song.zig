@@ -7,7 +7,7 @@ const util = @import("common/util.zig");
 
 pub const AUDIO_FORMAT: zang.AudioFormat = .signed16_lsb;
 pub const AUDIO_SAMPLE_RATE = 48000;
-pub const AUDIO_BUFFER_SIZE = 4096;
+pub const AUDIO_BUFFER_SIZE = 1024;
 
 pub const DESCRIPTION =
     \\example_song
@@ -362,6 +362,9 @@ pub const MainModule = struct {
         }
         break :blk n;
     };
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
 
     voices: Voices,
 

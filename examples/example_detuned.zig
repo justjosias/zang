@@ -28,7 +28,7 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 pub const Instrument = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 3;
     pub const Params = struct {
         sample_rate: f32,
@@ -69,6 +69,8 @@ pub const Instrument = struct {
             .freq = zang.buffer(temps[0]),
             .color = 0.0,
         });
+        // output frequency for syncing oscilloscope
+        zang.addInto(span, outputs[1], temps[0]);
         // slight volume reduction
         zang.multiplyWithScalar(span, temps[1], 0.75);
         // combine with envelope
@@ -98,7 +100,7 @@ pub const Instrument = struct {
 };
 
 pub const OuterInstrument = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 4;
     pub const Params = struct {
         sample_rate: f32,
@@ -166,8 +168,12 @@ pub const OuterInstrument = struct {
 };
 
 pub const MainModule = struct {
-    pub const num_outputs = 2;
+    pub const num_outputs = 3;
     pub const num_temps = 5;
+
+    pub const output_audio = common.AudioOut{ .stereo = .{ .left = 0, .right = 1 } };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 2;
 
     key: ?i32,
     iq: zang.Notes(OuterInstrument.Params).ImpulseQueue,
@@ -176,7 +182,6 @@ pub const MainModule = struct {
     trigger: zang.Trigger(OuterInstrument.Params),
     echoes: StereoEchoes,
     mode: u32,
-    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -187,7 +192,6 @@ pub const MainModule = struct {
             .trigger = zang.Trigger(OuterInstrument.Params).init(),
             .echoes = StereoEchoes.init(),
             .mode = 0,
-            .oscil_freq = null,
         };
     }
 
@@ -209,7 +213,7 @@ pub const MainModule = struct {
             while (self.trigger.next(&ctr)) |result| {
                 self.outer.paint(
                     result.span,
-                    .{temps[0]},
+                    .{ temps[0], outputs[2] },
                     .{ temps[1], temps[2], temps[3], temps[4] },
                     result.note_id_changed,
                     result.params,
@@ -226,7 +230,7 @@ pub const MainModule = struct {
 
         self.echoes.paint(
             span,
-            outputs,
+            .{ outputs[0], outputs[1] },
             .{ temps[1], temps[2], temps[3], temps[4] },
             false,
             .{
@@ -253,9 +257,6 @@ pub const MainModule = struct {
                     // take effect until you press a new key
                     .mode = self.mode,
                 });
-                if (down) {
-                    self.oscil_freq = a4 * rel_freq * 0.5;
-                }
             }
             return true;
         }

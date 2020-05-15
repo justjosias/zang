@@ -20,8 +20,12 @@ pub const DESCRIPTION =
 const a4 = 880.0;
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = 2;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     pub const Params0 = struct { freq: f32, note_on: bool };
     pub const Params1 = struct { color: f32, note_on: bool };
@@ -101,6 +105,7 @@ pub const MainModule = struct {
                         .start = start,
                         .end = std.math.min(result0.span.end, result1.span.end),
                     };
+                    zang.addScalarInto(inner_span, outputs[1], result0.params.freq);
                     self.osc.paint(
                         inner_span,
                         .{temps[0]},

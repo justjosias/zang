@@ -42,6 +42,9 @@ pub const MainModule = struct {
     pub const num_outputs = 1;
     pub const num_temps = 20;
 
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+
     const filename = "examples/script.txt";
     const module_name = "Instrument";
     const Params = struct {
@@ -66,8 +69,6 @@ pub const MainModule = struct {
     next_note_id: usize,
 
     iq: zang.Notes(Params).ImpulseQueue,
-
-    oscil_freq: ?f32,
 
     pub fn init(out_script_error: *?[]const u8) !MainModule {
         var allocator = std.heap.page_allocator;
@@ -114,7 +115,6 @@ pub const MainModule = struct {
             .iq = zang.Notes(Params).ImpulseQueue.init(),
             .dispatcher = zang.Notes(Params).PolyphonyDispatcher(polyphony).init(),
             .voices = undefined,
-            .oscil_freq = null,
         };
         var num_voices_initialized: usize = 0;
         errdefer for (self.voices[0..num_voices_initialized]) |*voice| {
@@ -181,7 +181,6 @@ pub const MainModule = struct {
                     self.note_ids[i] = self.next_note_id;
                     self.next_note_id += 1;
                 }
-                self.oscil_freq = freq;
             } else if (self.note_ids[i]) |note_id| {
                 self.iq.push(impulse_frame, note_id, params);
                 self.note_ids[i] = null;

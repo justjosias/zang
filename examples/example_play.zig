@@ -21,8 +21,12 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
-    pub const num_temps = 4;
+    pub const num_outputs = 2;
+    pub const num_temps = 3;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     key0: ?i32,
     iq0: zang.Notes(PMOscInstrument.Params).ImpulseQueue,
@@ -33,7 +37,6 @@ pub const MainModule = struct {
     idgen1: zang.IdGenerator,
     instr1: FilteredSawtoothInstrument,
     trig1: zang.Trigger(FilteredSawtoothInstrument.Params),
-    oscil_freq: ?f32,
 
     pub fn init() MainModule {
         return .{
@@ -46,7 +49,6 @@ pub const MainModule = struct {
             .idgen1 = zang.IdGenerator.init(),
             .instr1 = FilteredSawtoothInstrument.init(),
             .trig1 = zang.Trigger(FilteredSawtoothInstrument.Params).init(),
-            .oscil_freq = null,
         };
     }
 
@@ -60,17 +62,18 @@ pub const MainModule = struct {
         while (self.trig0.next(&ctr0)) |result| {
             self.instr0.paint(
                 result.span,
-                outputs,
-                temps,
+                .{outputs[0]},
+                .{ temps[0], temps[1], temps[2] },
                 result.note_id_changed,
                 result.params,
             );
+            zang.addScalarInto(result.span, outputs[1], result.params.freq);
         }
         var ctr1 = self.trig1.counter(span, self.iq1.consume());
         while (self.trig1.next(&ctr1)) |result| {
             self.instr1.paint(
                 result.span,
-                outputs,
+                .{outputs[0]},
                 .{ temps[0], temps[1], temps[2] },
                 result.note_id_changed,
                 result.params,
@@ -86,9 +89,6 @@ pub const MainModule = struct {
                 .freq = zang.constant(freq),
                 .note_on = down,
             });
-            if (down) {
-                self.oscil_freq = freq;
-            }
         } else if (common.getKeyRelFreq(key)) |rel_freq| {
             if (down or (if (self.key0) |nh| nh == key else false)) {
                 self.key0 = if (down) key else null;
@@ -97,9 +97,6 @@ pub const MainModule = struct {
                     .freq = a4 * rel_freq,
                     .note_on = down,
                 });
-                if (down) {
-                    self.oscil_freq = a4 * rel_freq;
-                }
             }
         }
         return true;

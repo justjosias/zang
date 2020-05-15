@@ -21,7 +21,7 @@ pub const DESCRIPTION =
 const a4 = 440.0;
 
 const Arpeggiator = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = Instrument.num_temps;
     pub const Params = struct {
         sample_rate: f32,
@@ -107,18 +107,23 @@ const Arpeggiator = struct {
         while (self.trigger.next(&ctr)) |result| {
             self.instrument.paint(
                 result.span,
-                outputs,
+                .{outputs[0]},
                 temps,
                 result.note_id_changed,
                 result.params,
             );
+            zang.addScalarInto(result.span, outputs[1], result.params.freq);
         }
     }
 };
 
 pub const MainModule = struct {
-    pub const num_outputs = 1;
+    pub const num_outputs = 2;
     pub const num_temps = Arpeggiator.num_temps;
+
+    pub const output_audio = common.AudioOut{ .mono = 0 };
+    pub const output_visualize = 0;
+    pub const output_sync_oscilloscope = 1;
 
     current_params: Arpeggiator.Params,
     iq: zang.Notes(Arpeggiator.Params).ImpulseQueue,
