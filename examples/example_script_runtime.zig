@@ -80,8 +80,11 @@ pub const MainModule = struct {
         errdefer allocator.free(contents);
 
         var errors_stream: std.io.StreamSource = .{ .buffer = std.io.fixedBufferStream(&error_buffer) };
-        const errors_color = false;
-        var script = zangscript.compile(filename, contents, &builtin_packages, allocator, errors_stream.outStream(), errors_color) catch |err| {
+        var script = zangscript.compile(.{
+            .source = .{ .filename = filename, .contents = contents },
+            .errors_out = errors_stream.outStream(),
+            .errors_color = false,
+        }, &builtin_packages, allocator) catch |err| {
             // StreamSource api flaw, see https://github.com/ziglang/zig/issues/5338
             const fbs = switch (errors_stream) {
                 .buffer => |*f| f,
