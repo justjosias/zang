@@ -1,5 +1,6 @@
 const std = @import("std");
-const Context = @import("tokenize.zig").Context;
+const Context = @import("context.zig").Context;
+const Source = @import("context.zig").Source;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const Module = @import("parse.zig").Module;
 const parse = @import("parse.zig").parse;
@@ -18,27 +19,29 @@ pub const CompiledScript = struct {
     }
 };
 
-pub fn compile(
-    filename: []const u8,
-    contents: []const u8,
-    comptime builtin_packages: []const BuiltinPackage,
-    allocator: *std.mem.Allocator,
+pub const CompileOptions = struct {
+    source: Source,
     errors_out: std.io.StreamSource.OutStream,
     errors_color: bool,
+    dump_parse_out: ?std.io.StreamSource.OutStream = null,
+    dump_codegen_out: ?std.io.StreamSource.OutStream = null,
+};
+
+pub fn compile(
+    options: CompileOptions,
+    comptime builtin_packages: []const BuiltinPackage,
+    allocator: *std.mem.Allocator,
 ) !CompiledScript {
     const context: Context = .{
-        .source = .{
-            .filename = filename,
-            .contents = contents,
-        },
-        .errors_out = errors_out,
-        .errors_color = errors_color,
+        .source = options.source,
+        .errors_out = options.errors_out,
+        .errors_color = options.errors_color,
     };
 
-    var parse_result = try parse(context, builtin_packages, allocator);
+    var parse_result = try parse(context, builtin_packages, allocator, options.dump_parse_out);
     errdefer parse_result.deinit();
 
-    var codegen_result = try codegen(context, builtin_packages, parse_result, allocator);
+    var codegen_result = try codegen(context, builtin_packages, parse_result, allocator, options.dump_codegen_out);
     errdefer codegen_result.deinit();
 
     return CompiledScript{

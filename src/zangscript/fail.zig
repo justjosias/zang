@@ -1,8 +1,7 @@
 const std = @import("std");
+const Context = @import("context.zig").Context;
+const SourceRange = @import("context.zig").SourceRange;
 const BuiltinEnumValue = @import("builtins.zig").BuiltinEnumValue;
-const Context = @import("tokenize.zig").Context;
-const Source = @import("tokenize.zig").Source;
-const SourceRange = @import("tokenize.zig").SourceRange;
 
 fn printSourceRange(out: std.io.StreamSource.OutStream, contents: []const u8, source_range: SourceRange) !void {
     try out.writeAll(contents[source_range.loc0.index..source_range.loc1.index]);

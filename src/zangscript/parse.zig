@@ -1,8 +1,8 @@
 const std = @import("std");
-const Context = @import("tokenize.zig").Context;
-const Source = @import("tokenize.zig").Source;
-const SourceLocation = @import("tokenize.zig").SourceLocation;
-const SourceRange = @import("tokenize.zig").SourceRange;
+const Context = @import("context.zig").Context;
+const Source = @import("context.zig").Source;
+const SourceLocation = @import("context.zig").SourceLocation;
+const SourceRange = @import("context.zig").SourceRange;
 const Token = @import("tokenize.zig").Token;
 const TokenType = @import("tokenize.zig").TokenType;
 const Tokenizer = @import("tokenize.zig").Tokenizer;
@@ -591,6 +591,7 @@ pub fn parse(
     ctx: Context,
     comptime builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
+    dump_parse_out: ?std.io.StreamSource.OutStream,
 ) !ParseResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
@@ -630,8 +631,10 @@ pub fn parse(
     const modules = ps.modules.toOwnedSlice();
 
     // diagnostic print
-    for (modules) |module| {
-        parsePrintModule(ctx.source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+    if (dump_parse_out) |out| {
+        for (modules) |module| {
+            parsePrintModule(out, ctx.source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+        }
     }
 
     return ParseResult{

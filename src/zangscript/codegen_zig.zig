@@ -79,7 +79,7 @@ const State = struct {
     }
 };
 
-pub fn generateZig(out: *std.fs.File.OutStream, comptime builtin_packages: []const BuiltinPackage, script: CompiledScript) !void {
+pub fn generateZig(out: std.io.StreamSource.OutStream, comptime builtin_packages: []const BuiltinPackage, script: CompiledScript) !void {
     var self: State = .{
         .script = script,
         .module = null,

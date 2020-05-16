@@ -9,6 +9,7 @@ const parse_ = @import("zangscript/parse.zig");
 pub const ModuleParam = parse_.ModuleParam;
 
 const compile_ = @import("zangscript/compile.zig");
+pub const CompileOptions = compile_.CompileOptions;
 pub const CompiledScript = compile_.CompiledScript;
 pub const compile = compile_.compile;
 

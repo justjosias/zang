@@ -1,7 +1,6 @@
 const std = @import("std");
-const Context = @import("tokenize.zig").Context;
-const Source = @import("tokenize.zig").Source;
-const SourceRange = @import("tokenize.zig").SourceRange;
+const Context = @import("context.zig").Context;
+const SourceRange = @import("context.zig").SourceRange;
 const fail = @import("fail.zig").fail;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
@@ -632,6 +631,7 @@ const CodeGenVisitor = struct {
     parse_result: ParseResult,
     module_results: []CodeGenModuleResult, // filled in as we go
     module_visited: []bool, // ditto
+    dump_codegen_out: ?std.io.StreamSource.OutStream,
 };
 
 // codegen entry point
@@ -640,6 +640,7 @@ pub fn codegen(
     comptime builtin_packages: []const BuiltinPackage,
     parse_result: ParseResult,
     inner_allocator: *std.mem.Allocator,
+    dump_codegen_out: ?std.io.StreamSource.OutStream,
 ) !CodeGenResult {
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
@@ -672,6 +673,7 @@ pub fn codegen(
         .parse_result = parse_result,
         .module_results = module_results,
         .module_visited = module_visited,
+        .dump_codegen_out = dump_codegen_out,
     };
 
     for (parse_result.modules) |_, i| {
@@ -755,8 +757,9 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     state.temp_buffers.reportLeaks();
     state.temp_floats.reportLeaks();
 
-    // diagnostic print
-    printBytecode(&state) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
+    if (self.dump_codegen_out) |out| {
+        printBytecode(out, &state) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
+    }
 
     return CodeGenModuleResult{
         .num_outputs = 1,

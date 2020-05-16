@@ -58,13 +58,10 @@ const State = struct {
     }
 };
 
-pub fn printBytecode(codegen_state: *const CodegenModuleState) !void {
-    const stderr_file = std.io.getStdErr();
-    var stderr_file_out_stream = stderr_file.outStream();
-
+pub fn printBytecode(out: std.io.StreamSource.OutStream, codegen_state: *const CodegenModuleState) !void {
     var self: State = .{
         .codegen_state = codegen_state,
-        .helper = PrintHelper.init(&stderr_file_out_stream),
+        .helper = PrintHelper.init(out),
     };
     defer self.helper.deinit();
 

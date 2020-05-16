@@ -35,16 +35,18 @@ pub fn main() u8 {
     defer allocator.free(contents);
 
     var errors_stream: std.io.StreamSource = .{ .file = std.io.getStdErr() };
-    const errors_color = true;
-    var script = zangscript.compile(filename, contents, &builtin_packages, allocator, errors_stream.outStream(), errors_color) catch |err| {
+    var script = zangscript.compile(.{
+        .source = .{ .filename = filename, .contents = contents },
+        .errors_out = errors_stream.outStream(),
+        .errors_color = true,
+    }, &builtin_packages, allocator) catch |err| {
         if (err != error.Failed) std.debug.warn("{}\n", .{err});
         return 1;
     };
     defer script.deinit();
 
-    var stdout_file_out_stream = std.io.getStdOut().outStream();
-
-    zangscript.generateZig(&stdout_file_out_stream, &builtin_packages, script) catch |err| {
+    var out_ss: std.io.StreamSource = .{ .file = std.io.getStdOut() };
+    zangscript.generateZig(out_ss.outStream(), &builtin_packages, script) catch |err| {
         std.debug.warn("generateZig failed: {}\n", .{err});
         return 1;
     };

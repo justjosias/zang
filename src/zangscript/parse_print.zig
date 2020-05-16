@@ -1,5 +1,5 @@
 const std = @import("std");
-const Source = @import("tokenize.zig").Source;
+const Source = @import("context.zig").Source;
 const PrintHelper = @import("print_helper.zig").PrintHelper;
 const Module = @import("parse.zig").Module;
 const ModuleField = @import("parse1zig").ModuleField;
@@ -95,15 +95,12 @@ const State = struct {
     }
 };
 
-pub fn parsePrintModule(source: Source, modules: []const Module, module: Module) !void {
-    const stderr_file = std.io.getStdErr();
-    var stderr_file_out_stream = stderr_file.outStream();
-
+pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modules: []const Module, module: Module) !void {
     var self: State = .{
         .source = source,
         .modules = modules,
         .module = module,
-        .helper = PrintHelper.init(&stderr_file_out_stream),
+        .helper = PrintHelper.init(out),
     };
     defer self.helper.deinit();
 

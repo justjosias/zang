@@ -1,11 +1,11 @@
 const std = @import("std");
 
 pub const PrintHelper = struct {
-    out: *std.fs.File.OutStream,
+    out: std.io.StreamSource.OutStream,
     indentation: usize,
     indent_next: bool,
 
-    pub fn init(out: *std.fs.File.OutStream) PrintHelper {
+    pub fn init(out: std.io.StreamSource.OutStream) PrintHelper {
         return .{
             .out = out,
             .indentation = 0,

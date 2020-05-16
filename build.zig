@@ -29,6 +29,7 @@ pub fn build(b: *std.build.Builder) void {
     }
     b.step("write_wav", "Run example 'write_wav'").dependOn(&writeWav(b).run().step);
     b.step("zangscript", "Build zangscript compiler").dependOn(&zangscript(b).step);
+    b.step("zangc", "Build zangscript compiler").dependOn(&zangc(b).step);
 }
 
 fn example(
@@ -58,12 +59,21 @@ fn writeWav(b: *std.build.Builder) *std.build.LibExeObjStep {
     return o;
 }
 
+// TODO remove this once i support custom builtins in tools/zangc.zig
 fn zangscript(b: *std.build.Builder) *std.build.LibExeObjStep {
     var o = b.addExecutable("zangscript", "examples/compile_script.zig");
     o.setBuildMode(b.standardReleaseOptions());
     o.setOutputDir("zig-cache");
     o.addPackagePath("zang", "src/zang.zig");
     o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
+    o.addPackagePath("zangscript", "src/zangscript.zig");
+    return o;
+}
+
+fn zangc(b: *std.build.Builder) *std.build.LibExeObjStep {
+    var o = b.addExecutable("zangc", "tools/zangc.zig");
+    o.setBuildMode(b.standardReleaseOptions());
+    o.setOutputDir("zig-cache");
     o.addPackagePath("zangscript", "src/zangscript.zig");
     return o;
 }
