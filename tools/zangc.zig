@@ -5,18 +5,19 @@ const builtin_packages = [_]zangscript.BuiltinPackage{
     zangscript.zang_builtin_package,
 };
 
-fn usage(out: *std.fs.File.OutStream, program_name: []const u8) void {
-    out.print("Usage: {} [options...] <file>\n\n", .{program_name}) catch return;
-    out.writeAll(
+fn usage(out: *std.fs.File.OutStream, program_name: []const u8) !void {
+    try out.print("Usage: {} [options...] <file>\n\n", .{program_name});
+    try out.writeAll(
         \\Compile the zangscript source at <file> into Zig code.
         \\
         \\      --dump-parse <file>    Dump result of parse stage to file
         \\      --dump-codegen <file>  Dump result of codegen stage to file
+        \\      --help                 Print this help text
         \\  -o, --output <file>        Write Zig code to file instead of stdout
         \\      --color <when>         Colorize compile errors; 'when' can be 'auto'
         \\                               (default if omitted), 'always', or 'never'
         \\
-    ) catch {};
+    );
 }
 
 const Options = struct {
@@ -34,43 +35,63 @@ const Options = struct {
     }
 };
 
-fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !Options {
+const OptionsParser = struct {
+    arena_allocator: *std.mem.Allocator,
+    stderr: *std.fs.File.OutStream,
+    args: std.process.ArgIterator,
+    program: []const u8,
+
+    fn init(arena_allocator: *std.mem.Allocator, stderr: *std.fs.File.OutStream) !OptionsParser {
+        var args = std.process.args();
+        const program = try args.next(arena_allocator) orelse "zangc";
+        return OptionsParser{
+            .arena_allocator = arena_allocator,
+            .stderr = stderr,
+            .args = args,
+            .program = program,
+        };
+    }
+
+    fn next(self: *OptionsParser) !?[]const u8 {
+        return try self.args.next(self.arena_allocator) orelse return null;
+    }
+
+    fn argWithValue(self: *OptionsParser, arg: []const u8, comptime variants: []const []const u8) !?[]const u8 {
+        for (variants) |variant| if (std.mem.eql(u8, arg, variant)) break else return null;
+        const value = try self.args.next(self.arena_allocator) orelse return self.argError("missing value for '{}'\n", .{arg});
+        return value;
+    }
+
+    fn argError(self: OptionsParser, comptime fmt: []const u8, args: var) error{ArgError} {
+        self.stderr.print("{}: ", .{self.program}) catch {};
+        self.stderr.print(fmt, args) catch {};
+        self.stderr.print("Try '{} --help' for more information.\n", .{self.program}) catch {};
+        return error.ArgError;
+    }
+};
+
+fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !?Options {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
 
+    var help = false;
     var script_filename: ?[]const u8 = null;
     var output_filename: ?[]const u8 = null;
     var dump_parse_filename: ?[]const u8 = null;
     var dump_codegen_filename: ?[]const u8 = null;
     var color: Options.Color = .auto;
 
-    var args = std.process.args();
-    const program = try args.next(&arena.allocator) orelse "zangc";
-    while (true) {
-        const arg = try args.next(&arena.allocator) orelse break;
-        if (std.mem.eql(u8, arg, "--output") or std.mem.eql(u8, arg, "-o")) {
-            const value = try args.next(&arena.allocator) orelse {
-                stderr.print("{}: missing value for '{}'\n", .{ program, arg }) catch {};
-                return error.Failed;
-            };
+    var parser = try OptionsParser.init(&arena.allocator, stderr);
+    while (try parser.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--help")) {
+            help = true;
+        } else if (try parser.argWithValue(arg, &[_][]const u8{ "--output", "-o" })) |value| {
             output_filename = value;
-        } else if (std.mem.eql(u8, arg, "--dump-parse")) {
-            const value = try args.next(&arena.allocator) orelse {
-                stderr.print("{}: missing value for '{}'\n", .{ program, arg }) catch {};
-                return error.Failed;
-            };
+        } else if (try parser.argWithValue(arg, &[_][]const u8{"--dump-parse"})) |value| {
             dump_parse_filename = value;
-        } else if (std.mem.eql(u8, arg, "--dump-codegen")) {
-            const value = try args.next(&arena.allocator) orelse {
-                stderr.print("{}: missing value for '{}'\n", .{ program, arg }) catch {};
-                return error.Failed;
-            };
+        } else if (try parser.argWithValue(arg, &[_][]const u8{"--dump-codegen"})) |value| {
             dump_codegen_filename = value;
-        } else if (std.mem.eql(u8, arg, "--color")) {
-            const value = try args.next(&arena.allocator) orelse {
-                stderr.print("{}: missing value for '{}'\n", .{ program, arg }) catch {};
-                return error.Failed;
-            };
+        } else if (try parser.argWithValue(arg, &[_][]const u8{"--color"})) |value| {
             if (std.mem.eql(u8, value, "auto")) {
                 color = .auto;
             } else if (std.mem.eql(u8, value, "always")) {
@@ -78,23 +99,25 @@ fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !
             } else if (std.mem.eql(u8, value, "never")) {
                 color = .never;
             } else {
-                stderr.print("{}: invalid value '{}' for '{}'; must be one of 'auto', 'always', 'never'\n", .{ program, value, arg }) catch {};
-                return error.Failed;
+                return parser.argError("invalid value '{}' for '{}'; must be one of 'auto', 'always', 'never'\n", .{ value, arg });
             }
         } else if (std.mem.startsWith(u8, arg, "-")) {
-            stderr.print("{}: unrecognized option '{}'\n", .{ program, arg }) catch {};
-            return error.Failed;
+            return parser.argError("unrecognized option '{}'\n", .{arg});
         } else {
             script_filename = arg;
         }
     }
 
+    if (help) {
+        defer arena.deinit();
+        var stdout = std.io.getStdOut().outStream();
+        try usage(&stdout, parser.program);
+        return null;
+    }
+
     return Options{
         .arena = arena,
-        .script_filename = script_filename orelse {
-            usage(stderr, program);
-            return error.Failed;
-        },
+        .script_filename = script_filename orelse return parser.argError("missing file operand\n", .{}),
         .output_filename = output_filename,
         .dump_parse_filename = dump_parse_filename,
         .dump_codegen_filename = dump_codegen_filename,
@@ -110,11 +133,11 @@ pub fn main() u8 {
 
     var stderr = std.debug.getStderrStream();
 
-    const options = parseOptions(stderr, allocator) catch |err| {
-        // `error.Failed` means an error was already printed to stderr
-        if (err != error.Failed) stderr.print("error while parsing args: {}\n", .{err}) catch {};
+    const maybe_options = parseOptions(stderr, allocator) catch |err| {
+        if (err != error.ArgError) stderr.print("error while parsing args: {}\n", .{err}) catch {};
         return 1;
     };
+    const options = maybe_options orelse return 0;
     defer options.deinit();
 
     const contents = std.fs.cwd().readFileAlloc(allocator, options.script_filename, 16 * 1024 * 1024) catch |err| {
