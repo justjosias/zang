@@ -84,12 +84,12 @@ My goals for the core library:
 This is WIP. It's a DSL that can be compiled into Zig code. Writing Zangscript will be a lot terser and more expressive than writing Zig code by hand using the zang API. It's totally optional, the core zang library has no dependency on it. I'll document it more when I make more progress. You can try it out by running:
 
 ```
-zig build zangscript
-zig-cache/zangscript examples/script.txt > examples/scriptgen.zig
+zig build zangc
+zig-cache/zangc examples/script.txt > examples/scriptgen.zig
 zig build script
 ```
 
-The scripts can also be evaluated at runtime. The result should be the same as when compiling to Zig, but you trade efficiency for the ability to reload changes instantaneously (by pressing Enter).
+The scripts can also be evaluated at runtime. The result should be the same as when compiling to Zig, but you trade efficiency for the ability to reload changes to the script on the fly.
 
 ```
 # loads and runs examples/script.txt

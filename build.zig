@@ -28,7 +28,6 @@ pub fn build(b: *std.build.Builder) void {
         b.step(name, "Run example '" ++ name ++ "'").dependOn(&example(b, name).run().step);
     }
     b.step("write_wav", "Run example 'write_wav'").dependOn(&writeWav(b).run().step);
-    b.step("zangscript", "Build zangscript compiler").dependOn(&zangscript(b).step);
     b.step("zangc", "Build zangscript compiler").dependOn(&zangc(b).step);
 }
 
@@ -56,17 +55,6 @@ fn writeWav(b: *std.build.Builder) *std.build.LibExeObjStep {
     o.addPackagePath("wav", "examples/zig-wav/wav.zig");
     o.addPackagePath("zang", "src/zang.zig");
     o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
-    return o;
-}
-
-// TODO remove this once i support custom builtins in tools/zangc.zig
-fn zangscript(b: *std.build.Builder) *std.build.LibExeObjStep {
-    var o = b.addExecutable("zangscript", "examples/compile_script.zig");
-    o.setBuildMode(b.standardReleaseOptions());
-    o.setOutputDir("zig-cache");
-    o.addPackagePath("zang", "src/zang.zig");
-    o.addPackagePath("zang-12tet", "src/zang-12tet.zig");
-    o.addPackagePath("zangscript", "src/zangscript.zig");
     return o;
 }
 
