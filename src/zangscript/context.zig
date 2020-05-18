@@ -1,4 +1,5 @@
 const std = @import("std");
+const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 
 pub const Source = struct {
     filename: []const u8,
@@ -23,6 +24,7 @@ pub const SourceRange = struct {
 };
 
 pub const Context = struct {
+    builtin_packages: []const BuiltinPackage,
     source: Source,
     errors_out: std.io.StreamSource.OutStream,
     errors_color: bool,

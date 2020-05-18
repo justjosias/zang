@@ -637,7 +637,6 @@ const CodeGenVisitor = struct {
 // codegen entry point
 pub fn codegen(
     ctx: Context,
-    comptime builtin_packages: []const BuiltinPackage,
     parse_result: ParseResult,
     inner_allocator: *std.mem.Allocator,
     dump_codegen_out: ?std.io.StreamSource.OutStream,
@@ -653,8 +652,8 @@ pub fn codegen(
     var module_results = try arena.allocator.alloc(CodeGenModuleResult, parse_result.modules.len);
 
     var builtin_index: usize = 0;
-    inline for (builtin_packages) |pkg| {
-        inline for (pkg.builtins) |builtin| {
+    for (ctx.builtin_packages) |pkg| {
+        for (pkg.builtins) |builtin| {
             module_results[builtin_index] = .{
                 .num_outputs = builtin.num_outputs,
                 .num_temps = builtin.num_temps,

@@ -21,8 +21,8 @@ const a4 = 440.0;
 const polyphony = 8;
 
 const custom_builtin_package = zangscript.BuiltinPackage{
-    .zig_package_name = "modules",
-    .zig_import_path = "modules.zig",
+    .zig_package_name = "_custom0",
+    .zig_import_path = "examples/modules.zig",
     .builtins = &[_]zangscript.BuiltinModule{
         zangscript.getBuiltinModule(modules.FilteredSawtoothInstrument),
     },
@@ -80,11 +80,12 @@ pub const MainModule = struct {
         errdefer allocator.free(contents);
 
         var errors_stream: std.io.StreamSource = .{ .buffer = std.io.fixedBufferStream(&error_buffer) };
-        var script = zangscript.compile(.{
+        var script = zangscript.compile(allocator, .{
+            .builtin_packages = &builtin_packages,
             .source = .{ .filename = filename, .contents = contents },
             .errors_out = errors_stream.outStream(),
             .errors_color = false,
-        }, &builtin_packages, allocator) catch |err| {
+        }) catch |err| {
             // StreamSource api flaw, see https://github.com/ziglang/zig/issues/5338
             const fbs = switch (errors_stream) {
                 .buffer => |*f| f,

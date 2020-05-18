@@ -188,9 +188,15 @@ pub fn initModule(
     switch (script.module_results[module_index].inner) {
         .builtin => {
             inline for (builtin_packages) |pkg| {
+                const package = if (comptime std.mem.eql(u8, pkg.zig_import_path, "zang"))
+                    @import("../zang.zig")
+                else
+                    @import("../../" ++ pkg.zig_import_path);
+
                 inline for (pkg.builtins) |builtin| {
                     if (std.mem.eql(u8, builtin.name, script.modules[module_index].name)) {
-                        return BuiltinModule(builtin.T).init(script, module_index, allocator);
+                        const T = @field(package, builtin.name);
+                        return BuiltinModule(T).init(script, module_index, allocator);
                     }
                 }
             }

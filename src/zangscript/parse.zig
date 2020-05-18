@@ -589,7 +589,6 @@ pub const ParseResult = struct {
 
 pub fn parse(
     ctx: Context,
-    comptime builtin_packages: []const BuiltinPackage,
     inner_allocator: *std.mem.Allocator,
     dump_parse_out: ?std.io.StreamSource.OutStream,
 ) !ParseResult {
@@ -604,9 +603,9 @@ pub fn parse(
     };
 
     // add builtins
-    inline for (builtin_packages) |pkg| {
+    for (ctx.builtin_packages) |pkg| {
         try ps.enums.appendSlice(pkg.enums);
-        inline for (pkg.builtins) |builtin| {
+        for (pkg.builtins) |builtin| {
             try ps.modules.append(.{
                 .name = builtin.name,
                 .zig_package_name = pkg.zig_package_name,

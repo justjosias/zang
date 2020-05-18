@@ -1,21 +1,27 @@
 const std = @import("std");
 const zangscript = @import("zangscript");
+const ParsedBuiltins = @import("zangc/parse_builtins.zig").ParsedBuiltins;
+const parseBuiltins = @import("zangc/parse_builtins.zig").parseBuiltins;
+const dumpBuiltins = @import("zangc/dump_builtins.zig").dumpBuiltins;
 
-const builtin_packages = [_]zangscript.BuiltinPackage{
-    zangscript.zang_builtin_package,
-};
+// TODO add an option called `--check` or something, to skip final zig codegen.
+// TODO allow --add-builtins and --dump-builtins to be used with no input script at all
 
 fn usage(out: *std.fs.File.OutStream, program_name: []const u8) !void {
-    try out.print("Usage: {} [options...] <file>\n\n", .{program_name});
+    try out.print("Usage: {} [options...] -o <dest> <file>\n\n", .{program_name});
     try out.writeAll(
         \\Compile the zangscript source at <file> into Zig code.
         \\
-        \\      --dump-parse <file>    Dump result of parse stage to file
-        \\      --dump-codegen <file>  Dump result of codegen stage to file
-        \\      --help                 Print this help text
-        \\  -o, --output <file>        Write Zig code to file instead of stdout
-        \\      --color <when>         Colorize compile errors; 'when' can be 'auto'
-        \\                               (default if omitted), 'always', or 'never'
+        \\      --add-builtins <file>   Import native modules from the given Zig source
+        \\                                file. Can be used more than once
+        \\      --dump-parse <file>     Dump result of parse stage to file
+        \\      --dump-codegen <file>   Dump result of codegen stage to file
+        \\      --dump-builtins <file>  Dump information on all default and custom
+        \\                                builtins to file
+        \\      --help                  Print this help text
+        \\  -o, --output <file>         Write Zig code to this file
+        \\      --color <when>          Colorize compile errors; 'when' can be 'auto'
+        \\                                (default if omitted), 'always', or 'never'
         \\
     );
 }
@@ -25,9 +31,11 @@ const Options = struct {
 
     arena: std.heap.ArenaAllocator,
     script_filename: []const u8,
-    output_filename: ?[]const u8,
+    output_filename: []const u8,
+    builtin_filenames: []const []const u8,
     dump_parse_filename: ?[]const u8,
     dump_codegen_filename: ?[]const u8,
+    dump_builtins_filename: ?[]const u8,
     color: Color,
 
     fn deinit(self: Options) void {
@@ -57,7 +65,9 @@ const OptionsParser = struct {
     }
 
     fn argWithValue(self: *OptionsParser, arg: []const u8, comptime variants: []const []const u8) !?[]const u8 {
-        for (variants) |variant| if (std.mem.eql(u8, arg, variant)) break else return null;
+        for (variants) |variant| {
+            if (std.mem.eql(u8, arg, variant)) break;
+        } else return null;
         const value = try self.args.next(self.arena_allocator) orelse return self.argError("missing value for '{}'\n", .{arg});
         return value;
     }
@@ -77,8 +87,10 @@ fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !
     var help = false;
     var script_filename: ?[]const u8 = null;
     var output_filename: ?[]const u8 = null;
+    var builtin_filenames = std.ArrayList([]const u8).init(&arena.allocator);
     var dump_parse_filename: ?[]const u8 = null;
     var dump_codegen_filename: ?[]const u8 = null;
+    var dump_builtins_filename: ?[]const u8 = null;
     var color: Options.Color = .auto;
 
     var parser = try OptionsParser.init(&arena.allocator, stderr);
@@ -87,10 +99,14 @@ fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !
             help = true;
         } else if (try parser.argWithValue(arg, &[_][]const u8{ "--output", "-o" })) |value| {
             output_filename = value;
+        } else if (try parser.argWithValue(arg, &[_][]const u8{"--add-builtins"})) |value| {
+            try builtin_filenames.append(value);
         } else if (try parser.argWithValue(arg, &[_][]const u8{"--dump-parse"})) |value| {
             dump_parse_filename = value;
         } else if (try parser.argWithValue(arg, &[_][]const u8{"--dump-codegen"})) |value| {
             dump_codegen_filename = value;
+        } else if (try parser.argWithValue(arg, &[_][]const u8{"--dump-builtins"})) |value| {
+            dump_builtins_filename = value;
         } else if (try parser.argWithValue(arg, &[_][]const u8{"--color"})) |value| {
             if (std.mem.eql(u8, value, "auto")) {
                 color = .auto;
@@ -118,100 +134,145 @@ fn parseOptions(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator) !
     return Options{
         .arena = arena,
         .script_filename = script_filename orelse return parser.argError("missing file operand\n", .{}),
-        .output_filename = output_filename,
+        .output_filename = output_filename orelse return parser.argError("missing --output argument\n", .{}),
+        .builtin_filenames = builtin_filenames.items,
         .dump_parse_filename = dump_parse_filename,
         .dump_codegen_filename = dump_codegen_filename,
+        .dump_builtins_filename = dump_builtins_filename,
         .color = color,
     };
 }
 
-pub fn main() u8 {
+fn loadFile(stderr: *std.fs.File.OutStream, allocator: *std.mem.Allocator, filename: []const u8) ![]const u8 {
+    return std.fs.cwd().readFileAlloc(allocator, filename, 16 * 1024 * 1024) catch |err| {
+        stderr.print("failed to load {}: {}\n", .{ filename, err }) catch {};
+        return error.Failed;
+    };
+}
+
+fn createFile(stderr: *std.fs.File.OutStream, filename: []const u8) !std.fs.File {
+    return std.fs.cwd().createFile(filename, .{}) catch |err| {
+        stderr.print("failed to open {} for writing: {}\n", .{ filename, err }) catch {};
+        return error.Failed;
+    };
+}
+
+fn mainInner(stderr: *std.fs.File.OutStream) !void {
     var leak_count_allocator = std.testing.LeakCountAllocator.init(std.heap.page_allocator);
     defer leak_count_allocator.validate() catch {};
 
     var allocator = &leak_count_allocator.allocator;
 
-    var stderr = std.debug.getStderrStream();
-
-    const maybe_options = parseOptions(stderr, allocator) catch |err| {
-        if (err != error.ArgError) stderr.print("error while parsing args: {}\n", .{err}) catch {};
-        return 1;
-    };
-    const options = maybe_options orelse return 0;
+    // parse command line options
+    const maybe_options = try parseOptions(stderr, allocator);
+    const options = maybe_options orelse return; // we're done already if `--help` flag was passed
     defer options.deinit();
 
-    const contents = std.fs.cwd().readFileAlloc(allocator, options.script_filename, 16 * 1024 * 1024) catch |err| {
-        stderr.print("failed to load {}: {}\n", .{ options.script_filename, err }) catch {};
-        return 1;
-    };
+    // prepare builtin packages
+    var builtin_packages = std.ArrayList(zangscript.BuiltinPackage).init(allocator);
+    defer builtin_packages.deinit();
+
+    var custom_builtins_arena = std.heap.ArenaAllocator.init(allocator);
+    defer custom_builtins_arena.deinit();
+
+    // add default builtin package
+    try builtin_packages.append(zangscript.zang_builtin_package);
+
+    // add custom builtin packages, if any were passed
+    for (options.builtin_filenames) |filename, i| {
+        const contents = try loadFile(stderr, allocator, filename);
+        defer allocator.free(contents);
+
+        // make a unique name for the top level decl we'll assign the import to in the generated zig code.
+        // start with an underscore because such identifiers are illegal in zangscript so there's no chance of collision
+        var buf: [100]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        fbs.outStream().print("_custom{}", .{i}) catch unreachable;
+        const name = fbs.getWritten();
+
+        // generated zig code will be importing this file, so get a path relative to the output zig file
+        const dirname = std.fs.path.dirname(options.output_filename) orelse return error.NoDirName;
+        const rel_path = try std.fs.path.relative(&custom_builtins_arena.allocator, dirname, filename);
+
+        const pkg = try parseBuiltins(&custom_builtins_arena.allocator, allocator, stderr, name, rel_path, contents);
+        try builtin_packages.append(pkg);
+    }
+
+    // dump info about builtins
+    if (options.dump_builtins_filename) |filename| {
+        var file = try createFile(stderr, filename);
+        defer file.close();
+
+        try dumpBuiltins(@as(std.io.StreamSource, .{ .file = file }).outStream(), builtin_packages.items);
+    }
+
+    // read in source file
+    const contents = try loadFile(stderr, allocator, options.script_filename);
     defer allocator.free(contents);
 
-    var files_to_close: [8]std.fs.File = undefined;
-    var num_files_to_close: usize = 0;
-    defer for (files_to_close[0..num_files_to_close]) |file| file.close();
-
+    // set up context for parse and codegen
     const errors_file = std.io.getStdErr();
-    const errors_color = switch (options.color) {
-        .auto => errors_file.isTty(),
-        .always => true,
-        .never => false,
-    };
-    var errors_stream: std.io.StreamSource = .{ .file = errors_file };
-    var dump_parse_stream: std.io.StreamSource = undefined;
-    if (options.dump_parse_filename) |filename| {
-        var file = std.fs.cwd().createFile(filename, .{}) catch |err| {
-            stderr.print("failed to open {} for writing: {}\n", .{ filename, err }) catch {};
-            return 1;
-        };
-        files_to_close[num_files_to_close] = file;
-        num_files_to_close += 1;
-        dump_parse_stream = .{ .file = file };
-    }
-    var dump_codegen_stream: std.io.StreamSource = undefined;
-    if (options.dump_codegen_filename) |filename| {
-        var file = std.fs.cwd().createFile(filename, .{}) catch |err| {
-            stderr.print("failed to open {} for writing: {}\n", .{ filename, err }) catch {};
-            return 1;
-        };
-        files_to_close[num_files_to_close] = file;
-        num_files_to_close += 1;
-        dump_codegen_stream = .{ .file = file };
-    }
-
-    var script = zangscript.compile(.{
-        .source = .{
-            .filename = options.script_filename,
-            .contents = contents,
+    const context: zangscript.Context = .{
+        .builtin_packages = builtin_packages.items,
+        .source = .{ .filename = options.script_filename, .contents = contents },
+        .errors_out = @as(std.io.StreamSource, .{ .file = errors_file }).outStream(),
+        .errors_color = switch (options.color) {
+            .auto => errors_file.isTty(),
+            .always => true,
+            .never => false,
         },
-        .errors_out = errors_stream.outStream(),
-        .errors_color = errors_color,
-        .dump_parse_out = if (options.dump_parse_filename != null) dump_parse_stream.outStream() else null,
-        .dump_codegen_out = if (options.dump_codegen_filename != null) dump_codegen_stream.outStream() else null,
-    }, &builtin_packages, allocator) catch |err| {
-        // `error.Failed` means an error was already printed to stderr
-        if (err != error.Failed) stderr.print("{}\n", .{err}) catch {};
-        return 1;
-    };
-    defer script.deinit();
-
-    var out_file: std.fs.File = undefined;
-    if (options.output_filename) |out_filename| {
-        var file = std.fs.cwd().createFile(out_filename, .{}) catch |err| {
-            stderr.print("failed to open {} for writing: {}\n", .{ out_filename, err }) catch {};
-            return 1;
-        };
-        files_to_close[num_files_to_close] = file;
-        num_files_to_close += 1;
-        out_file = file;
-    } else {
-        out_file = std.io.getStdOut();
-    }
-
-    var out_ss: std.io.StreamSource = .{ .file = out_file };
-    zangscript.generateZig(out_ss.outStream(), &builtin_packages, script) catch |err| {
-        stderr.print("generateZig failed: {}\n", .{err}) catch {};
-        return 1;
     };
 
+    // parse
+    var parse_result = blk: {
+        if (options.dump_parse_filename) |filename| {
+            var file = try createFile(stderr, filename);
+            defer file.close();
+
+            break :blk try zangscript.parse(context, allocator, @as(std.io.StreamSource, .{ .file = file }).outStream());
+        } else {
+            break :blk try zangscript.parse(context, allocator, null);
+        }
+    };
+    defer parse_result.deinit();
+
+    // codegen
+    var codegen_result = blk: {
+        if (options.dump_codegen_filename) |filename| {
+            var file = try createFile(stderr, filename);
+            defer file.close();
+
+            break :blk try zangscript.codegen(context, parse_result, allocator, @as(std.io.StreamSource, .{ .file = file }).outStream());
+        } else {
+            break :blk try zangscript.codegen(context, parse_result, allocator, null);
+        }
+    };
+    defer codegen_result.deinit();
+
+    // assemble CompiledScript object
+    var script: zangscript.CompiledScript = .{
+        .parse_arena = parse_result.arena,
+        .codegen_arena = codegen_result.arena,
+        .modules = parse_result.modules,
+        .module_results = codegen_result.module_results,
+    };
+    // (don't use script.deinit() - we are already deiniting parse and codegen results individually)
+
+    // generate zig code
+    var file = try createFile(stderr, options.output_filename);
+    defer file.close();
+
+    try zangscript.generateZig(@as(std.io.StreamSource, .{ .file = file }).outStream(), builtin_packages.items, script);
+}
+
+pub fn main() u8 {
+    var stderr = std.debug.getStderrStream();
+    mainInner(stderr) catch |err| {
+        // Failed or ArgError means a message has already been printed
+        if (err != error.Failed and err != error.ArgError) {
+            stderr.print("failed: {}\n", .{err}) catch {};
+        }
+        return 1;
+    };
     return 0;
 }

@@ -79,7 +79,7 @@ const State = struct {
     }
 };
 
-pub fn generateZig(out: std.io.StreamSource.OutStream, comptime builtin_packages: []const BuiltinPackage, script: CompiledScript) !void {
+pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const BuiltinPackage, script: CompiledScript) !void {
     var self: State = .{
         .script = script,
         .module = null,
@@ -89,13 +89,13 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, comptime builtin_packages
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
-    inline for (builtin_packages) |pkg| {
-        if (comptime !std.mem.eql(u8, pkg.zig_package_name, "zang")) {
+    for (builtin_packages) |pkg| {
+        if (!std.mem.eql(u8, pkg.zig_package_name, "zang")) {
             try self.print("const {str} = @import(\"{str}\");\n", .{ pkg.zig_package_name, pkg.zig_import_path });
         }
     }
 
-    const num_builtins = comptime blk: {
+    const num_builtins = blk: {
         var n: usize = 0;
         for (builtin_packages) |pkg| {
             n += pkg.builtins.len;

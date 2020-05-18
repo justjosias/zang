@@ -20,6 +20,7 @@ pub const CompiledScript = struct {
 };
 
 pub const CompileOptions = struct {
+    builtin_packages: []const BuiltinPackage,
     source: Source,
     errors_out: std.io.StreamSource.OutStream,
     errors_color: bool,
@@ -27,21 +28,18 @@ pub const CompileOptions = struct {
     dump_codegen_out: ?std.io.StreamSource.OutStream = null,
 };
 
-pub fn compile(
-    options: CompileOptions,
-    comptime builtin_packages: []const BuiltinPackage,
-    allocator: *std.mem.Allocator,
-) !CompiledScript {
+pub fn compile(allocator: *std.mem.Allocator, options: CompileOptions) !CompiledScript {
     const context: Context = .{
+        .builtin_packages = options.builtin_packages,
         .source = options.source,
         .errors_out = options.errors_out,
         .errors_color = options.errors_color,
     };
 
-    var parse_result = try parse(context, builtin_packages, allocator, options.dump_parse_out);
+    var parse_result = try parse(context, allocator, options.dump_parse_out);
     errdefer parse_result.deinit();
 
-    var codegen_result = try codegen(context, builtin_packages, parse_result, allocator, options.dump_codegen_out);
+    var codegen_result = try codegen(context, parse_result, allocator, options.dump_codegen_out);
     errdefer codegen_result.deinit();
 
     return CompiledScript{

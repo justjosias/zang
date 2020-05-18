@@ -1,3 +1,6 @@
+const context = @import("zangscript/context.zig");
+pub const Context = context.Context;
+
 const builtins = @import("zangscript/builtins.zig");
 pub const BuiltinEnum = builtins.BuiltinEnum;
 pub const BuiltinModule = builtins.BuiltinModule;
@@ -7,6 +10,11 @@ pub const zang_builtin_package = builtins.zang_builtin_package;
 
 const parse_ = @import("zangscript/parse.zig");
 pub const ModuleParam = parse_.ModuleParam;
+pub const ParamType = parse_.ParamType;
+pub const parse = parse_.parse;
+
+const codegen_ = @import("zangscript/codegen.zig");
+pub const codegen = codegen_.codegen;
 
 const compile_ = @import("zangscript/compile.zig");
 pub const CompileOptions = compile_.CompileOptions;
