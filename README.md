@@ -85,7 +85,7 @@ This is WIP. It's a DSL that can be compiled into Zig code. Writing Zangscript w
 
 ```
 zig build zangc
-zig-cache/zangc examples/script.txt > examples/scriptgen.zig
+zig-cache/zangc -o examples/scriptgen.zig examples/script.txt
 zig build script
 ```
 
