@@ -11,11 +11,22 @@ const BuiltinEnum = @import("builtins.zig").BuiltinEnum;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const parsePrintModule = @import("parse_print.zig").parsePrintModule;
 
+pub const Curve = struct {
+    name: []const u8,
+    points: []const CurvePoint,
+};
+
+pub const CurvePoint = struct {
+    t: NumberLiteral,
+    value: NumberLiteral,
+};
+
 pub const ParamType = union(enum) {
     boolean,
     buffer,
     constant,
     constant_or_buffer,
+    curve,
     one_of: BuiltinEnum,
 };
 
@@ -110,6 +121,7 @@ pub const EnumLiteral = struct {
 pub const ExpressionInner = union(enum) {
     call: Call,
     delay: Delay,
+    curve_ref: Token,
     literal_boolean: bool,
     literal_number: NumberLiteral,
     literal_enum_value: EnumLiteral,
@@ -135,6 +147,7 @@ const ParseState = struct {
     arena_allocator: *std.mem.Allocator,
     tokenizer: Tokenizer,
     enums: std.ArrayList(BuiltinEnum),
+    curves: std.ArrayList(Curve),
     modules: std.ArrayList(Module),
 };
 
@@ -156,6 +169,40 @@ const reserved_names = [_][]const u8{
     "sin",
     "sqrt",
 };
+
+fn defineCurve(ps: *ParseState) !void {
+    try ps.tokenizer.expectNext(.sym_dollar);
+    const curve_name_token = try ps.tokenizer.next();
+    if (curve_name_token.tt == .uppercase_name) {
+        return fail(ps.tokenizer.ctx, curve_name_token.source_range, "curve name must start with a lowercase letter", .{});
+    } else if (curve_name_token.tt != .lowercase_name) {
+        return ps.tokenizer.failExpected("curve name", curve_name_token);
+    }
+    try ps.tokenizer.expectNext(.kw_begin);
+    var points = std.ArrayList(CurvePoint).init(ps.arena_allocator);
+    while (true) {
+        const token = try ps.tokenizer.next();
+        switch (token.tt) {
+            .kw_end => break,
+            .number => |t| {
+                const value_token = try ps.tokenizer.next();
+                const value = switch (value_token.tt) {
+                    .number => |v| v,
+                    else => return ps.tokenizer.failExpected("number", value_token),
+                };
+                try points.append(.{
+                    .t = .{ .value = t, .verbatim = ps.tokenizer.ctx.source.getString(token.source_range) },
+                    .value = .{ .value = value, .verbatim = ps.tokenizer.ctx.source.getString(value_token.source_range) },
+                });
+            },
+            else => return ps.tokenizer.failExpected("number or `end`", token),
+        }
+    }
+    try ps.curves.append(.{
+        .name = ps.tokenizer.ctx.source.getString(curve_name_token.source_range),
+        .points = points.toOwnedSlice(),
+    });
+}
 
 fn expectParamType(ps: *ParseState) !ParamType {
     const type_token = try ps.tokenizer.next();
@@ -450,6 +497,13 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             try ps.tokenizer.expectNext(.sym_right_paren);
             return a;
         },
+        .sym_dollar => {
+            const name_token = try ps.tokenizer.next();
+            if (name_token.tt != .lowercase_name) {
+                return ps.tokenizer.failExpected("curve name", name_token);
+            }
+            return try createExpr(ps, loc0, .{ .curve_ref = name_token });
+        },
         .uppercase_name => {
             const s = ps.tokenizer.ctx.source.getString(token.source_range);
             const call = try parseCall(ps, ps_mod, scope, token, s);
@@ -580,6 +634,7 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
 
 pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
+    curves: []const Curve,
     modules: []const Module,
 
     pub fn deinit(self: *ParseResult) void {
@@ -599,6 +654,7 @@ pub fn parse(
         .arena_allocator = &arena.allocator,
         .tokenizer = Tokenizer.init(ctx),
         .enums = std.ArrayList(BuiltinEnum).init(&arena.allocator),
+        .curves = std.ArrayList(Curve).init(&arena.allocator),
         .modules = std.ArrayList(Module).init(&arena.allocator),
     };
 
@@ -620,6 +676,9 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .end_of_file => break,
+            .kw_defcurve => {
+                try defineCurve(&ps);
+            },
             .kw_def => {
                 try defineModule(&ps);
             },
@@ -638,6 +697,7 @@ pub fn parse(
 
     return ParseResult{
         .arena = arena,
+        .curves = ps.curves.toOwnedSlice(),
         .modules = modules,
     };
 }

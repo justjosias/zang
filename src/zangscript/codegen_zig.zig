@@ -67,6 +67,7 @@ const State = struct {
                     try self.print(".{identifier}", .{v.label});
                 }
             },
+            .curve_ref => |name| try self.print("&_curve_{str}", .{name}),
             .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
         }
     }
@@ -103,6 +104,15 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         break :blk n;
     };
 
+    for (script.curves) |curve| {
+        try self.print("\n", .{});
+        try self.print("const _curve_{str} = [_]zang.CurveNode{{\n", .{curve.name});
+        for (curve.points) |point| {
+            try self.print(".{{ .t = {number_literal}, .value = {number_literal} }},\n", .{ point.t, point.value });
+        }
+        try self.print("}};\n", .{});
+    }
+
     for (script.modules) |module, i| {
         const module_result = script.module_results[i];
         const inner = switch (module_result.inner) {
@@ -123,6 +133,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
                 .buffer => "[]const f32",
                 .constant => "f32",
                 .constant_or_buffer => "zang.ConstantOrBuffer",
+                .curve => "[]const zang.CurveNode",
                 .one_of => |e| e.zig_name,
             };
             try self.print("{identifier}: {str},\n", .{ param.name, type_name });
@@ -322,6 +333,7 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                         .literal_boolean => unreachable,
                         .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
                         .literal_enum_value => unreachable,
+                        .curve_ref => unreachable,
                         .self_param => |index| {
                             const param = module.params[index];
                             switch (param.param_type) {
@@ -329,6 +341,7 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                                 .buffer => try self.print("zang.buffer(params.{identifier})", .{param.name}),
                                 .constant => try self.print("zang.constant(params.{identifier})", .{param.name}),
                                 .constant_or_buffer => try self.print("params.{identifier}", .{param.name}),
+                                .curve => unreachable,
                                 .one_of => unreachable,
                             }
                         },

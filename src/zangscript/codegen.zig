@@ -2,10 +2,12 @@ const std = @import("std");
 const Context = @import("context.zig").Context;
 const SourceRange = @import("context.zig").SourceRange;
 const fail = @import("fail.zig").fail;
+const Token = @import("tokenize.zig").Token;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
+const Curve = @import("parse.zig").Curve;
 const Module = @import("parse.zig").Module;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
@@ -41,6 +43,7 @@ pub const ExpressionResult = union(enum) {
     nothing, // this means the result was already written into a result location
     temp_buffer: TempRef,
     temp_float: TempRef,
+    curve_ref: []const u8,
     literal_boolean: bool,
     literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
@@ -111,6 +114,7 @@ pub const CurrentDelay = struct {
 pub const CodegenModuleState = struct {
     arena_allocator: *std.mem.Allocator,
     ctx: Context,
+    curves: []const Curve,
     modules: []const Module,
     module_results: []const CodeGenModuleResult,
     module_index: usize,
@@ -197,7 +201,7 @@ fn isResultBoolean(self: *CodegenModuleState, result: ExpressionResult) bool {
         .nothing => unreachable,
         .literal_boolean => true,
         .self_param => |i| self.modules[self.module_index].params[i].param_type == .boolean,
-        .literal_number, .literal_enum_value, .temp_buffer, .temp_float => false,
+        .literal_number, .literal_enum_value, .temp_buffer, .temp_float, .curve_ref => false,
     };
 }
 
@@ -206,7 +210,7 @@ fn isResultFloat(self: *CodegenModuleState, result: ExpressionResult) bool {
         .nothing => unreachable,
         .temp_float, .literal_number => true,
         .self_param => |i| self.modules[self.module_index].params[i].param_type == .constant,
-        .literal_boolean, .literal_enum_value, .temp_buffer => false,
+        .literal_boolean, .literal_enum_value, .temp_buffer, .curve_ref => false,
     };
 }
 
@@ -215,7 +219,16 @@ fn isResultBuffer(self: *CodegenModuleState, result: ExpressionResult) bool {
         .nothing => unreachable,
         .temp_buffer => true,
         .self_param => |i| self.modules[self.module_index].params[i].param_type == .buffer,
-        .temp_float, .literal_boolean, .literal_number, .literal_enum_value => false,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => false,
+    };
+}
+
+fn isResultCurve(self: *CodegenModuleState, result: ExpressionResult) bool {
+    return switch (result) {
+        .nothing => unreachable,
+        .curve_ref => true,
+        .self_param => |i| self.modules[self.module_index].params[i].param_type == .curve,
+        .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => false,
     };
 }
 
@@ -251,7 +264,7 @@ fn isResultEnumValue(self: *CodegenModuleState, result: ExpressionResult, allowe
             }
             return true;
         },
-        .literal_boolean, .literal_number, .temp_buffer, .temp_float => return false,
+        .literal_boolean, .literal_number, .temp_buffer, .temp_float, .curve_ref => return false,
     }
 }
 
@@ -388,11 +401,23 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
             if (isResultFloat(self, result)) return result;
             return fail(self.ctx, sr, "expected float value", .{});
         },
+        .curve => {
+            if (isResultCurve(self, result)) return result;
+            return fail(self.ctx, sr, "expected curve value", .{});
+        },
         .one_of => |e| {
             if (isResultEnumValue(self, result, e.values)) return result;
             return fail(self.ctx, sr, "expected one of |", .{e.values});
         },
     }
+}
+
+fn genCurveRef(self: *CodegenModuleState, token: Token) !ExpressionResult {
+    const curve_name = self.ctx.source.getString(token.source_range);
+    for (self.curves) |curve| {
+        if (std.mem.eql(u8, curve.name, curve_name)) break;
+    } else return fail(self.ctx, token.source_range, "curve `<` does not exist", .{});
+    return ExpressionResult{ .curve_ref = curve_name };
 }
 
 fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, field_index: usize, args: []const CallArg) !ExpressionResult {
@@ -513,6 +538,7 @@ fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe
     const sr = expression.source_range;
 
     switch (expression.inner) {
+        .curve_ref => |token| return genCurveRef(self, token),
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload),
@@ -563,6 +589,7 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
         },
         .literal_boolean => return fail(self.ctx, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(self.ctx, sr, "expected buffer value, found enum value", .{}),
+        .curve_ref => return fail(self.ctx, sr, "expected buffer value, found curve", .{}),
         .self_param => |param_index| {
             switch (self.modules[self.module_index].params[param_index].param_type) {
                 .boolean => return fail(self.ctx, sr, "expected buffer value, found boolean", .{}),
@@ -572,6 +599,7 @@ fn commitOutput(self: *CodegenModuleState, sr: SourceRange, result: ExpressionRe
                 .constant => {
                     try addInstruction(self, .{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .self_param = param_index } } });
                 },
+                .curve => return fail(self.ctx, sr, "expected buffer value, found curve", .{}),
                 .one_of => |e| return fail(self.ctx, sr, "expected buffer value, found enum value", .{}),
             }
         },
@@ -725,6 +753,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     var state: CodegenModuleState = .{
         .arena_allocator = self.arena_allocator,
         .ctx = self.ctx,
+        .curves = self.parse_result.curves,
         .modules = self.parse_result.modules,
         .module_results = self.module_results,
         .module_index = module_index,

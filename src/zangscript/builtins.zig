@@ -72,6 +72,7 @@ fn getBuiltinParamType(comptime T: type) ParamType {
         f32 => .constant,
         []const f32 => .buffer,
         zang.ConstantOrBuffer => .constant_or_buffer,
+        []const zang.CurveNode => .curve,
         else => switch (@typeInfo(T)) {
             .Enum => |enum_info| return .{ .one_of = getBuiltinEnumFromEnumInfo(@typeName(T), enum_info) },
             .Union => |union_info| return .{ .one_of = getBuiltinEnumFromUnionInfo(@typeName(T), union_info) },
@@ -108,7 +109,7 @@ pub const zang_builtin_package = BuiltinPackage{
     .zig_package_name = "zang",
     .zig_import_path = "zang",
     .builtins = &[_]BuiltinModule{
-        // zang.Curve
+        getBuiltinModule(zang.Curve),
         getBuiltinModule(zang.Cycle),
         getBuiltinModule(zang.Decimator),
         getBuiltinModule(zang.Distortion),

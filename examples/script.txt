@@ -1,3 +1,39 @@
+defcurve $carrier_curve begin
+    0.0  440.0
+    0.5  880.0
+    1.0  110.0
+    1.5  660.0
+    2.0  330.0
+    3.9   20.0
+end
+
+defcurve $modulator_curve begin
+    0.0  110.0
+    1.5   55.0
+    3.0  220.0
+end
+
+// replicates example_curve.zig
+def CurvePlayer:
+    freq_mul: constant,
+begin
+    out SineOsc(
+        freq = Curve(
+            function = 'smoothstep',
+            curve = $carrier_curve,
+            freq_mul
+        ),
+        phase = SineOsc(
+            freq = Curve(
+                function = 'smoothstep',
+                curve = $modulator_curve,
+                freq_mul
+            ),
+            phase = 0
+        )
+    )
+end
+
 def Square:
     freq: cob,
     note_on: boolean,
@@ -70,7 +106,8 @@ def Instrument:
     freq: cob,
     note_on: boolean,
 begin
-    input = 0.5 * InnerInstrument(freq=freq*2, note_on)
+    //input = 0.5 * InnerInstrument(freq=freq*2, note_on)
+    input = CurvePlayer(freq_mul=1)
 
     out input
     //out Echoes(input, echo_volume=0.6, filter_type='low_pass')

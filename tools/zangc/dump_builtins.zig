@@ -12,6 +12,7 @@ pub fn dumpBuiltins(out: std.io.StreamSource.OutStream, builtin_packages: []cons
                     .constant => "constant",
                     .buffer => "buffer",
                     .constant_or_buffer => "cob",
+                    .curve => "curve",
                     .one_of => "one_of", // TODO dump in detail
                 };
                 try out.print("        {}: {}\n", .{ param.name, type_name });

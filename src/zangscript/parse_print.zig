@@ -73,6 +73,7 @@ const State = struct {
                 try self.print(")\n", .{});
             },
             .feedback => try self.print("feedback\n", .{}),
+            .curve_ref => |token| try self.print("${str}\n", .{self.source.getString(token.source_range)}),
             .literal_boolean => |v| try self.print("{bool}\n", .{v}),
             .literal_number => |v| try self.print("{number_literal}\n", .{v}),
             .literal_enum_value => |v| {

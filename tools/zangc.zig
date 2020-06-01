@@ -253,6 +253,7 @@ fn mainInner(stderr: *std.fs.File.OutStream) !void {
     var script: zangscript.CompiledScript = .{
         .parse_arena = parse_result.arena,
         .codegen_arena = codegen_result.arena,
+        .curves = parse_result.curves,
         .modules = parse_result.modules,
         .module_results = codegen_result.module_results,
     };
