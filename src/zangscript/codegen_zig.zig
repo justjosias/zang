@@ -67,7 +67,7 @@ const State = struct {
                     try self.print(".{identifier}", .{v.label});
                 }
             },
-            .curve_ref => |name| try self.print("&_curve_{str}", .{name}),
+            .curve_ref => |i| try self.print("&_curve_{str}", .{self.script.curves[i].name}),
             .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
         }
     }

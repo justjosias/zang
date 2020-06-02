@@ -43,7 +43,7 @@ pub const ExpressionResult = union(enum) {
     nothing, // this means the result was already written into a result location
     temp_buffer: TempRef,
     temp_float: TempRef,
-    curve_ref: []const u8,
+    curve_ref: usize,
     literal_boolean: bool,
     literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
@@ -414,10 +414,10 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
 
 fn genCurveRef(self: *CodegenModuleState, token: Token) !ExpressionResult {
     const curve_name = self.ctx.source.getString(token.source_range);
-    for (self.curves) |curve| {
-        if (std.mem.eql(u8, curve.name, curve_name)) break;
+    const index = for (self.curves) |curve, i| {
+        if (std.mem.eql(u8, curve.name, curve_name)) break i;
     } else return fail(self.ctx, token.source_range, "curve `<` does not exist", .{});
-    return ExpressionResult{ .curve_ref = curve_name };
+    return ExpressionResult{ .curve_ref = index };
 }
 
 fn genCall(self: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, field_index: usize, args: []const CallArg) !ExpressionResult {

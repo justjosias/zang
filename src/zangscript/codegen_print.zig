@@ -39,7 +39,7 @@ const State = struct {
                     try self.print("({expression_result})", .{payload.*});
                 }
             },
-            .curve_ref => |name| try self.print("${str}", .{name}),
+            .curve_ref => |i| try self.print("${str}", .{self.codegen_state.curves[i].name}),
             .self_param => |i| {
                 const module = self.codegen_state.modules[self.codegen_state.module_index];
                 try self.print("params.{str}", .{module.params[i].name});

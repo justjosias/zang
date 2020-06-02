@@ -29,6 +29,7 @@ pub const Value = union(enum) {
     buffer: []const f32,
     cob: zang.ConstantOrBuffer,
     boolean: bool,
+    curve: []const zang.CurveNode,
     one_of: struct { label: []const u8, payload: ?f32 },
 
     // turn a Value into a zig value
@@ -48,6 +49,10 @@ pub const Value = union(enum) {
             },
             zang.ConstantOrBuffer => switch (value) {
                 .cob => |v| return v,
+                else => unreachable,
+            },
+            []const zang.CurveNode => switch (value) {
+                .curve => |v| return v,
                 else => unreachable,
             },
             else => switch (@typeInfo(P)) {
@@ -94,6 +99,7 @@ pub const Value = union(enum) {
             .buffer => if (@TypeOf(zig_value) == []const f32) return Value{ .buffer = zig_value },
             .constant => if (@TypeOf(zig_value) == f32) return Value{ .constant = zig_value },
             .constant_or_buffer => if (@TypeOf(zig_value) == zang.ConstantOrBuffer) return Value{ .cob = zig_value },
+            .curve => if (@TypeOf(zig_value) == []const zang.CurveNode) return Value{ .curve = zig_value },
             .one_of => |builtin_enum| {
                 switch (@typeInfo(@TypeOf(zig_value))) {
                     .Enum => |enum_info| {
@@ -268,10 +274,14 @@ fn BuiltinModule(comptime T: type) type {
     };
 }
 
+const ScriptCurve = struct { start: usize, end: usize };
+
 const ScriptModule = struct {
     base: ModuleBase,
     allocator: *std.mem.Allocator,
     script: *const CompiledScript,
+    curve_points: []zang.CurveNode, // TODO shouldn't be per module. runtime should have something around CompiledScript with additions
+    curves: []ScriptCurve,
     module_index: usize,
     module_instances: []*ModuleBase,
     delay_instances: []zang.Delay(11025),
@@ -303,6 +313,30 @@ const ScriptModule = struct {
         self.allocator = allocator;
         self.script = script;
         self.module_index = module_index;
+
+        const num_curve_points = blk: {
+            var count: usize = 0;
+            for (script.curves) |curve| count += curve.points.len;
+            break :blk count;
+        };
+        self.curve_points = try allocator.alloc(zang.CurveNode, num_curve_points);
+        errdefer allocator.free(self.curve_points);
+        self.curves = try allocator.alloc(ScriptCurve, script.curves.len);
+        errdefer allocator.free(self.curves);
+        {
+            var index: usize = 0;
+            for (script.curves) |curve, i| {
+                self.curves[i].start = index;
+                for (curve.points) |point, j| {
+                    self.curve_points[index] = .{
+                        .t = point.t.value,
+                        .value = point.value.value,
+                    };
+                    index += 1;
+                }
+                self.curves[i].end = index;
+            }
+        }
 
         self.module_instances = try allocator.alloc(*ModuleBase, inner.resolved_fields.len);
         errdefer allocator.free(self.module_instances);
@@ -354,6 +388,8 @@ const ScriptModule = struct {
         self.allocator.free(self.callee_temps);
         self.allocator.free(self.temp_floats);
         self.allocator.free(self.delay_instances);
+        self.allocator.free(self.curve_points);
+        self.allocator.free(self.curves);
         for (self.module_instances) |module_instance| {
             module_instance.deinit();
         }
@@ -678,6 +714,7 @@ const ScriptModule = struct {
             .buffer => return .{ .buffer = self.getResultAsBuffer(p, result) },
             .constant => return .{ .constant = self.getResultAsFloat(p, result) },
             .constant_or_buffer => return .{ .cob = self.getResultAsCob(p, result) },
+            .curve => return .{ .curve = self.getResultAsCurve(p, result) },
             .one_of => |builtin_enum| {
                 return switch (result) {
                     .literal_enum_value => |literal| {
@@ -689,9 +726,9 @@ const ScriptModule = struct {
                     },
                     .self_param => |param_index| switch (p.params[param_index]) {
                         .one_of => |v| return .{ .one_of = v },
-                        .constant, .buffer, .cob, .boolean => unreachable,
+                        .constant, .buffer, .cob, .boolean, .curve => unreachable,
                     },
-                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number => unreachable,
+                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .curve_ref => unreachable,
                 };
             },
         }
@@ -702,9 +739,9 @@ const ScriptModule = struct {
             .temp_buffer => |temp_ref| p.temps[temp_ref.index],
             .self_param => |param_index| switch (p.params[param_index]) {
                 .buffer => |v| v,
-                .constant, .cob, .boolean, .one_of => unreachable,
+                .constant, .cob, .boolean, .curve, .one_of => unreachable,
             },
-            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
+            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => unreachable,
         };
     }
 
@@ -714,9 +751,9 @@ const ScriptModule = struct {
             .temp_float => |temp_ref| self.temp_floats[temp_ref.index],
             .self_param => |param_index| switch (p.params[param_index]) {
                 .constant => |v| v,
-                .buffer, .cob, .boolean, .one_of => unreachable,
+                .buffer, .cob, .boolean, .curve, .one_of => unreachable,
             },
-            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value => unreachable,
+            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
         };
     }
 
@@ -729,9 +766,9 @@ const ScriptModule = struct {
                 .constant => |v| zang.constant(v),
                 .buffer => |v| zang.buffer(v),
                 .cob => |v| v,
-                .boolean, .one_of => unreachable,
+                .boolean, .curve, .one_of => unreachable,
             },
-            .nothing, .literal_boolean, .literal_enum_value => unreachable,
+            .nothing, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
         };
     }
 
@@ -740,9 +777,23 @@ const ScriptModule = struct {
             .literal_boolean => |v| v,
             .self_param => |param_index| switch (p.params[param_index]) {
                 .boolean => |v| v,
-                .constant, .buffer, .cob, .one_of => unreachable,
+                .constant, .buffer, .cob, .curve, .one_of => unreachable,
             },
-            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value => unreachable,
+            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .curve_ref => unreachable,
+        };
+    }
+
+    fn getResultAsCurve(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) []const zang.CurveNode {
+        return switch (result) {
+            .curve_ref => |curve_index| {
+                const curve = self.curves[curve_index];
+                return self.curve_points[curve.start..curve.end];
+            },
+            .self_param => |param_index| switch (p.params[param_index]) {
+                .curve => |v| v,
+                .boolean, .constant, .buffer, .cob, .one_of => unreachable,
+            },
+            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
         };
     }
 };
