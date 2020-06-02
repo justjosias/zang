@@ -178,6 +178,12 @@ fn defineCurve(ps: *ParseState) !void {
     } else if (curve_name_token.tt != .lowercase_name) {
         return ps.tokenizer.failExpected("curve name", curve_name_token);
     }
+    const curve_name = ps.tokenizer.ctx.source.getString(curve_name_token.source_range);
+    for (ps.curves.items) |curve| {
+        if (std.mem.eql(u8, curve.name, curve_name)) {
+            return fail(ps.tokenizer.ctx, curve_name_token.source_range, "redeclaration of curve `<`", .{});
+        }
+    }
     try ps.tokenizer.expectNext(.kw_begin);
     var points = std.ArrayList(CurvePoint).init(ps.arena_allocator);
     var maybe_last_t: ?f32 = null;
@@ -206,7 +212,7 @@ fn defineCurve(ps: *ParseState) !void {
         }
     }
     try ps.curves.append(.{
-        .name = ps.tokenizer.ctx.source.getString(curve_name_token.source_range),
+        .name = curve_name,
         .points = points.toOwnedSlice(),
     });
 }
@@ -237,6 +243,11 @@ fn defineModule(ps: *ParseState) !void {
         return ps.tokenizer.failExpected("module name", module_name_token);
     }
     const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
+    for (ps.modules.items) |module| {
+        if (std.mem.eql(u8, module.name, module_name)) {
+            return fail(ps.tokenizer.ctx, module_name_token.source_range, "redeclaration of module `<`", .{});
+        }
+    }
     try ps.tokenizer.expectNext(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
