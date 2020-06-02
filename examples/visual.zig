@@ -480,10 +480,10 @@ pub const DrawWaveform = struct {
         sample_max *= mul;
 
         const y_mid = self.height / 2;
-        const sample_min_clipped = std.math.max(-1.0, sample_min);
-        const sample_max_clipped = std.math.min(1.0, sample_max);
-        var y0 = @floatToInt(usize, @intToFloat(f32, y_mid) - sample_max * @intToFloat(f32, self.height / 2) + 0.5);
-        var y1 = @floatToInt(usize, @intToFloat(f32, y_mid) - sample_min * @intToFloat(f32, self.height / 2) + 0.5);
+        const fy_mid = @intToFloat(f32, y_mid);
+        const fy_max = @intToFloat(f32, self.height - 1);
+        const y0 = @floatToInt(usize, std.math.clamp(fy_mid - sample_max * fy_mid, 0, fy_max) + 0.5);
+        const y1 = @floatToInt(usize, std.math.clamp(fy_mid - sample_min * fy_mid, 0, fy_max) + 0.5);
         var sx = self.drawindex;
         var sy: usize = 0;
         var until: usize = undefined;
@@ -520,7 +520,7 @@ pub const DrawWaveform = struct {
         }
         if (sample_min <= -1.0) {
             sy -= 1;
-            self.buffer[sy * self.width + sx] = background_color;
+            self.buffer[sy * self.width + sx] = clipped_color;
         }
 
         self.dirty = true;
