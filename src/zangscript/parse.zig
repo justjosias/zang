@@ -180,11 +180,18 @@ fn defineCurve(ps: *ParseState) !void {
     }
     try ps.tokenizer.expectNext(.kw_begin);
     var points = std.ArrayList(CurvePoint).init(ps.arena_allocator);
+    var maybe_last_t: ?f32 = null;
     while (true) {
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .kw_end => break,
             .number => |t| {
+                if (maybe_last_t) |last_t| {
+                    if (t <= last_t) {
+                        return fail(ps.tokenizer.ctx, token.source_range, "time value must be greater than the previous time value", .{});
+                    }
+                }
+                maybe_last_t = t;
                 const value_token = try ps.tokenizer.next();
                 const value = switch (value_token.tt) {
                     .number => |v| v,
