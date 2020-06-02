@@ -219,6 +219,7 @@ fn expectParamType(ps: *ParseState) !ParamType {
         if (std.mem.eql(u8, type_name, "constant")) return .constant;
         if (std.mem.eql(u8, type_name, "waveform")) return .buffer;
         if (std.mem.eql(u8, type_name, "cob")) return .constant_or_buffer;
+        if (std.mem.eql(u8, type_name, "curve")) return .curve;
         for (ps.enums.items) |e| {
             if (std.mem.eql(u8, e.name, type_name)) {
                 return ParamType{ .one_of = e };
