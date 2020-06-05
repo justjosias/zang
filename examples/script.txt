@@ -1,3 +1,12 @@
+deftrack $my_track:
+    freq: constant,
+    note_on: boolean,
+begin
+    0.0 (freq=440, note_on=true)
+    1.0 (freq=880, note_on=true)
+    2.0 (freq=880, note_on=false)
+end
+
 defcurve $carrier_curve begin
     0.0  440.0
     0.5  880.0
@@ -19,15 +28,9 @@ def CurvePlayerInner:
     freq_mul: constant,
 begin
     out SineOsc(
-        freq = freq_mul * Curve(
-            function = 'linear',
-            curve = carrier_curve
-        ),
+        freq = freq_mul * Curve(curve=carrier_curve, function='linear'),
         phase = SineOsc(
-            freq = freq_mul * Curve(
-                function = 'smoothstep',
-                curve = modulator_curve
-            ),
+            freq = freq_mul * Curve(curve=modulator_curve, function='smoothstep'),
             phase = 0
         )
     )

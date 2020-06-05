@@ -21,6 +21,17 @@ pub const CurvePoint = struct {
     value: NumberLiteral,
 };
 
+pub const Track = struct {
+    name: []const u8,
+    params: []const ModuleParam,
+    notes: []const TrackNote,
+};
+
+pub const TrackNote = struct {
+    t: NumberLiteral,
+    args: []const CallArg,
+};
+
 pub const ParamType = union(enum) {
     boolean,
     buffer,
@@ -148,6 +159,7 @@ const ParseState = struct {
     tokenizer: Tokenizer,
     enums: std.ArrayList(BuiltinEnum),
     curves: std.ArrayList(Curve),
+    tracks: std.ArrayList(Track),
     modules: std.ArrayList(Module),
 };
 
@@ -235,29 +247,7 @@ fn expectParamType(ps: *ParseState) !ParamType {
     return ps.tokenizer.failExpected("param type", type_token);
 }
 
-fn defineModule(ps: *ParseState) !void {
-    const module_name_token = try ps.tokenizer.next();
-    if (module_name_token.tt == .lowercase_name) {
-        return fail(ps.tokenizer.ctx, module_name_token.source_range, "module name must start with a capital letter", .{});
-    } else if (module_name_token.tt != .uppercase_name) {
-        return ps.tokenizer.failExpected("module name", module_name_token);
-    }
-    const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
-    for (ps.modules.items) |module| {
-        if (std.mem.eql(u8, module.name, module_name)) {
-            return fail(ps.tokenizer.ctx, module_name_token.source_range, "redeclaration of module `<`", .{});
-        }
-    }
-    try ps.tokenizer.expectNext(.sym_colon);
-
-    var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
-
-    // all modules have an implicitly declared param called "sample_rate"
-    try params.append(.{
-        .name = "sample_rate",
-        .param_type = .constant,
-    });
-
+fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam)) !void {
     while (true) {
         const token = try ps.tokenizer.next();
         switch (token.tt) {
@@ -286,6 +276,74 @@ fn defineModule(ps: *ParseState) !void {
             else => return ps.tokenizer.failExpected("param declaration or `begin`", token),
         }
     }
+}
+
+fn defineTrack(ps: *ParseState) !void {
+    try ps.tokenizer.expectNext(.sym_dollar);
+    const track_name_token = try ps.tokenizer.next();
+    if (track_name_token.tt == .uppercase_name) {
+        return fail(ps.tokenizer.ctx, track_name_token.source_range, "track name must start with a lowercase letter", .{});
+    } else if (track_name_token.tt != .lowercase_name) {
+        return ps.tokenizer.failExpected("track name", track_name_token);
+    }
+    const track_name = ps.tokenizer.ctx.source.getString(track_name_token.source_range);
+    for (ps.tracks.items) |track| {
+        if (std.mem.eql(u8, track.name, track_name)) {
+            return fail(ps.tokenizer.ctx, track_name_token.source_range, "redeclaration of track `<`", .{});
+        }
+    }
+    try ps.tokenizer.expectNext(.sym_colon);
+
+    var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
+    try parseParamDeclarations(ps, &params);
+
+    var notes = std.ArrayList(TrackNote).init(ps.arena_allocator);
+    var maybe_last_t: ?f32 = null;
+    while (true) {
+        const token = try ps.tokenizer.next();
+        switch (token.tt) {
+            .kw_end => break,
+            .number => |t| {
+                if (maybe_last_t) |last_t| {
+                    if (t <= last_t) {
+                        return fail(ps.tokenizer.ctx, token.source_range, "time value must be greater than the previous time value", .{});
+                    }
+                }
+                maybe_last_t = t;
+                try notes.append(.{
+                    .t = .{ .value = t, .verbatim = ps.tokenizer.ctx.source.getString(token.source_range) },
+                    .args = try parseCallArgs(ps, null, null),
+                });
+            },
+            else => return ps.tokenizer.failExpected("number or `end`", token),
+        }
+    }
+    try ps.tracks.append(.{
+        .name = track_name,
+        .params = params.toOwnedSlice(),
+        .notes = notes.toOwnedSlice(),
+    });
+}
+
+fn defineModule(ps: *ParseState) !void {
+    const module_name_token = try ps.tokenizer.next();
+    if (module_name_token.tt == .lowercase_name) {
+        return fail(ps.tokenizer.ctx, module_name_token.source_range, "module name must start with a capital letter", .{});
+    } else if (module_name_token.tt != .uppercase_name) {
+        return ps.tokenizer.failExpected("module name", module_name_token);
+    }
+    const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
+    for (ps.modules.items) |module| {
+        if (std.mem.eql(u8, module.name, module_name)) {
+            return fail(ps.tokenizer.ctx, module_name_token.source_range, "redeclaration of module `<`", .{});
+        }
+    }
+    try ps.tokenizer.expectNext(.sym_colon);
+
+    var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
+    // all modules have an implicitly declared param called "sample_rate"
+    try params.append(.{ .name = "sample_rate", .param_type = .constant });
+    try parseParamDeclarations(ps, &params);
 
     // parse paint block
     var ps_mod: ParseModuleState = .{
@@ -317,13 +375,7 @@ const ParseError = error{
     OutOfMemory,
 };
 
-fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, field_name_token: Token, field_name: []const u8) ParseError!Call {
-    // each call implicitly adds a "field" (child module), since modules have state
-    const field_index = ps_mod.fields.items.len;
-    try ps_mod.fields.append(.{
-        .type_token = field_name_token,
-    });
-
+fn parseCallArgs(ps: *ParseState, maybe_ps_mod: ?*ParseModuleState, maybe_scope: ?*const Scope) ![]const CallArg {
     try ps.tokenizer.expectNext(.sym_left_paren);
     var args = std.ArrayList(CallArg).init(ps.arena_allocator);
     var token = try ps.tokenizer.next();
@@ -340,7 +392,14 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
         const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
         const equals_token = try ps.tokenizer.next();
         if (equals_token.tt == .sym_equals) {
-            const subexpr = try expectExpression(ps, ps_mod, scope);
+            const subexpr = blk: {
+                if (maybe_ps_mod) |ps_mod| {
+                    if (maybe_scope) |scope| {
+                        break :blk try expectExpression(ps, ps_mod, scope);
+                    }
+                }
+                break :blk try expectLiteral(ps);
+            };
             try args.append(.{
                 .param_name = param_name,
                 .param_name_token = token,
@@ -348,20 +407,34 @@ fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, fi
             });
             token = try ps.tokenizer.next();
         } else {
-            // shorthand param passing: `val` expands to `val=val`
-            const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
-            const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
-            try args.append(.{
-                .param_name = param_name,
-                .param_name_token = token,
-                .value = subexpr,
-            });
-            token = equals_token;
+            if (maybe_ps_mod) |ps_mod| {
+                if (maybe_scope) |scope| {
+                    // shorthand param passing: `val` expands to `val=val`
+                    const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
+                    const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
+                    try args.append(.{
+                        .param_name = param_name,
+                        .param_name_token = token,
+                        .value = subexpr,
+                    });
+                    token = equals_token;
+                }
+            }
         }
     }
+    return args.toOwnedSlice();
+}
+
+fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, field_name_token: Token, field_name: []const u8) !Call {
+    // each call implicitly adds a "field" (child module), since modules have state
+    const field_index = ps_mod.fields.items.len;
+    try ps_mod.fields.append(.{
+        .type_token = field_name_token,
+    });
+    const args = try parseCallArgs(ps, ps_mod, scope);
     return Call{
         .field_index = field_index,
-        .args = args.toOwnedSlice(),
+        .args = args,
     };
 }
 
@@ -597,6 +670,46 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     }
 }
 
+// this is a crippled version of expectExpression to be used when parsing "tracks",
+// where we don't have a "ps_mod" or "scope".
+fn expectLiteral(ps: *ParseState) ParseError!*const Expression {
+    const token = try ps.tokenizer.next();
+    const loc0 = token.source_range.loc0;
+
+    switch (token.tt) {
+        .kw_false => {
+            return try createExpr(ps, loc0, .{ .literal_boolean = false });
+        },
+        .kw_true => {
+            return try createExpr(ps, loc0, .{ .literal_boolean = true });
+        },
+        .number => |n| {
+            return try createExpr(ps, loc0, .{
+                .literal_number = .{
+                    .value = n,
+                    .verbatim = ps.tokenizer.ctx.source.getString(token.source_range),
+                },
+            });
+        },
+        .enum_value => {
+            const s = ps.tokenizer.ctx.source.getString(token.source_range);
+            const peeked_token = try ps.tokenizer.peek();
+            if (peeked_token.tt == .sym_left_paren) {
+                _ = try ps.tokenizer.next();
+                const payload = try expectLiteral(ps);
+                try ps.tokenizer.expectNext(.sym_right_paren);
+
+                const enum_literal: EnumLiteral = .{ .label = s, .payload = payload };
+                return try createExpr(ps, loc0, .{ .literal_enum_value = enum_literal });
+            } else {
+                const enum_literal: EnumLiteral = .{ .label = s, .payload = null };
+                return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = enum_literal });
+            }
+        },
+        else => return ps.tokenizer.failExpected("literal value", token),
+    }
+}
+
 fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, name_token: Token) !void {
     const name = ps.tokenizer.ctx.source.getString(name_token.source_range);
     try ps.tokenizer.expectNext(.sym_equals);
@@ -654,6 +767,7 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
 pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
     curves: []const Curve,
+    tracks: []const Track,
     modules: []const Module,
 
     pub fn deinit(self: *ParseResult) void {
@@ -674,6 +788,7 @@ pub fn parse(
         .tokenizer = Tokenizer.init(ctx),
         .enums = std.ArrayList(BuiltinEnum).init(&arena.allocator),
         .curves = std.ArrayList(Curve).init(&arena.allocator),
+        .tracks = std.ArrayList(Track).init(&arena.allocator),
         .modules = std.ArrayList(Module).init(&arena.allocator),
     };
 
@@ -695,12 +810,9 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .end_of_file => break,
-            .kw_defcurve => {
-                try defineCurve(&ps);
-            },
-            .kw_def => {
-                try defineModule(&ps);
-            },
+            .kw_defcurve => try defineCurve(&ps),
+            .kw_deftrack => try defineTrack(&ps),
+            .kw_def => try defineModule(&ps),
             else => return ps.tokenizer.failExpected("`def` or end of file", token),
         }
     }
@@ -717,6 +829,7 @@ pub fn parse(
     return ParseResult{
         .arena = arena,
         .curves = ps.curves.toOwnedSlice(),
+        .tracks = ps.tracks.toOwnedSlice(),
         .modules = modules,
     };
 }
