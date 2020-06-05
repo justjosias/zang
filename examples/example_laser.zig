@@ -78,8 +78,9 @@ const LaserPlayer = struct {
             .sample_rate = params.sample_rate,
             .function = .smoothstep,
             .curve = &modulator_curve,
-            .freq_mul = params.freq_mul * params.modulator_mul,
         });
+        zang.multiplyWithScalar(span, temps[0], params.freq_mul * params.modulator_mul);
+
         zang.zero(span, temps[1]);
         self.modulator.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
@@ -87,26 +88,29 @@ const LaserPlayer = struct {
             .phase = zang.constant(0.0),
         });
         zang.multiplyWithScalar(span, temps[1], params.modulator_rad);
+
         zang.zero(span, temps[0]);
         self.carrier_curve.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .function = .smoothstep,
             .curve = &carrier_curve,
-            .freq_mul = params.freq_mul * params.carrier_mul,
         });
+        zang.multiplyWithScalar(span, temps[0], params.freq_mul * params.carrier_mul);
+
         zang.zero(span, temps[2]);
         self.carrier.paint(span, .{temps[2]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.buffer(temps[1]),
         });
+
         zang.zero(span, temps[0]);
         self.volume_curve.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .function = .smoothstep,
             .curve = &volume_curve,
-            .freq_mul = 1.0,
         });
+
         zang.multiply(span, out, temps[0], temps[2]);
     }
 };

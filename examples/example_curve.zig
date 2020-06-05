@@ -66,21 +66,24 @@ const CurvePlayer = struct {
             .sample_rate = params.sample_rate,
             .function = .smoothstep,
             .curve = &modulator_curve,
-            .freq_mul = freq_mul,
         });
+        zang.multiplyWithScalar(span, temps[0], freq_mul);
+
         zang.zero(span, temps[1]);
         self.modulator.paint(span, .{temps[1]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
             .phase = zang.constant(0.0),
         });
+
         zang.zero(span, temps[0]);
         self.carrier_curve.paint(span, .{temps[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .function = .smoothstep,
             .curve = &carrier_curve,
-            .freq_mul = freq_mul,
         });
+        zang.multiplyWithScalar(span, temps[0], freq_mul);
+
         self.carrier.paint(span, .{outputs[0]}, .{}, note_id_changed, .{
             .sample_rate = params.sample_rate,
             .freq = zang.buffer(temps[0]),
@@ -121,13 +124,7 @@ pub const MainModule = struct {
     ) void {
         var ctr = self.trigger.counter(span, self.iq.consume());
         while (self.trigger.next(&ctr)) |result| {
-            self.player.paint(
-                result.span,
-                outputs,
-                temps,
-                result.note_id_changed,
-                result.params,
-            );
+            self.player.paint(result.span, outputs, temps, result.note_id_changed, result.params);
         }
     }
 

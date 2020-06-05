@@ -13,24 +13,34 @@ defcurve $modulator_curve begin
     3.0  220.0
 end
 
+def CurvePlayerInner:
+    carrier_curve: curve,
+    modulator_curve: curve,
+    freq_mul: constant,
+begin
+    out SineOsc(
+        freq = freq_mul * Curve(
+            function = 'linear',
+            curve = carrier_curve
+        ),
+        phase = SineOsc(
+            freq = freq_mul * Curve(
+                function = 'smoothstep',
+                curve = modulator_curve
+            ),
+            phase = 0
+        )
+    )
+end
+
 // replicates example_curve.zig
 def CurvePlayer:
     freq_mul: constant,
 begin
-    out SineOsc(
-        freq = Curve(
-            function = 'smoothstep',
-            curve = $carrier_curve,
-            freq_mul
-        ),
-        phase = SineOsc(
-            freq = Curve(
-                function = 'smoothstep',
-                curve = $modulator_curve,
-                freq_mul
-            ),
-            phase = 0
-        )
+    out CurvePlayerInner(
+        freq_mul,
+        carrier_curve = $carrier_curve,
+        modulator_curve = $modulator_curve
     )
 end
 
