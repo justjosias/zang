@@ -18,7 +18,8 @@ const examples = [_][]const u8{
     "mouse",
     "two",
     "script",
-    "script_runtime",
+    "script_runtime_mono",
+    "script_runtime_poly",
     "vibrato",
 };
 

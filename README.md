@@ -93,7 +93,8 @@ The scripts can also be evaluated at runtime. The result should be the same as w
 
 ```
 # loads and runs examples/script.txt
-zig build script_runtime
+zig build script_runtime_mono  # monophonic, or
+zig build script_runtime_poly  # polyphonic
 ```
 
 If you set the `ZANG_LISTEN_PORT` environment variable, the zang example program will open a UDP socket. Send the string `reload` to this port and the example will reload (same as pressing Enter). You can hook this up to a filesystem-watching tool to get reload-on-save (see the included script `watch_script.sh` which uses `inotifywait`).
