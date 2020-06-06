@@ -88,9 +88,6 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         .module = null,
         .helper = PrintHelper.init(out),
     };
-    var failed = false;
-    defer self.helper.deinit(!failed);
-    errdefer failed = true;
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
@@ -200,6 +197,8 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("}}\n", .{});
         try self.print("}};\n", .{});
     }
+
+    self.helper.finish();
 }
 
 fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner, instr: Instruction, span: []const u8) (error{NoModule} || std.os.WriteError)!void {
