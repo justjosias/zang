@@ -103,7 +103,9 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
         .module = module,
         .helper = PrintHelper.init(out),
     };
-    defer self.helper.deinit();
+    var failed = false;
+    defer self.helper.deinit(!failed);
+    errdefer failed = true;
 
     if (module.info) |info| {
         try self.print("module '{str}'\n", .{module.name});

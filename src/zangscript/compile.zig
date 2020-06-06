@@ -3,16 +3,20 @@ const Context = @import("context.zig").Context;
 const Source = @import("context.zig").Source;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const Curve = @import("parse.zig").Curve;
+const Track = @import("parse.zig").Track;
 const Module = @import("parse.zig").Module;
 const parse = @import("parse.zig").parse;
 const CodeGenModuleResult = @import("codegen.zig").CodeGenModuleResult;
+const CodeGenTrackResult = @import("codegen.zig").CodeGenTrackResult;
 const codegen = @import("codegen.zig").codegen;
 
 pub const CompiledScript = struct {
     parse_arena: std.heap.ArenaAllocator,
     codegen_arena: std.heap.ArenaAllocator,
     curves: []const Curve,
+    tracks: []const Track,
     modules: []const Module,
+    track_results: []const CodeGenTrackResult,
     module_results: []const CodeGenModuleResult,
 
     pub fn deinit(self: *CompiledScript) void {
@@ -48,7 +52,9 @@ pub fn compile(allocator: *std.mem.Allocator, options: CompileOptions) !Compiled
         .parse_arena = parse_result.arena,
         .codegen_arena = codegen_result.arena,
         .curves = parse_result.curves,
+        .tracks = parse_result.tracks,
         .modules = parse_result.modules,
+        .track_results = codegen_result.track_results,
         .module_results = codegen_result.module_results,
     };
 }

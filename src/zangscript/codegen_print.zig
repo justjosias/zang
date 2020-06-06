@@ -64,7 +64,9 @@ pub fn printBytecode(out: std.io.StreamSource.OutStream, codegen_state: *const C
         .codegen_state = codegen_state,
         .helper = PrintHelper.init(out),
     };
-    defer self.helper.deinit();
+    var failed = false;
+    defer self.helper.deinit(!failed);
+    errdefer failed = true;
 
     const self_module = codegen_state.modules[codegen_state.module_index];
 

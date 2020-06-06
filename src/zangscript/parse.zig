@@ -29,6 +29,7 @@ pub const Track = struct {
 
 pub const TrackNote = struct {
     t: NumberLiteral,
+    args_source_range: SourceRange,
     args: []const CallArg,
 };
 
@@ -310,9 +311,12 @@ fn defineTrack(ps: *ParseState) !void {
                     }
                 }
                 maybe_last_t = t;
+                const loc0 = ps.tokenizer.loc; // FIXME - not perfect - includes whitespace before the `(`
+                const args = try parseCallArgs(ps, null, null);
                 try notes.append(.{
                     .t = .{ .value = t, .verbatim = ps.tokenizer.ctx.source.getString(token.source_range) },
-                    .args = try parseCallArgs(ps, null, null),
+                    .args_source_range = .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc },
+                    .args = args,
                 });
             },
             else => return ps.tokenizer.failExpected("number or `end`", token),

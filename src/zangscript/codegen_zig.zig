@@ -53,7 +53,6 @@ const State = struct {
     }
 
     fn printExpressionResult(self: *State, result: ExpressionResult) (error{NoModule} || std.os.WriteError)!void {
-        const module = self.module orelse return error.NoModule;
         switch (result) {
             .nothing => unreachable,
             .temp_buffer => |temp_ref| try self.print("temps[{usize}]", .{temp_ref.index}),
@@ -68,7 +67,10 @@ const State = struct {
                 }
             },
             .curve_ref => |i| try self.print("&_curve_{str}", .{self.script.curves[i].name}),
-            .self_param => |i| try self.print("params.{identifier}", .{module.params[i].name}),
+            .self_param => |i| {
+                const module = self.module orelse return error.NoModule;
+                try self.print("params.{identifier}", .{module.params[i].name});
+            },
         }
     }
 
@@ -86,7 +88,9 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         .module = null,
         .helper = PrintHelper.init(out),
     };
-    defer self.helper.deinit();
+    var failed = false;
+    defer self.helper.deinit(!failed);
+    errdefer failed = true;
 
     try self.print("const std = @import(\"std\");\n", .{}); // for std.math.pow
     try self.print("const zang = @import(\"zang\");\n", .{});
@@ -109,6 +113,34 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("const _curve_{str} = [_]zang.CurveNode{{\n", .{curve.name});
         for (curve.points) |point| {
             try self.print(".{{ .t = {number_literal}, .value = {number_literal} }},\n", .{ point.t, point.value });
+        }
+        try self.print("}};\n", .{});
+    }
+
+    for (script.tracks) |track, track_index| {
+        try self.print("\n", .{});
+        try self.print("const _track_{str} = [_]zang.Notes(struct {{\n", .{track.name});
+        for (track.params) |param| {
+            const type_name = switch (param.param_type) {
+                .boolean => "bool",
+                .buffer => "[]const f32",
+                .constant => "f32",
+                .constant_or_buffer => "zang.ConstantOrBuffer",
+                .curve => "[]const zang.CurveNode",
+                .one_of => |e| e.zig_name,
+            };
+            try self.print("{identifier}: {str},\n", .{ param.name, type_name });
+        }
+        try self.print("}}).SongEvent{{\n", .{});
+        for (track.notes) |note, note_index| {
+            try self.print(".{{ .t = {number_literal}, .note_id = {usize}, .params = .{{", .{ note.t, note_index + 1 });
+            for (track.params) |param, param_index| {
+                if (param_index > 0) {
+                    try self.print(",", .{});
+                }
+                try self.print(" .{str} = {expression_result}", .{ param.name, script.track_results[track_index].note_values[note_index][param_index] });
+            }
+            try self.print(" }} }},\n", .{});
         }
         try self.print("}};\n", .{});
     }

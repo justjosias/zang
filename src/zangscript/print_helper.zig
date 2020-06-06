@@ -13,8 +13,8 @@ pub const PrintHelper = struct {
         };
     }
 
-    pub fn deinit(self: *PrintHelper) void {
-        std.debug.assert(self.indentation == 0);
+    pub fn deinit(self: *PrintHelper, check: bool) void {
+        if (check) std.debug.assert(self.indentation == 0);
     }
 
     pub fn print(self: *PrintHelper, outer_self: var, comptime fmt: []const u8, args: var) !void {

@@ -254,7 +254,9 @@ fn mainInner(stderr: *std.fs.File.OutStream) !void {
         .parse_arena = parse_result.arena,
         .codegen_arena = codegen_result.arena,
         .curves = parse_result.curves,
+        .tracks = parse_result.tracks,
         .modules = parse_result.modules,
+        .track_results = codegen_result.track_results,
         .module_results = codegen_result.module_results,
     };
     // (don't use script.deinit() - we are already deiniting parse and codegen results individually)

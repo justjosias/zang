@@ -412,6 +412,25 @@ fn commitCalleeParam(self: *CodegenModuleState, sr: SourceRange, result: Express
     }
 }
 
+// crippled version of commitCalleeParam used by tracks (there is no module present
+// and therefore we can't generate instructions)
+fn commitCalleeParamLiteral(ctx: Context, sr: SourceRange, result: ExpressionResult, callee_param_type: ParamType) !ExpressionResult {
+    switch (callee_param_type) {
+        .boolean => switch (result) {
+            .literal_boolean => return result,
+            else => return fail(ctx, sr, "expected boolean value", .{}),
+        },
+        .constant => switch (result) {
+            .literal_number => return result,
+            else => return fail(ctx, sr, "expected float value", .{}),
+        },
+        //.one_of => |e| {
+        //    if (isResultEnumValue(self, result, e.values)) return result;
+        //    return fail(ctx, sr, "expected one of |", .{e.values});
+        //},
+        else => return fail(ctx, sr, "unsupported param type (not implemented)", .{}),
+    }
+}
 fn genCurveRef(self: *CodegenModuleState, token: Token) !ExpressionResult {
     const curve_name = self.ctx.source.getString(token.source_range);
     const index = for (self.curves) |curve, i| {
@@ -533,6 +552,20 @@ pub const GenError = error{
     OutOfMemory,
 };
 
+// crippled version of genExpression which only works on literals. used for track definitions
+// (when there is no active module and thus no instructions)
+fn genLiteral(ctx: Context, arena_allocator: *std.mem.Allocator, expr: *const Expression) !ExpressionResult {
+    const sr = expr.source_range;
+
+    switch (expr.inner) {
+        //.curve_ref => |token| return genCurveRef(self, token),
+        .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
+        .literal_number => |value| return ExpressionResult{ .literal_number = value },
+        else => return fail(ctx, sr, "expected a literal value", .{}),
+        //.literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload),
+    }
+}
+
 // generate bytecode instructions for an expression
 fn genExpression(self: *CodegenModuleState, expression: *const Expression, maybe_result_loc: ?BufferDest) GenError!ExpressionResult {
     const sr = expression.source_range;
@@ -625,6 +658,10 @@ fn genTopLevelStatement(self: *CodegenModuleState, statement: Statement) !void {
     }
 }
 
+pub const CodeGenTrackResult = struct {
+    note_values: []const []const ExpressionResult, // values in order of track params
+};
+
 pub const CodeGenCustomModuleInner = struct {
     resolved_fields: []const usize, // owned slice
     delays: []const DelayDecl, // owned slice
@@ -643,6 +680,7 @@ pub const CodeGenModuleResult = struct {
 
 pub const CodeGenResult = struct {
     arena: std.heap.ArenaAllocator,
+    track_results: []const CodeGenTrackResult,
     module_results: []const CodeGenModuleResult,
 
     pub fn deinit(self: *CodeGenResult) void {
@@ -672,6 +710,37 @@ pub fn codegen(
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
+    // tracks
+    var track_results = try arena.allocator.alloc(CodeGenTrackResult, parse_result.tracks.len);
+    for (parse_result.tracks) |track, track_index| {
+        var notes = try arena.allocator.alloc([]const ExpressionResult, track.notes.len);
+        for (track.notes) |note, note_index| {
+            for (note.args) |a| {
+                for (track.params) |param| {
+                    if (std.mem.eql(u8, a.param_name, param.name)) break;
+                } else return fail(ctx, a.param_name_token.source_range, "track `#` has no param called `<`", .{track.name});
+            }
+            var arg_results = try arena.allocator.alloc(ExpressionResult, track.params.len);
+            for (track.params) |param, i| {
+                // find this arg in the call node
+                var maybe_arg: ?CallArg = null;
+                for (note.args) |a| {
+                    if (!std.mem.eql(u8, a.param_name, param.name)) continue;
+                    if (maybe_arg != null) return fail(ctx, a.param_name_token.source_range, "param `<` provided more than once", .{});
+                    maybe_arg = a;
+                }
+                const arg = maybe_arg orelse return fail(ctx, note.args_source_range, "track note is missing param `#`", .{param.name});
+                const result = try genLiteral(ctx, &arena.allocator, arg.value);
+                arg_results[i] = try commitCalleeParamLiteral(ctx, arg.value.source_range, result, param.param_type);
+            }
+            notes[note_index] = arg_results;
+        }
+        track_results[track_index] = .{
+            .note_values = notes,
+        };
+    }
+
+    // modules
     var module_visited = try inner_allocator.alloc(bool, parse_result.modules.len);
     defer inner_allocator.free(module_visited);
 
@@ -709,6 +778,7 @@ pub fn codegen(
 
     return CodeGenResult{
         .arena = arena,
+        .track_results = track_results,
         .module_results = module_results,
     };
 }
