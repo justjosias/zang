@@ -1,4 +1,4 @@
-deftrack $my_track:
+deftrack @my_track:
     freq: constant,
     note_on: boolean,
 begin

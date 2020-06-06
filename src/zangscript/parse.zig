@@ -290,7 +290,7 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam)) 
 }
 
 fn defineTrack(ps: *ParseState) !void {
-    try ps.tokenizer.expectNext(.sym_dollar);
+    try ps.tokenizer.expectNext(.sym_at);
     const track_name_token = try ps.tokenizer.next();
     if (track_name_token.tt == .uppercase_name) {
         return fail(ps.tokenizer.ctx, track_name_token.source_range, "track name must start with a lowercase letter", .{});
