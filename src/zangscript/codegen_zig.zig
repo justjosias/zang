@@ -3,6 +3,7 @@ const PrintHelper = @import("print_helper.zig").PrintHelper;
 const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const ParseResult = @import("parse.zig").ParseResult;
 const Module = @import("parse.zig").Module;
+const ModuleParam = @import("parse.zig").ModuleParam;
 const ModuleCodeGen = @import("codegen.zig").ModuleCodeGen;
 const CodeGenResult = @import("codegen.zig").CodeGenResult;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
@@ -117,17 +118,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
     for (script.tracks) |track, track_index| {
         try self.print("\n", .{});
         try self.print("const _track_{str} = [_]zang.Notes(struct {{\n", .{track.name});
-        for (track.params) |param| {
-            const type_name = switch (param.param_type) {
-                .boolean => "bool",
-                .buffer => "[]const f32",
-                .constant => "f32",
-                .constant_or_buffer => "zang.ConstantOrBuffer",
-                .curve => "[]const zang.CurveNode",
-                .one_of => |e| e.zig_name,
-            };
-            try self.print("{identifier}: {str},\n", .{ param.name, type_name });
-        }
+        try printParamDecls(&self, track.params);
         try self.print("}}).SongEvent{{\n", .{});
         for (track.notes) |note, note_index| {
             try self.print(".{{ .t = {number_literal}, .note_id = {usize}, .params = .{{", .{ note.t, note_index + 1 });
@@ -156,17 +147,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("pub const num_outputs = {usize};\n", .{module_result.num_outputs});
         try self.print("pub const num_temps = {usize};\n", .{module_result.num_temps});
         try self.print("pub const Params = struct {{\n", .{});
-        for (module.params) |param| {
-            const type_name = switch (param.param_type) {
-                .boolean => "bool",
-                .buffer => "[]const f32",
-                .constant => "f32",
-                .constant_or_buffer => "zang.ConstantOrBuffer",
-                .curve => "[]const zang.CurveNode",
-                .one_of => |e| e.zig_name,
-            };
-            try self.print("{identifier}: {str},\n", .{ param.name, type_name });
-        }
+        try printParamDecls(&self, module.params);
         try self.print("}};\n", .{});
         try self.print("\n", .{});
 
@@ -199,6 +180,20 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
     }
 
     self.helper.finish();
+}
+
+fn printParamDecls(self: *State, params: []const ModuleParam) !void {
+    for (params) |param| {
+        const type_name = switch (param.param_type) {
+            .boolean => "bool",
+            .buffer => "[]const f32",
+            .constant => "f32",
+            .constant_or_buffer => "zang.ConstantOrBuffer",
+            .curve => "[]const zang.CurveNode",
+            .one_of => |e| e.zig_name,
+        };
+        try self.print("{identifier}: {str},\n", .{ param.name, type_name });
+    }
 }
 
 fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner, instr: Instruction, span: []const u8) (error{NoModule} || std.os.WriteError)!void {
