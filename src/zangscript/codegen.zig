@@ -558,11 +558,11 @@ fn genLiteral(ctx: Context, arena_allocator: *std.mem.Allocator, expr: *const Ex
     const sr = expr.source_range;
 
     switch (expr.inner) {
-        //.curve_ref => |token| return genCurveRef(self, token),
+        //.curve_ref => |token| return genCurveRef(self, token), // TODO
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
+        //.literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload), // TODO
         else => return fail(ctx, sr, "expected a literal value", .{}),
-        //.literal_enum_value => |v| return genLiteralEnum(self, v.label, v.payload),
     }
 }
 

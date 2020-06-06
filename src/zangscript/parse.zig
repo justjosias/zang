@@ -170,6 +170,16 @@ const ParseModuleState = struct {
     locals: std.ArrayList(Local),
 };
 
+const ParseContext = union(enum) {
+    global,
+    module: ParseContextModule,
+};
+
+const ParseContextModule = struct {
+    ps_mod: *ParseModuleState,
+    scope: *const Scope,
+};
+
 // names that you can't use for params or locals because they are builtin functions or constants
 const reserved_names = [_][]const u8{
     "abs",
@@ -312,7 +322,7 @@ fn defineTrack(ps: *ParseState) !void {
                 }
                 maybe_last_t = t;
                 const loc0 = ps.tokenizer.loc; // FIXME - not perfect - includes whitespace before the `(`
-                const args = try parseCallArgs(ps, null, null);
+                const args = try parseCallArgs(ps, .global);
                 try notes.append(.{
                     .t = .{ .value = t, .verbatim = ps.tokenizer.ctx.source.getString(token.source_range) },
                     .args_source_range = .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc },
@@ -379,7 +389,7 @@ const ParseError = error{
     OutOfMemory,
 };
 
-fn parseCallArgs(ps: *ParseState, maybe_ps_mod: ?*ParseModuleState, maybe_scope: ?*const Scope) ![]const CallArg {
+fn parseCallArgs(ps: *ParseState, pc: ParseContext) ![]const CallArg {
     try ps.tokenizer.expectNext(.sym_left_paren);
     var args = std.ArrayList(CallArg).init(ps.arena_allocator);
     var token = try ps.tokenizer.next();
@@ -396,25 +406,17 @@ fn parseCallArgs(ps: *ParseState, maybe_ps_mod: ?*ParseModuleState, maybe_scope:
         const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
         const equals_token = try ps.tokenizer.next();
         if (equals_token.tt == .sym_equals) {
-            const subexpr = blk: {
-                if (maybe_ps_mod) |ps_mod| {
-                    if (maybe_scope) |scope| {
-                        break :blk try expectExpression(ps, ps_mod, scope);
-                    }
-                }
-                break :blk try expectLiteral(ps);
-            };
             try args.append(.{
                 .param_name = param_name,
                 .param_name_token = token,
-                .value = subexpr,
+                .value = try expectExpression(ps, pc),
             });
             token = try ps.tokenizer.next();
         } else {
-            if (maybe_ps_mod) |ps_mod| {
-                if (maybe_scope) |scope| {
+            switch (pc) {
+                .module => |pcm| {
                     // shorthand param passing: `val` expands to `val=val`
-                    const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
+                    const inner = try requireLocalOrParam(ps, pcm, token.source_range);
                     const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
                     try args.append(.{
                         .param_name = param_name,
@@ -422,27 +424,28 @@ fn parseCallArgs(ps: *ParseState, maybe_ps_mod: ?*ParseModuleState, maybe_scope:
                         .value = subexpr,
                     });
                     token = equals_token;
-                }
+                },
+                else => {},
             }
         }
     }
     return args.toOwnedSlice();
 }
 
-fn parseCall(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, field_name_token: Token, field_name: []const u8) !Call {
+fn parseCall(ps: *ParseState, pcm: ParseContextModule, field_name_token: Token, field_name: []const u8) !Call {
     // each call implicitly adds a "field" (child module), since modules have state
-    const field_index = ps_mod.fields.items.len;
-    try ps_mod.fields.append(.{
+    const field_index = pcm.ps_mod.fields.items.len;
+    try pcm.ps_mod.fields.append(.{
         .type_token = field_name_token,
     });
-    const args = try parseCallArgs(ps, ps_mod, scope);
+    const args = try parseCallArgs(ps, .{ .module = pcm });
     return Call{
         .field_index = field_index,
         .args = args,
     };
 }
 
-fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!Delay {
+fn parseDelay(ps: *ParseState, pcm: ParseContextModule) ParseError!Delay {
     // constant number for the number of delay samples (this is a limitation of my current delay implementation)
     const num_samples = blk: {
         const token = try ps.tokenizer.next();
@@ -458,7 +461,7 @@ fn parseDelay(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
     // keyword `begin`
     try ps.tokenizer.expectNext(.kw_begin);
     // inner statements
-    const inner_scope = try parseStatements(ps, ps_mod, scope);
+    const inner_scope = try parseStatements(ps, pcm.ps_mod, pcm.scope);
     return Delay{
         .num_samples = num_samples,
         .scope = inner_scope,
@@ -506,12 +509,12 @@ fn findParam(ps_mod: *ParseModuleState, name: []const u8) ?usize {
     return null;
 }
 
-fn requireLocalOrParam(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, name_source_range: SourceRange) !ExpressionInner {
+fn requireLocalOrParam(ps: *ParseState, pcm: ParseContextModule, name_source_range: SourceRange) !ExpressionInner {
     const name = ps.tokenizer.ctx.source.getString(name_source_range);
-    if (findLocal(ps_mod, scope, name)) |local_index| {
+    if (findLocal(pcm.ps_mod, pcm.scope, name)) |local_index| {
         return ExpressionInner{ .local = local_index };
     }
-    if (findParam(ps_mod, name)) |param_index| {
+    if (findParam(pcm.ps_mod, name)) |param_index| {
         return ExpressionInner{ .self_param = param_index };
     }
     return fail(ps.tokenizer.ctx, name_source_range, "no local or param called `<`", .{});
@@ -530,11 +533,11 @@ const binary_operators = [_]BinaryOperator{
     .{ .symbol = .sym_slash, .priority = 2, .op = .div },
 };
 
-fn expectExpression(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!*const Expression {
-    return expectExpression2(ps, ps_mod, scope, 0);
+fn expectExpression(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
+    return expectExpression2(ps, pc, 0);
 }
 
-fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, priority: usize) ParseError!*const Expression {
+fn expectExpression2(ps: *ParseState, pc: ParseContext, priority: usize) ParseError!*const Expression {
     var negate = false;
     const peeked_token = try ps.tokenizer.peek();
     if (peeked_token.tt == .sym_minus) {
@@ -542,7 +545,7 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
         negate = true;
     }
 
-    var a = try expectTerm(ps, ps_mod, scope);
+    var a = try expectTerm(ps, pc);
     const loc0 = a.source_range.loc0;
 
     if (negate) {
@@ -555,7 +558,7 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
             const T = @TagType(TokenType);
             if (@as(T, token.tt) == @as(T, bo.symbol) and priority < bo.priority) {
                 _ = try ps.tokenizer.next(); // skip the peeked token
-                const b = try expectExpression2(ps, ps_mod, scope, bo.priority);
+                const b = try expectExpression2(ps, pc, bo.priority);
                 a = try createExpr(ps, loc0, .{ .bin_arith = .{ .op = bo.op, .a = a, .b = b } });
                 break;
             }
@@ -567,29 +570,29 @@ fn expectExpression2(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const S
     return a;
 }
 
-fn parseUnaryFunction(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, loc0: SourceLocation, op: UnArithOp) !*const Expression {
+fn parseUnaryFunction(ps: *ParseState, pc: ParseContext, loc0: SourceLocation, op: UnArithOp) !*const Expression {
     try ps.tokenizer.expectNext(.sym_left_paren);
-    const a = try expectExpression(ps, ps_mod, scope);
+    const a = try expectExpression(ps, pc);
     try ps.tokenizer.expectNext(.sym_right_paren);
     return try createExpr(ps, loc0, .{ .un_arith = .{ .op = op, .a = a } });
 }
 
-fn parseBinaryFunction(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope, loc0: SourceLocation, op: BinArithOp) !*const Expression {
+fn parseBinaryFunction(ps: *ParseState, pc: ParseContext, loc0: SourceLocation, op: BinArithOp) !*const Expression {
     try ps.tokenizer.expectNext(.sym_left_paren);
-    const a = try expectExpression(ps, ps_mod, scope);
+    const a = try expectExpression(ps, pc);
     try ps.tokenizer.expectNext(.sym_comma);
-    const b = try expectExpression(ps, ps_mod, scope);
+    const b = try expectExpression(ps, pc);
     try ps.tokenizer.expectNext(.sym_right_paren);
     return try createExpr(ps, loc0, .{ .bin_arith = .{ .op = op, .a = a, .b = b } });
 }
 
-fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) ParseError!*const Expression {
+fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
     const token = try ps.tokenizer.next();
     const loc0 = token.source_range.loc0;
 
     switch (token.tt) {
         .sym_left_paren => {
-            const a = try expectExpression(ps, ps_mod, scope);
+            const a = try expectExpression(ps, pc);
             try ps.tokenizer.expectNext(.sym_right_paren);
             return a;
         },
@@ -601,21 +604,26 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             return try createExpr(ps, loc0, .{ .curve_ref = name_token });
         },
         .uppercase_name => {
-            const s = ps.tokenizer.ctx.source.getString(token.source_range);
-            const call = try parseCall(ps, ps_mod, scope, token, s);
-            return try createExpr(ps, loc0, .{ .call = call });
+            switch (pc) {
+                .module => |pcm| {
+                    const s = ps.tokenizer.ctx.source.getString(token.source_range);
+                    const call = try parseCall(ps, pcm, token, s);
+                    return try createExpr(ps, loc0, .{ .call = call });
+                },
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call outside of module context", .{}),
+            }
         },
         .lowercase_name => {
             const s = ps.tokenizer.ctx.source.getString(token.source_range);
             // this list of builtins corresponds to the `reserved_names` list
             if (std.mem.eql(u8, s, "abs")) {
-                return parseUnaryFunction(ps, ps_mod, scope, loc0, .abs);
+                return parseUnaryFunction(ps, pc, loc0, .abs);
             } else if (std.mem.eql(u8, s, "cos")) {
-                return parseUnaryFunction(ps, ps_mod, scope, loc0, .cos);
+                return parseUnaryFunction(ps, pc, loc0, .cos);
             } else if (std.mem.eql(u8, s, "max")) {
-                return parseBinaryFunction(ps, ps_mod, scope, loc0, .max);
+                return parseBinaryFunction(ps, pc, loc0, .max);
             } else if (std.mem.eql(u8, s, "min")) {
-                return parseBinaryFunction(ps, ps_mod, scope, loc0, .min);
+                return parseBinaryFunction(ps, pc, loc0, .min);
             } else if (std.mem.eql(u8, s, "pi")) {
                 return try createExpr(ps, loc0, .{
                     .literal_number = .{
@@ -624,14 +632,18 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
                     },
                 });
             } else if (std.mem.eql(u8, s, "pow")) {
-                return parseBinaryFunction(ps, ps_mod, scope, loc0, .pow);
+                return parseBinaryFunction(ps, pc, loc0, .pow);
             } else if (std.mem.eql(u8, s, "sin")) {
-                return parseUnaryFunction(ps, ps_mod, scope, loc0, .sin);
+                return parseUnaryFunction(ps, pc, loc0, .sin);
             } else if (std.mem.eql(u8, s, "sqrt")) {
-                return parseUnaryFunction(ps, ps_mod, scope, loc0, .sqrt);
-            } else {
-                const inner = try requireLocalOrParam(ps, ps_mod, scope, token.source_range);
-                return try createExpr(ps, loc0, inner);
+                return parseUnaryFunction(ps, pc, loc0, .sqrt);
+            }
+            switch (pc) {
+                .module => |pcm| {
+                    const inner = try requireLocalOrParam(ps, pcm, token.source_range);
+                    return try createExpr(ps, loc0, inner);
+                },
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use name outside of module context", .{}),
             }
         },
         .kw_false => {
@@ -653,7 +665,7 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             const peeked_token = try ps.tokenizer.peek();
             if (peeked_token.tt == .sym_left_paren) {
                 _ = try ps.tokenizer.next();
-                const payload = try expectExpression(ps, ps_mod, scope);
+                const payload = try expectExpression(ps, pc);
                 try ps.tokenizer.expectNext(.sym_right_paren);
 
                 const enum_literal: EnumLiteral = .{ .label = s, .payload = payload };
@@ -664,53 +676,23 @@ fn expectTerm(ps: *ParseState, ps_mod: *ParseModuleState, scope: *const Scope) P
             }
         },
         .kw_delay => {
-            const delay = try parseDelay(ps, ps_mod, scope);
-            return try createExpr(ps, loc0, .{ .delay = delay });
-        },
-        .kw_feedback => {
-            return try createExpr(ps, loc0, .feedback);
-        },
-        else => return ps.tokenizer.failExpected("expression", token),
-    }
-}
-
-// this is a crippled version of expectExpression to be used when parsing "tracks",
-// where we don't have a "ps_mod" or "scope".
-fn expectLiteral(ps: *ParseState) ParseError!*const Expression {
-    const token = try ps.tokenizer.next();
-    const loc0 = token.source_range.loc0;
-
-    switch (token.tt) {
-        .kw_false => {
-            return try createExpr(ps, loc0, .{ .literal_boolean = false });
-        },
-        .kw_true => {
-            return try createExpr(ps, loc0, .{ .literal_boolean = true });
-        },
-        .number => |n| {
-            return try createExpr(ps, loc0, .{
-                .literal_number = .{
-                    .value = n,
-                    .verbatim = ps.tokenizer.ctx.source.getString(token.source_range),
+            switch (pc) {
+                .module => |pcm| {
+                    const delay = try parseDelay(ps, pcm);
+                    return try createExpr(ps, loc0, .{ .delay = delay });
                 },
-            });
-        },
-        .enum_value => {
-            const s = ps.tokenizer.ctx.source.getString(token.source_range);
-            const peeked_token = try ps.tokenizer.peek();
-            if (peeked_token.tt == .sym_left_paren) {
-                _ = try ps.tokenizer.next();
-                const payload = try expectLiteral(ps);
-                try ps.tokenizer.expectNext(.sym_right_paren);
-
-                const enum_literal: EnumLiteral = .{ .label = s, .payload = payload };
-                return try createExpr(ps, loc0, .{ .literal_enum_value = enum_literal });
-            } else {
-                const enum_literal: EnumLiteral = .{ .label = s, .payload = null };
-                return try createExprWithSourceRange(ps, token.source_range, .{ .literal_enum_value = enum_literal });
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use delay outside of module context", .{}),
             }
         },
-        else => return ps.tokenizer.failExpected("literal value", token),
+        .kw_feedback => {
+            switch (pc) {
+                .module => |pcm| {
+                    return try createExpr(ps, loc0, .feedback);
+                },
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use feedback outside of module context", .{}),
+            }
+        },
+        else => return ps.tokenizer.failExpected("expression", token),
     }
 }
 
@@ -726,7 +708,7 @@ fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, nam
     if (findLocal(ps_mod, scope, name) != null) {
         return fail(ps.tokenizer.ctx, name_token.source_range, "redeclaration of local `<`", .{});
     }
-    const expr = try expectExpression(ps, ps_mod, scope);
+    const expr = try expectExpression(ps, .{ .module = .{ .ps_mod = ps_mod, .scope = scope } });
     const local_index = ps_mod.locals.items.len;
     try ps_mod.locals.append(.{
         .name = name,
@@ -745,7 +727,9 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
         .parent = parent_scope,
         .statements = std.ArrayList(Statement).init(ps.arena_allocator),
     };
-
+    const pc: ParseContext = .{
+        .module = .{ .ps_mod = ps_mod, .scope = scope },
+    };
     while (true) {
         const token = try ps.tokenizer.next();
         switch (token.tt) {
@@ -754,17 +738,16 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
                 try parseLocalDecl(ps, ps_mod, scope, token);
             },
             .kw_out => {
-                const expr = try expectExpression(ps, ps_mod, scope);
+                const expr = try expectExpression(ps, pc);
                 try scope.statements.append(.{ .output = expr });
             },
             .kw_feedback => {
-                const expr = try expectExpression(ps, ps_mod, scope);
+                const expr = try expectExpression(ps, pc);
                 try scope.statements.append(.{ .feedback = expr });
             },
             else => return ps.tokenizer.failExpected("local declaration, `out`, `feedback` or `end`", token),
         }
     }
-
     return scope;
 }
 
