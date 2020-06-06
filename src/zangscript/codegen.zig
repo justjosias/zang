@@ -592,10 +592,8 @@ pub const GenError = error{
 };
 
 // generate bytecode instructions for an expression
-fn genExpression(cs: *const CodegenState, cc: CodegenContext, expression: *const Expression, maybe_result_loc: ?BufferDest) GenError!ExpressionResult {
-    const sr = expression.source_range;
-
-    switch (expression.inner) {
+fn genExpression(cs: *const CodegenState, cc: CodegenContext, expr: *const Expression, maybe_result_loc: ?BufferDest) GenError!ExpressionResult {
+    switch (expr.inner) {
         .curve_ref => |token| return genCurveRef(cs, token),
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
@@ -631,26 +629,26 @@ fn genExpression(cs: *const CodegenState, cc: CodegenContext, expression: *const
         },
         .un_arith => |m| {
             switch (cc) {
-                .global => return fail(cs.ctx, expression.source_range, "constant arithmetic is not supported", .{}),
-                .module => |cms| return try genUnArith(cs, cms, sr, maybe_result_loc, m.op, m.a),
+                .global => return fail(cs.ctx, expr.source_range, "constant arithmetic is not supported", .{}),
+                .module => |cms| return try genUnArith(cs, cms, expr.source_range, maybe_result_loc, m.op, m.a),
             }
         },
         .bin_arith => |m| {
             switch (cc) {
-                .global => return fail(cs.ctx, expression.source_range, "constant arithmetic is not supported", .{}),
-                .module => |cms| return try genBinArith(cs, cms, sr, maybe_result_loc, m.op, m.a, m.b),
+                .global => return fail(cs.ctx, expr.source_range, "constant arithmetic is not supported", .{}),
+                .module => |cms| return try genBinArith(cs, cms, expr.source_range, maybe_result_loc, m.op, m.a, m.b),
             }
         },
         .call => |call| {
             switch (cc) {
                 .global => unreachable,
-                .module => |cms| return try genCall(cs, cms, sr, maybe_result_loc, call.field_index, call.args),
+                .module => |cms| return try genCall(cs, cms, expr.source_range, maybe_result_loc, call.field_index, call.args),
             }
         },
         .delay => |delay| {
             switch (cc) {
                 .global => unreachable,
-                .module => |cms| return try genDelay(cs, cms, sr, maybe_result_loc, delay),
+                .module => |cms| return try genDelay(cs, cms, expr.source_range, maybe_result_loc, delay),
             }
         },
         .feedback => {
@@ -660,7 +658,7 @@ fn genExpression(cs: *const CodegenState, cc: CodegenContext, expression: *const
                     const feedback_temp_index = if (cms.current_delay) |current_delay|
                         current_delay.feedback_temp_index
                     else
-                        return fail(cs.ctx, expression.source_range, "`feedback` can only be used within a `delay` operation", .{});
+                        return fail(cs.ctx, expr.source_range, "`feedback` can only be used within a `delay` operation", .{});
                     return ExpressionResult{ .temp_buffer = TempRef.weak(feedback_temp_index) };
                 },
             }
