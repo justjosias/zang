@@ -13,7 +13,9 @@ pub const PrintHelper = struct {
         };
     }
 
-    pub fn deinit(self: *PrintHelper) void {
+    // this should only be called when no error has happened (an error might
+    // leave the indentation at a positive value), so don't use it with defer
+    pub fn finish(self: *PrintHelper) void {
         std.debug.assert(self.indentation == 0);
     }
 

@@ -64,7 +64,6 @@ pub fn printBytecode(out: std.io.StreamSource.OutStream, codegen_state: *const C
         .codegen_state = codegen_state,
         .helper = PrintHelper.init(out),
     };
-    defer self.helper.deinit();
 
     const self_module = codegen_state.modules[codegen_state.module_index];
 
@@ -77,6 +76,8 @@ pub fn printBytecode(out: std.io.StreamSource.OutStream, codegen_state: *const C
         try printInstruction(&self, instr);
     }
     try self.print("\n", .{});
+
+    self.helper.finish();
 }
 
 fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {

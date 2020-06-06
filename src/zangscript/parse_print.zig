@@ -103,7 +103,6 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
         .module = module,
         .helper = PrintHelper.init(out),
     };
-    defer self.helper.deinit();
 
     if (module.info) |info| {
         try self.print("module '{str}'\n", .{module.name});
@@ -119,4 +118,6 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
         try self.print("builtin module '{str}'\n", .{module.name});
     }
     try self.print("\n", .{});
+
+    self.helper.finish();
 }
