@@ -1,5 +1,6 @@
 const std = @import("std");
 const PrintHelper = @import("print_helper.zig").PrintHelper;
+const CodegenState = @import("codegen.zig").CodegenState;
 const CodegenModuleState = @import("codegen.zig").CodegenModuleState;
 const ExpressionResult = @import("codegen.zig").ExpressionResult;
 const BufferDest = @import("codegen.zig").BufferDest;
@@ -7,7 +8,8 @@ const FloatDest = @import("codegen.zig").FloatDest;
 const Instruction = @import("codegen.zig").Instruction;
 
 const State = struct {
-    codegen_state: *const CodegenModuleState,
+    cs: *const CodegenState,
+    cms: *const CodegenModuleState,
     helper: PrintHelper,
 
     pub fn print(self: *State, comptime fmt: []const u8, args: var) !void {
@@ -39,9 +41,9 @@ const State = struct {
                     try self.print("({expression_result})", .{payload.*});
                 }
             },
-            .curve_ref => |i| try self.print("${str}", .{self.codegen_state.curves[i].name}),
+            .curve_ref => |i| try self.print("${str}", .{self.cs.curves[i].name}),
             .self_param => |i| {
-                const module = self.codegen_state.modules[self.codegen_state.module_index];
+                const module = self.cs.modules[self.cms.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
             },
         }
@@ -59,19 +61,20 @@ const State = struct {
     }
 };
 
-pub fn printBytecode(out: std.io.StreamSource.OutStream, codegen_state: *const CodegenModuleState) !void {
+pub fn printBytecode(out: std.io.StreamSource.OutStream, cs: *const CodegenState, cms: *const CodegenModuleState) !void {
     var self: State = .{
-        .codegen_state = codegen_state,
+        .cs = cs,
+        .cms = cms,
         .helper = PrintHelper.init(out),
     };
 
-    const self_module = codegen_state.modules[codegen_state.module_index];
+    const self_module = cs.modules[cms.module_index];
 
     try self.print("module '{str}'\n", .{self_module.name});
-    try self.print("    num_temp_buffers: {usize}\n", .{codegen_state.temp_buffers.finalCount()});
-    try self.print("    num_temp_floats: {usize}\n", .{codegen_state.temp_floats.finalCount()});
+    try self.print("    num_temp_buffers: {usize}\n", .{cms.temp_buffers.finalCount()});
+    try self.print("    num_temp_floats: {usize}\n", .{cms.temp_floats.finalCount()});
     try self.print("bytecode:\n", .{});
-    for (codegen_state.instructions.items) |instr| {
+    for (cms.instructions.items) |instr| {
         try self.print("    ", .{});
         try printInstruction(&self, instr);
     }
@@ -89,7 +92,7 @@ fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
             try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
         },
         .cob_to_buffer => |x| {
-            const module = self.codegen_state.modules[self.codegen_state.module_index];
+            const module = self.cs.modules[self.cms.module_index];
             try self.print("{buffer_dest} = COB_TO_BUFFER params.{str}\n", .{ x.out, module.params[x.in_self_param].name });
         },
         .arith_float => |x| {
@@ -111,8 +114,8 @@ fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
             try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
         },
         .call => |call| {
-            const field_module_index = self.codegen_state.resolved_fields[call.field_index];
-            const callee_module = self.codegen_state.modules[field_module_index];
+            const field_module_index = self.cms.resolved_fields[call.field_index];
+            const callee_module = self.cs.modules[field_module_index];
             try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
             try self.print("        temps: [", .{});
             for (call.temps) |temp, i| {
