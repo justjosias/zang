@@ -8,12 +8,14 @@ const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
 const Curve = @import("parse.zig").Curve;
+const Track = @import("parse.zig").Track;
 const Module = @import("parse.zig").Module;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
 const CallArg = @import("parse.zig").CallArg;
 const UnArithOp = @import("parse.zig").UnArithOp;
 const BinArithOp = @import("parse.zig").BinArithOp;
+const TrackCall = @import("parse.zig").TrackCall;
 const Delay = @import("parse.zig").Delay;
 const Field = @import("parse.zig").Field;
 const Local = @import("parse.zig").Local;
@@ -48,6 +50,7 @@ pub const ExpressionResult = union(enum) {
     literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
     self_param: usize,
+    track_param: struct { track_index: usize, param_index: usize },
 };
 
 pub const FloatDest = struct {
@@ -80,6 +83,14 @@ pub const InstrCall = struct {
     args: []const ExpressionResult,
 };
 
+pub const InstrTrackCall = struct {
+    out: BufferDest,
+    track_index: usize,
+    trigger_index: usize,
+    note_tracker_index: usize,
+    instructions: []const Instruction,
+};
+
 pub const InstrDelay = struct {
     delay_index: usize,
     out: BufferDest,
@@ -99,6 +110,7 @@ pub const Instruction = union(enum) {
     arith_buffer_float: InstrArithBufferFloat,
     arith_buffer_buffer: InstrArithBufferBuffer,
     call: InstrCall,
+    track_call: InstrTrackCall,
     delay: InstrDelay,
 };
 
@@ -106,8 +118,21 @@ pub const DelayDecl = struct {
     num_samples: usize,
 };
 
+pub const TriggerDecl = struct {
+    track_index: usize,
+};
+
+pub const NoteTrackerDecl = struct {
+    track_index: usize,
+};
+
 pub const CurrentDelay = struct {
     feedback_temp_index: usize,
+    instructions: std.ArrayList(Instruction),
+};
+
+pub const CurrentTrackCall = struct {
+    track_index: usize,
     instructions: std.ArrayList(Instruction),
 };
 
@@ -115,6 +140,7 @@ pub const CodegenState = struct {
     arena_allocator: *std.mem.Allocator,
     ctx: Context,
     curves: []const Curve,
+    tracks: []const Track,
     modules: []const Module,
 };
 
@@ -128,7 +154,11 @@ pub const CodegenModuleState = struct {
     temp_floats: TempManager,
     local_results: []?ExpressionResult,
     delays: std.ArrayList(DelayDecl),
+    triggers: std.ArrayList(TriggerDecl),
+    note_trackers: std.ArrayList(NoteTrackerDecl),
+    // only one of these can be set at a time, for now (i'll improve it later)
     current_delay: ?*CurrentDelay,
+    current_track_call: ?*CurrentTrackCall,
 };
 
 const CodegenContext = union(enum) {
@@ -212,6 +242,10 @@ fn isResultBoolean(cs: *const CodegenState, cc: CodegenContext, result: Expressi
             .global => unreachable,
             .module => |cms| cs.modules[cms.module_index].params[param_index].param_type == .boolean,
         },
+        .track_param => |x| switch (cc) {
+            .global => unreachable,
+            .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .boolean,
+        },
         .literal_number, .literal_enum_value, .temp_buffer, .temp_float, .curve_ref => false,
     };
 }
@@ -223,6 +257,10 @@ fn isResultFloat(cs: *const CodegenState, cc: CodegenContext, result: Expression
         .self_param => |param_index| switch (cc) {
             .global => unreachable,
             .module => |cms| cs.modules[cms.module_index].params[param_index].param_type == .constant,
+        },
+        .track_param => |x| switch (cc) {
+            .global => unreachable,
+            .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .constant,
         },
         .literal_boolean, .literal_enum_value, .temp_buffer, .curve_ref => false,
     };
@@ -236,6 +274,10 @@ fn isResultBuffer(cs: *const CodegenState, cc: CodegenContext, result: Expressio
             .global => unreachable,
             .module => |cms| cs.modules[cms.module_index].params[param_index].param_type == .buffer,
         },
+        .track_param => |x| switch (cc) {
+            .global => unreachable,
+            .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .buffer,
+        },
         .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => false,
     };
 }
@@ -247,6 +289,10 @@ fn isResultCurve(cs: *const CodegenState, cc: CodegenContext, result: Expression
         .self_param => |param_index| switch (cc) {
             .global => unreachable,
             .module => |cms| cs.modules[cms.module_index].params[param_index].param_type == .curve,
+        },
+        .track_param => |x| switch (cc) {
+            .global => unreachable,
+            .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .curve,
         },
         .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => false,
     };
@@ -275,6 +321,25 @@ fn isResultEnumValue(cs: *const CodegenState, cc: CodegenContext, result: Expres
                 .module => |x| x,
             };
             const possible_values = switch (cs.modules[cms.module_index].params[param_index].param_type) {
+                .one_of => |e| e.values,
+                else => return false,
+            };
+            // each of the possible values must be in the allowed_values
+            for (possible_values) |possible_value| {
+                const has_float_payload = switch (possible_value.payload_type) {
+                    .none => false,
+                    .f32 => true,
+                };
+                if (!enumAllowsValue(allowed_values, possible_value.label, has_float_payload)) return false;
+            }
+            return true;
+        },
+        .track_param => |x| {
+            const cms = switch (cc) {
+                .global => unreachable,
+                .module => |m| m,
+            };
+            const possible_values = switch (cs.tracks[x.track_index].params[x.param_index].param_type) {
                 .one_of => |e| e.values,
                 else => return false,
             };
@@ -325,7 +390,9 @@ fn commitBufferDest(maybe_result_loc: ?BufferDest, buffer_dest: BufferDest) !Exp
 }
 
 fn addInstruction(cms: *CodegenModuleState, instruction: Instruction) !void {
-    if (cms.current_delay) |current_delay| {
+    if (cms.current_track_call) |current_track_call| {
+        try current_track_call.instructions.append(instruction);
+    } else if (cms.current_delay) |current_delay| {
         try current_delay.instructions.append(instruction);
     } else {
         try cms.instructions.append(instruction);
@@ -529,9 +596,77 @@ fn genCall(
     return commitBufferDest(maybe_result_loc, buffer_dest);
 }
 
+fn genTrackCall(
+    cs: *const CodegenState,
+    cms: *CodegenModuleState,
+    sr: SourceRange,
+    maybe_result_loc: ?BufferDest,
+    track_call: TrackCall,
+) !ExpressionResult {
+    if (cms.current_track_call != null) {
+        return fail(cs.ctx, sr, "you cannot nest track calls", .{});
+    }
+    if (cms.current_delay != null) {
+        return fail(cs.ctx, sr, "you cannot use a track call inside a delay", .{});
+    }
+
+    const track_name = cs.ctx.source.getString(track_call.track_name_token.source_range);
+    const track_index = for (cs.tracks) |track, i| {
+        if (std.mem.eql(u8, track_name, track.name)) break i;
+    } else return fail(cs.ctx, track_call.track_name_token.source_range, "no track called `<`", .{});
+
+    const trigger_index = cms.triggers.items.len;
+    try cms.triggers.append(.{ .track_index = track_index });
+
+    const note_tracker_index = cms.note_trackers.items.len;
+    try cms.note_trackers.append(.{ .track_index = track_index });
+
+    const buffer_dest = try requestBufferDest(cms, maybe_result_loc);
+
+    var current_track_call: CurrentTrackCall = .{
+        .track_index = track_index,
+        .instructions = std.ArrayList(Instruction).init(cs.arena_allocator),
+    };
+
+    cms.current_track_call = &current_track_call;
+
+    for (track_call.scope.statements.items) |statement| {
+        switch (statement) {
+            .let_assignment => |x| {
+                cms.local_results[x.local_index] = try genExpression(cs, .{ .module = cms }, x.expression, null);
+            },
+            .output => |expr| {
+                const result = try genExpression(cs, .{ .module = cms }, expr, buffer_dest);
+                try commitOutput(cs, cms, expr.source_range, result, buffer_dest);
+                releaseExpressionResult(cms, result); // this should do nothing (because we passed a result loc)
+            },
+            .feedback => |expr| {
+                return fail(cs.ctx, expr.source_range, "`feedback` can only be used within a `delay` operation", .{});
+            },
+        }
+    }
+
+    cms.current_track_call = null;
+
+    try addInstruction(cms, .{
+        .track_call = .{
+            .out = buffer_dest,
+            .track_index = track_index,
+            .trigger_index = trigger_index,
+            .note_tracker_index = note_tracker_index,
+            .instructions = current_track_call.instructions.toOwnedSlice(),
+        },
+    });
+
+    return commitBufferDest(maybe_result_loc, buffer_dest);
+}
+
 fn genDelay(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay) !ExpressionResult {
     if (cms.current_delay != null) {
         return fail(cs.ctx, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
+    }
+    if (cms.current_track_call != null) {
+        return fail(cs.ctx, sr, "you cannot use a delay inside a track call", .{});
     }
 
     const delay_index = cms.delays.items.len;
@@ -592,7 +727,12 @@ pub const GenError = error{
 };
 
 // generate bytecode instructions for an expression
-fn genExpression(cs: *const CodegenState, cc: CodegenContext, expr: *const Expression, maybe_result_loc: ?BufferDest) GenError!ExpressionResult {
+fn genExpression(
+    cs: *const CodegenState,
+    cc: CodegenContext,
+    expr: *const Expression,
+    maybe_result_loc: ?BufferDest,
+) GenError!ExpressionResult {
     switch (expr.inner) {
         .curve_ref => |token| return genCurveRef(cs, token),
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
@@ -627,6 +767,22 @@ fn genExpression(cs: *const CodegenState, cc: CodegenContext, expr: *const Expre
                 },
             }
         },
+        .track_param => |name_token| {
+            switch (cc) {
+                .global => unreachable,
+                .module => |cms| {
+                    const ctc = cms.current_track_call orelse
+                        return fail(cs.ctx, expr.source_range, "track param used outside of track context", .{});
+                    const name = cs.ctx.source.getString(name_token.source_range);
+                    const param_index = for (cs.tracks[ctc.track_index].params) |param, i| {
+                        if (std.mem.eql(u8, param.name, name)) break i;
+                    } else return fail(cs.ctx, expr.source_range, "no track param called `<`", .{});
+                    // note: tracks aren't allowed to use buffer or cob types. so we don't need the cob-to-buffer
+                    // instruction that self_param uses
+                    return ExpressionResult{ .track_param = .{ .track_index = ctc.track_index, .param_index = param_index } };
+                },
+            }
+        },
         .un_arith => |m| {
             switch (cc) {
                 .global => return fail(cs.ctx, expr.source_range, "constant arithmetic is not supported", .{}),
@@ -643,6 +799,12 @@ fn genExpression(cs: *const CodegenState, cc: CodegenContext, expr: *const Expre
             switch (cc) {
                 .global => unreachable,
                 .module => |cms| return try genCall(cs, cms, expr.source_range, maybe_result_loc, call.field_index, call.args),
+            }
+        },
+        .track_call => |track_call| {
+            switch (cc) {
+                .global => unreachable,
+                .module => |cms| return try genTrackCall(cs, cms, expr.source_range, maybe_result_loc, track_call),
             }
         },
         .delay => |delay| {
@@ -694,11 +856,25 @@ fn commitOutput(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRan
                 .one_of => |e| return fail(cs.ctx, sr, "expected buffer value, found enum value", .{}),
             }
         },
+        .track_param => |x| {
+            switch (cs.tracks[x.track_index].params[x.param_index].param_type) {
+                .boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),
+                .buffer, .constant_or_buffer => { // constant_or_buffer are immediately unwrapped to buffers in codegen (for now)
+                    try addInstruction(cms, .{ .copy_buffer = .{ .out = buffer_dest, .in = .{ .track_param = x } } });
+                },
+                .constant => {
+                    try addInstruction(cms, .{ .float_to_buffer = .{ .out = buffer_dest, .in = .{ .track_param = x } } });
+                },
+                .curve => return fail(cs.ctx, sr, "expected buffer value, found curve", .{}),
+                .one_of => |e| return fail(cs.ctx, sr, "expected buffer value, found enum value", .{}),
+            }
+        },
     }
 }
 
 fn genTopLevelStatement(cs: *const CodegenState, cms: *CodegenModuleState, statement: Statement) !void {
     std.debug.assert(cms.current_delay == null);
+    std.debug.assert(cms.current_track_call == null);
 
     switch (statement) {
         .let_assignment => |x| {
@@ -723,6 +899,8 @@ pub const CodeGenTrackResult = struct {
 pub const CodeGenCustomModuleInner = struct {
     resolved_fields: []const usize, // owned slice
     delays: []const DelayDecl, // owned slice
+    note_trackers: []const NoteTrackerDecl, // owned slice
+    triggers: []const TriggerDecl, // owned slice
     instructions: []const Instruction, // owned slice
 };
 
@@ -775,6 +953,7 @@ pub fn codegen(
             .arena_allocator = &arena.allocator,
             .ctx = ctx,
             .curves = parse_result.curves,
+            .tracks = parse_result.tracks,
             .modules = parse_result.modules,
         };
         for (parse_result.tracks) |track, track_index| {
@@ -872,6 +1051,7 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .arena_allocator = self.arena_allocator,
         .ctx = self.ctx,
         .curves = self.parse_result.curves,
+        .tracks = self.parse_result.tracks,
         .modules = self.parse_result.modules,
     };
     var cms: CodegenModuleState = .{
@@ -886,7 +1066,10 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
         .temp_floats = TempManager.init(self.inner_allocator, false),
         .local_results = try self.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
         .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
+        .triggers = std.ArrayList(TriggerDecl).init(self.arena_allocator),
+        .note_trackers = std.ArrayList(NoteTrackerDecl).init(self.arena_allocator),
         .current_delay = null,
+        .current_track_call = null,
     };
     defer cms.temp_buffers.deinit();
     defer cms.temp_floats.deinit();
@@ -917,6 +1100,8 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
             .custom = .{
                 .resolved_fields = resolved_fields,
                 .delays = cms.delays.toOwnedSlice(),
+                .note_trackers = cms.note_trackers.toOwnedSlice(),
+                .triggers = cms.triggers.toOwnedSlice(),
                 .instructions = cms.instructions.toOwnedSlice(),
             },
         },

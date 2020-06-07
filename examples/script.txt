@@ -1,12 +1,3 @@
-deftrack @my_track:
-    freq: constant,
-    note_on: boolean,
-begin
-    0.0 (freq=440, note_on=true)
-    1.0 (freq=880, note_on=true)
-    2.0 (freq=880, note_on=false)
-end
-
 defcurve $carrier_curve begin
     0.0  440.0
     0.5  880.0
@@ -115,12 +106,49 @@ begin
     end
 end
 
+def CoinInstrument:
+    freq: cob,
+    note_on: boolean,
+begin
+    temp0 = PulseOsc(freq, color=0.5)
+    temp1 = Envelope(
+        attack='instantaneous',
+        decay='instantaneous',
+        release='linear'(0.1),
+        sustain_volume=1,
+        note_on
+    )
+    out temp0 * (temp1 * 0.5)
+end
+
+deftrack @coin:
+    freq: constant,
+    note_on: boolean,
+begin
+    0.000 (freq=750, note_on=true)
+    0.045 (freq=1000, note_on=true)
+    0.090 (freq=1000, note_on=false)
+end
+
+def TrackPlayer:
+    freq: cob,
+    note_on: boolean, // used by generated zig code (hack)...
+begin
+    out @coin begin
+        out CoinInstrument(
+            freq=freq * (@.freq / 1000),
+            note_on=@.note_on
+        )
+    end
+end
+
 def Instrument:
     freq: cob,
     note_on: boolean,
 begin
-    //input = 0.5 * InnerInstrument(freq=freq*2, note_on)
-    input = CurvePlayer(freq_mul=1)
+    input = 0.5 * InnerInstrument(freq=freq*2, note_on)
+    //input = CurvePlayer(freq_mul=1)
+    + TrackPlayer(freq, note_on)
 
     out input
     //out Echoes(input, echo_volume=0.6, filter_type='low_pass')

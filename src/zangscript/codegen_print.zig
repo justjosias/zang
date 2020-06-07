@@ -46,6 +46,9 @@ const State = struct {
                 const module = self.cs.modules[self.cms.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
             },
+            .track_param => |x| {
+                try self.print("@{str}", .{self.cs.tracks[x.track_index].params[x.param_index].name});
+            },
         }
     }
 
@@ -57,6 +60,13 @@ const State = struct {
         switch (dest) {
             .temp_buffer_index => |i| try self.print("temp{usize}", .{i}),
             .output_index => |i| try self.print("output{usize}", .{i}),
+        }
+    }
+
+    fn indent(self: *State, indentation: usize) !void {
+        var i: usize = 0;
+        while (i < indentation) : (i += 1) {
+            try self.print("    ", .{});
         }
     }
 };
@@ -75,15 +85,15 @@ pub fn printBytecode(out: std.io.StreamSource.OutStream, cs: *const CodegenState
     try self.print("    num_temp_floats: {usize}\n", .{cms.temp_floats.finalCount()});
     try self.print("bytecode:\n", .{});
     for (cms.instructions.items) |instr| {
-        try self.print("    ", .{});
-        try printInstruction(&self, instr);
+        try printInstruction(&self, instr, 1);
     }
     try self.print("\n", .{});
 
     self.helper.finish();
 }
 
-fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
+fn printInstruction(self: *State, instr: Instruction, indentation: usize) std.os.WriteError!void {
+    try self.indent(indentation);
     switch (instr) {
         .copy_buffer => |x| {
             try self.print("{buffer_dest} = {expression_result}\n", .{ x.out, x.in });
@@ -117,21 +127,28 @@ fn printInstruction(self: *State, instr: Instruction) std.os.WriteError!void {
             const field_module_index = self.cms.resolved_fields[call.field_index];
             const callee_module = self.cs.modules[field_module_index];
             try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
-            try self.print("        temps: [", .{});
+            try self.indent(indentation + 1);
+            try self.print("temps: [", .{});
             for (call.temps) |temp, i| {
                 if (i > 0) try self.print(", ", .{});
                 try self.print("temp{usize}", .{temp});
             }
             try self.print("]\n", .{});
             for (call.args) |arg, i| {
-                try self.print("        {str} = {expression_result}\n", .{ callee_module.params[i].name, arg });
+                try self.indent(indentation + 1);
+                try self.print("{str} = {expression_result}\n", .{ callee_module.params[i].name, arg });
+            }
+        },
+        .track_call => |track_call| {
+            try self.print("{buffer_dest} = TRACK_CALL @{str}:\n", .{ track_call.out, self.cs.tracks[track_call.track_index].name });
+            for (track_call.instructions) |sub_instr| {
+                try printInstruction(self, sub_instr, indentation + 1);
             }
         },
         .delay => |delay| {
             try self.print("{buffer_dest} = DELAY (feedback provided at temps[{usize}]):\n", .{ delay.out, delay.feedback_temp_buffer_index });
             for (delay.instructions) |sub_instr| {
-                try self.print("        ", .{});
-                try printInstruction(self, sub_instr);
+                try printInstruction(self, sub_instr, indentation + 1);
             }
             //try self.print("{buffer_dest} = DELAY_END {expression_result}\n", .{delay_end.out,delay_end.inner_value}); // FIXME
         },

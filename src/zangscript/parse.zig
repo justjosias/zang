@@ -80,6 +80,11 @@ pub const Call = struct {
     args: []const CallArg,
 };
 
+pub const TrackCall = struct {
+    track_name_token: Token,
+    scope: *Scope,
+};
+
 pub const Delay = struct {
     num_samples: usize,
     scope: *Scope,
@@ -132,6 +137,8 @@ pub const EnumLiteral = struct {
 
 pub const ExpressionInner = union(enum) {
     call: Call,
+    track_call: TrackCall,
+    track_param: Token,
     delay: Delay,
     curve_ref: Token,
     literal_boolean: bool,
@@ -240,25 +247,32 @@ fn defineCurve(ps: *ParseState) !void {
     });
 }
 
-fn expectParamType(ps: *ParseState) !ParamType {
+fn expectParamType(ps: *ParseState, for_track: bool) !ParamType {
     const type_token = try ps.tokenizer.next();
     const type_name = ps.tokenizer.ctx.source.getString(type_token.source_range);
-    if (type_token.tt == .lowercase_name or type_token.tt == .uppercase_name) {
-        if (std.mem.eql(u8, type_name, "boolean")) return .boolean;
-        if (std.mem.eql(u8, type_name, "constant")) return .constant;
-        if (std.mem.eql(u8, type_name, "waveform")) return .buffer;
-        if (std.mem.eql(u8, type_name, "cob")) return .constant_or_buffer;
-        if (std.mem.eql(u8, type_name, "curve")) return .curve;
+    if (type_token.tt != .lowercase_name and type_token.tt != .uppercase_name) {
+        return ps.tokenizer.failExpected("param type", type_token);
+    }
+    const param_type: ParamType = blk: {
+        if (std.mem.eql(u8, type_name, "boolean")) break :blk .boolean;
+        if (std.mem.eql(u8, type_name, "constant")) break :blk .constant;
+        if (std.mem.eql(u8, type_name, "waveform")) break :blk .buffer;
+        if (std.mem.eql(u8, type_name, "cob")) break :blk .constant_or_buffer;
+        if (std.mem.eql(u8, type_name, "curve")) break :blk .curve;
         for (ps.enums.items) |e| {
             if (std.mem.eql(u8, e.name, type_name)) {
-                return ParamType{ .one_of = e };
+                break :blk ParamType{ .one_of = e };
             }
         }
+        return ps.tokenizer.failExpected("param type", type_token);
+    };
+    if (for_track and (param_type == .buffer or param_type == .constant_or_buffer)) {
+        return fail(ps.tokenizer.ctx, type_token.source_range, "track param cannot be cob or waveform", .{});
     }
-    return ps.tokenizer.failExpected("param type", type_token);
+    return param_type;
 }
 
-fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam)) !void {
+fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam), for_track: bool) !void {
     while (true) {
         const token = try ps.tokenizer.next();
         switch (token.tt) {
@@ -277,7 +291,7 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam)) 
                     }
                 }
                 try ps.tokenizer.expectNext(.sym_colon);
-                const param_type = try expectParamType(ps);
+                const param_type = try expectParamType(ps, for_track);
                 try ps.tokenizer.expectNext(.sym_comma);
                 try params.append(.{
                     .name = param_name,
@@ -306,7 +320,7 @@ fn defineTrack(ps: *ParseState) !void {
     try ps.tokenizer.expectNext(.sym_colon);
 
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
-    try parseParamDeclarations(ps, &params);
+    try parseParamDeclarations(ps, &params, true);
 
     var notes = std.ArrayList(TrackNote).init(ps.arena_allocator);
     var maybe_last_t: ?f32 = null;
@@ -357,7 +371,7 @@ fn defineModule(ps: *ParseState) !void {
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
     // all modules have an implicitly declared param called "sample_rate"
     try params.append(.{ .name = "sample_rate", .param_type = .constant });
-    try parseParamDeclarations(ps, &params);
+    try parseParamDeclarations(ps, &params, false);
 
     // parse paint block
     var ps_mod: ParseModuleState = .{
@@ -442,6 +456,15 @@ fn parseCall(ps: *ParseState, pcm: ParseContextModule, field_name_token: Token, 
     return Call{
         .field_index = field_index,
         .args = args,
+    };
+}
+
+fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule, name_token: Token) ParseError!TrackCall {
+    try ps.tokenizer.expectNext(.kw_begin);
+    const inner_scope = try parseStatements(ps, pcm.ps_mod, pcm.scope);
+    return TrackCall{
+        .track_name_token = name_token,
+        .scope = inner_scope,
     };
 }
 
@@ -603,6 +626,28 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             }
             return try createExpr(ps, loc0, .{ .curve_ref = name_token });
         },
+        .sym_at => {
+            // is it a track call ("@name") or a reference to a track note param ("@.name")?
+            const name_token = try ps.tokenizer.next();
+            if (name_token.tt != .lowercase_name and name_token.tt != .sym_dot) {
+                return ps.tokenizer.failExpected("track name or `.`", name_token);
+            }
+            switch (pc) {
+                .module => |pcm| {
+                    if (name_token.tt == .sym_dot) {
+                        const param_name_token = try ps.tokenizer.next();
+                        if (param_name_token.tt != .lowercase_name) {
+                            return ps.tokenizer.failExpected("param name", param_name_token);
+                        }
+                        return try createExpr(ps, loc0, .{ .track_param = param_name_token });
+                    } else {
+                        const track_call = try parseTrackCall(ps, pcm, name_token);
+                        return try createExpr(ps, loc0, .{ .track_call = track_call });
+                    }
+                },
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call track outside of module context", .{}),
+            }
+        },
         .uppercase_name => {
             switch (pc) {
                 .module => |pcm| {
@@ -686,9 +731,7 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
         },
         .kw_feedback => {
             switch (pc) {
-                .module => |pcm| {
-                    return try createExpr(ps, loc0, .feedback);
-                },
+                .module => |pcm| return try createExpr(ps, loc0, .feedback),
                 else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use feedback outside of module context", .{}),
             }
         },

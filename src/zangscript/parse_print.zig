@@ -64,6 +64,15 @@ const State = struct {
                 try self.print(")\n", .{});
             },
             .local => |local_index| try self.print("{str}\n", .{self.module.info.?.locals[local_index].name}),
+            .track_call => |track_call| {
+                try self.print("track_call @{str} (\n", .{self.source.getString(track_call.track_name_token.source_range)});
+                for (track_call.scope.statements.items) |statement| {
+                    try self.printStatement(statement, indentation + 1);
+                }
+                try self.indent(indentation);
+                try self.print(")\n", .{});
+            },
+            .track_param => |token| try self.print("@.{str}\n", .{self.source.getString(token.source_range)}),
             .delay => |delay| {
                 try self.print("delay {usize} (\n", .{delay.num_samples});
                 for (delay.scope.statements.items) |statement| {

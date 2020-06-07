@@ -72,6 +72,9 @@ const State = struct {
                 const module = self.module orelse return error.NoModule;
                 try self.print("params.{identifier}", .{module.params[i].name});
             },
+            .track_param => |x| {
+                try self.print("_result.params.{identifier}", .{self.script.tracks[x.track_index].params[x.param_index].name});
+            },
         }
     }
 
@@ -117,9 +120,11 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
 
     for (script.tracks) |track, track_index| {
         try self.print("\n", .{});
-        try self.print("const _track_{str} = [_]zang.Notes(struct {{\n", .{track.name});
+        try self.print("const _track_{str} = struct {{\n", .{track.name});
+        try self.print("const Params = struct {{\n", .{});
         try printParamDecls(&self, track.params);
-        try self.print("}}).SongEvent{{\n", .{});
+        try self.print("}};\n", .{});
+        try self.print("const notes = [_]zang.Notes(Params).SongEvent{{\n", .{});
         for (track.notes) |note, note_index| {
             try self.print(".{{ .t = {number_literal}, .note_id = {usize}, .params = .{{", .{ note.t, note_index + 1 });
             for (track.params) |param, param_index| {
@@ -130,6 +135,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
             }
             try self.print(" }} }},\n", .{});
         }
+        try self.print("}};\n", .{});
         try self.print("}};\n", .{});
     }
 
@@ -158,6 +164,12 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         for (inner.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
         }
+        for (inner.note_trackers) |note_tracker_decl, j| {
+            try self.print("tracker{usize}: zang.Notes(_track_{str}.Params).NoteTracker,\n", .{ j, script.tracks[note_tracker_decl.track_index].name });
+        }
+        for (inner.triggers) |trigger_decl, j| {
+            try self.print("trigger{usize}: zang.Trigger(_track_{str}.Params),\n", .{ j, script.tracks[trigger_decl.track_index].name });
+        }
         try self.print("\n", .{});
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
         try self.print("return .{{\n", .{});
@@ -168,12 +180,18 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         for (inner.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
         }
+        for (inner.note_trackers) |note_tracker_decl, j| {
+            try self.print(".tracker{usize} = zang.Notes(_track_{str}.Params).NoteTracker.init(&_track_{str}.notes),\n", .{ j, script.tracks[note_tracker_decl.track_index].name, script.tracks[note_tracker_decl.track_index].name });
+        }
+        for (inner.triggers) |trigger_decl, j| {
+            try self.print(".trigger{usize} = zang.Trigger(_track_{str}.Params).init(),\n", .{ j, script.tracks[trigger_decl.track_index].name });
+        }
         try self.print("}};\n", .{});
         try self.print("}}\n", .{});
         try self.print("\n", .{});
         try self.print("pub fn paint(self: *{identifier}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
         for (inner.instructions) |instr| {
-            try genInstruction(&self, module, inner, instr, "span");
+            try genInstruction(&self, module, inner, instr, "span", "note_id_changed");
         }
         try self.print("}}\n", .{});
         try self.print("}};\n", .{});
@@ -196,7 +214,14 @@ fn printParamDecls(self: *State, params: []const ModuleParam) !void {
     }
 }
 
-fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner, instr: Instruction, span: []const u8) (error{NoModule} || std.os.WriteError)!void {
+fn genInstruction(
+    self: *State,
+    module: Module,
+    inner: CodeGenCustomModuleInner,
+    instr: Instruction,
+    span: []const u8,
+    note_id_changed: []const u8,
+) (error{NoModule} || std.os.WriteError)!void {
     switch (instr) {
         .copy_buffer => |x| {
             try self.print("zang.copy({str}, {buffer_dest}, {expression_result});\n", .{ span, x.out, x.in });
@@ -346,7 +371,7 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                 try self.print("temps[{usize}]", .{n});
             }
             // callee params
-            try self.print("}}, note_id_changed, .{{\n", .{});
+            try self.print("}}, {identifier}, .{{\n", .{note_id_changed});
             for (call.args) |arg, j| {
                 const callee_param = callee_module.params[j];
                 try self.print(".{identifier} = ", .{callee_param.name});
@@ -371,6 +396,17 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                                 .one_of => unreachable,
                             }
                         },
+                        .track_param => |x| {
+                            const param = self.script.tracks[x.track_index].params[x.param_index];
+                            switch (param.param_type) {
+                                .boolean => unreachable,
+                                .buffer => try self.print("zang.buffer(_result.params.{identifier})", .{param.name}),
+                                .constant => try self.print("zang.constant(_result.params.{identifier})", .{param.name}),
+                                .constant_or_buffer => try self.print("_result.params.{identifier}", .{param.name}),
+                                .curve => unreachable,
+                                .one_of => unreachable,
+                            }
+                        },
                     }
                 } else {
                     try self.print("{expression_result}", .{arg});
@@ -378,6 +414,29 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
                 try self.print(",\n", .{});
             }
             try self.print("}});\n", .{});
+        },
+        .track_call => |track_call| {
+            // FIXME what if params doesn't have note_on?
+            try self.print("{{\n", .{});
+
+            try self.print("if (params.note_on and {identifier}) {{\n", .{note_id_changed});
+            try self.print("self.tracker{usize}.reset();\n", .{track_call.note_tracker_index});
+            try self.print("self.trigger{usize}.reset();\n", .{track_call.trigger_index});
+            try self.print("}}\n", .{});
+
+            try self.print("const _iap = self.tracker{usize}.consume(params.sample_rate, span.end - span.start);\n", .{track_call.note_tracker_index});
+            try self.print("var _ctr = self.trigger{usize}.counter(span, _iap);\n", .{track_call.trigger_index});
+            try self.print("while (self.trigger{usize}.next(&_ctr)) |_result| {{\n", .{track_call.trigger_index});
+
+            try self.print("const _new_note = (params.note_on and {identifier}) or _result.note_id_changed;\n", .{note_id_changed});
+
+            for (track_call.instructions) |sub_instr| {
+                try genInstruction(self, module, inner, sub_instr, "_result.span", "_new_note");
+            }
+
+            try self.print("}}\n", .{});
+
+            try self.print("}}\n", .{});
         },
         .delay => |delay| {
             // this next line kind of sucks, if the delay loop iterates more than once,
@@ -422,7 +481,7 @@ fn genInstruction(self: *State, module: Module, inner: CodeGenCustomModuleInner,
 
             try self.print("// inner expression\n", .{});
             for (delay.instructions) |sub_instr| {
-                try genInstruction(self, module, inner, sub_instr, "inner_span");
+                try genInstruction(self, module, inner, sub_instr, "inner_span", note_id_changed);
             }
 
             // end
