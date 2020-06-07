@@ -25,9 +25,13 @@ pub const PrintHelper = struct {
             if (fmt.len > 0 and fmt[0] == '}') {
                 self.indentation -= 1;
             }
-            var i: usize = 0;
-            while (i < self.indentation) : (i += 1) {
-                try self.out.print("    ", .{});
+            if (fmt.len > 0 and fmt[0] == '\n') {
+                // don't indent blank lines
+            } else {
+                var i: usize = 0;
+                while (i < self.indentation) : (i += 1) {
+                    try self.out.print("    ", .{});
+                }
             }
         }
         comptime var arg_index: usize = 0;

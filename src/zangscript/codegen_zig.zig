@@ -122,7 +122,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("\n", .{});
         try self.print("const _track_{str} = struct {{\n", .{track.name});
         try self.print("const Params = struct {{\n", .{});
-        try printParamDecls(&self, track.params);
+        try printParamDecls(&self, track.params, false);
         try self.print("}};\n", .{});
         try self.print("const notes = [_]zang.Notes(Params).SongEvent{{\n", .{});
         for (track.notes) |note, note_index| {
@@ -153,7 +153,11 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("pub const num_outputs = {usize};\n", .{module_result.num_outputs});
         try self.print("pub const num_temps = {usize};\n", .{module_result.num_temps});
         try self.print("pub const Params = struct {{\n", .{});
-        try printParamDecls(&self, module.params);
+        try printParamDecls(&self, module.params, false);
+        try self.print("}};\n", .{});
+        // this is for oxid. it wants a version of the params without sample_rate, which can be used with impulse queues.
+        try self.print("pub const NoteParams = struct {{\n", .{});
+        try printParamDecls(&self, module.params, true);
         try self.print("}};\n", .{});
         try self.print("\n", .{});
 
@@ -200,8 +204,11 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
     self.helper.finish();
 }
 
-fn printParamDecls(self: *State, params: []const ModuleParam) !void {
+fn printParamDecls(self: *State, params: []const ModuleParam, skip_sample_rate: bool) !void {
     for (params) |param| {
+        if (skip_sample_rate and std.mem.eql(u8, param.name, "sample_rate")) {
+            continue;
+        }
         const type_name = switch (param.param_type) {
             .boolean => "bool",
             .buffer => "[]const f32",
