@@ -148,7 +148,7 @@ def Instrument:
 begin
     input = 0.5 * InnerInstrument(freq=freq*2, note_on)
     //input = CurvePlayer(freq_mul=1)
-    + TrackPlayer(freq, note_on)
+    //+ TrackPlayer(freq, note_on)
 
     out input
     //out Echoes(input, echo_volume=0.6, filter_type='low_pass')

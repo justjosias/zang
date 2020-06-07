@@ -19,6 +19,7 @@ const InstrArithFloatBuffer = @import("codegen.zig").InstrArithFloatBuffer;
 const InstrArithBufferFloat = @import("codegen.zig").InstrArithBufferFloat;
 const InstrArithBufferBuffer = @import("codegen.zig").InstrArithBufferBuffer;
 const InstrCall = @import("codegen.zig").InstrCall;
+const InstrTrackCall = @import("codegen.zig").InstrTrackCall;
 const InstrDelay = @import("codegen.zig").InstrDelay;
 const Instruction = @import("codegen.zig").Instruction;
 const CodeGenCustomModuleInner = @import("codegen.zig").CodeGenCustomModuleInner;
@@ -441,6 +442,7 @@ const ScriptModule = struct {
             .float_to_buffer => |x| self.paintFloatToBuffer(p, span, x),
             .cob_to_buffer => |x| self.paintCobToBuffer(p, span, x),
             .call => |x| self.paintCall(p, span, x),
+            .track_call => |x| self.paintTrackCall(p, span, x),
             .arith_float => |x| self.paintArithFloat(p, span, x),
             .arith_buffer => |x| self.paintArithBuffer(p, span, x),
             .arith_float_float => |x| self.paintArithFloatFloat(p, span, x),
@@ -494,6 +496,10 @@ const ScriptModule = struct {
             p.note_id_changed,
             self.callee_params[0..x.args.len],
         );
+    }
+
+    fn paintTrackCall(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrTrackCall) void {
+        unreachable; // TODO
     }
 
     fn paintArithFloat(self: *const ScriptModule, p: PaintArgs, span: zang.Span, x: InstrArithFloat) void {
@@ -728,6 +734,7 @@ const ScriptModule = struct {
                         .one_of => |v| return .{ .one_of = v },
                         .constant, .buffer, .cob, .boolean, .curve => unreachable,
                     },
+                    .track_param => |x| unreachable, // TODO
                     .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .curve_ref => unreachable,
                 };
             },
@@ -741,6 +748,7 @@ const ScriptModule = struct {
                 .buffer => |v| v,
                 .constant, .cob, .boolean, .curve, .one_of => unreachable,
             },
+            .track_param => |x| unreachable, // TODO
             .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => unreachable,
         };
     }
@@ -753,6 +761,7 @@ const ScriptModule = struct {
                 .constant => |v| v,
                 .buffer, .cob, .boolean, .curve, .one_of => unreachable,
             },
+            .track_param => |x| unreachable, // TODO
             .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
         };
     }
@@ -768,6 +777,7 @@ const ScriptModule = struct {
                 .cob => |v| v,
                 .boolean, .curve, .one_of => unreachable,
             },
+            .track_param => |x| unreachable, // TODO
             .nothing, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
         };
     }
@@ -779,6 +789,7 @@ const ScriptModule = struct {
                 .boolean => |v| v,
                 .constant, .buffer, .cob, .curve, .one_of => unreachable,
             },
+            .track_param => |x| unreachable, // TODO
             .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .curve_ref => unreachable,
         };
     }
@@ -793,6 +804,7 @@ const ScriptModule = struct {
                 .curve => |v| v,
                 .boolean, .constant, .buffer, .cob, .one_of => unreachable,
             },
+            .track_param => |x| unreachable, // TODO
             .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
         };
     }
