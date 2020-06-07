@@ -82,6 +82,7 @@ pub const Call = struct {
 
 pub const TrackCall = struct {
     track_name_token: Token,
+    speed: *const Expression,
     scope: *Scope,
 };
 
@@ -460,10 +461,14 @@ fn parseCall(ps: *ParseState, pcm: ParseContextModule, field_name_token: Token, 
 }
 
 fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule, name_token: Token) ParseError!TrackCall {
+    try ps.tokenizer.expectNext(.sym_left_paren);
+    const speed_expr = try expectExpression(ps, .{ .module = pcm });
+    try ps.tokenizer.expectNext(.sym_right_paren);
     try ps.tokenizer.expectNext(.kw_begin);
     const inner_scope = try parseStatements(ps, pcm.ps_mod, pcm.scope);
     return TrackCall{
         .track_name_token = name_token,
+        .speed = speed_expr,
         .scope = inner_scope,
     };
 }

@@ -86,6 +86,7 @@ pub const InstrCall = struct {
 pub const InstrTrackCall = struct {
     out: BufferDest,
     track_index: usize,
+    speed: ExpressionResult,
     trigger_index: usize,
     note_tracker_index: usize,
     instructions: []const Instruction,
@@ -615,6 +616,11 @@ fn genTrackCall(
         if (std.mem.eql(u8, track_name, track.name)) break i;
     } else return fail(cs.ctx, track_call.track_name_token.source_range, "no track called `<`", .{});
 
+    const speed_result = try genExpression(cs, .{ .module = cms }, track_call.speed, null);
+    if (!isResultFloat(cs, .{ .module = cms }, speed_result)) {
+        return fail(cs.ctx, track_call.speed.source_range, "speed must be a constant value", .{});
+    }
+
     const trigger_index = cms.triggers.items.len;
     try cms.triggers.append(.{ .track_index = track_index });
 
@@ -652,11 +658,14 @@ fn genTrackCall(
         .track_call = .{
             .out = buffer_dest,
             .track_index = track_index,
+            .speed = speed_result,
             .trigger_index = trigger_index,
             .note_tracker_index = note_tracker_index,
             .instructions = current_track_call.instructions.toOwnedSlice(),
         },
     });
+
+    releaseExpressionResult(cms, speed_result);
 
     return commitBufferDest(maybe_result_loc, buffer_dest);
 }
