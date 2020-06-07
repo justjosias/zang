@@ -436,6 +436,8 @@ const ScriptModule = struct {
         }
     }
 
+    // FIXME - if x.out is an output, we should be doing `+=`, not `=`! see codegen_zig which already does this
+
     fn paintInstruction(self: *const ScriptModule, p: PaintArgs, span: zang.Span, instr: Instruction) void {
         switch (instr) {
             .copy_buffer => |x| self.paintCopyBuffer(p, span, x),
