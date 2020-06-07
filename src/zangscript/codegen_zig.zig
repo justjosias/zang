@@ -416,25 +416,34 @@ fn genInstruction(
             try self.print("}});\n", .{});
         },
         .track_call => |track_call| {
-            // FIXME what if params doesn't have note_on?
-            try self.print("{{\n", .{});
+            // FIXME hacked in support for params.note_on.
+            // i really need to rethink how note_on works and whether it belongs in "user land" (params) or not.
+            const has_note_on = for (module.params) |param| {
+                if (std.mem.eql(u8, param.name, "note_on")) break true;
+            } else false;
 
-            try self.print("if (params.note_on and {identifier}) {{\n", .{note_id_changed});
+            if (has_note_on) {
+                try self.print("if (params.note_on and {identifier}) {{\n", .{note_id_changed});
+            } else {
+                try self.print("if ({identifier}) {{\n", .{note_id_changed});
+            }
             try self.print("self.tracker{usize}.reset();\n", .{track_call.note_tracker_index});
             try self.print("self.trigger{usize}.reset();\n", .{track_call.trigger_index});
             try self.print("}}\n", .{});
 
-            try self.print("const _iap = self.tracker{usize}.consume(params.sample_rate, span.end - span.start);\n", .{track_call.note_tracker_index});
-            try self.print("var _ctr = self.trigger{usize}.counter(span, _iap);\n", .{track_call.trigger_index});
-            try self.print("while (self.trigger{usize}.next(&_ctr)) |_result| {{\n", .{track_call.trigger_index});
+            try self.print("const _iap{usize} = self.tracker{usize}.consume(params.sample_rate, {str}.end - {str}.start);\n", .{ track_call.note_tracker_index, track_call.note_tracker_index, span, span });
+            try self.print("var _ctr{usize} = self.trigger{usize}.counter({str}, _iap{usize});\n", .{ track_call.trigger_index, track_call.trigger_index, span, track_call.note_tracker_index });
+            try self.print("while (self.trigger{usize}.next(&_ctr{usize})) |_result| {{\n", .{ track_call.trigger_index, track_call.trigger_index });
 
-            try self.print("const _new_note = (params.note_on and {identifier}) or _result.note_id_changed;\n", .{note_id_changed});
+            if (has_note_on) {
+                try self.print("const _new_note = (params.note_on and {identifier}) or _result.note_id_changed;\n", .{note_id_changed});
+            } else {
+                try self.print("const _new_note = {identifier} or _result.note_id_changed;\n", .{note_id_changed});
+            }
 
             for (track_call.instructions) |sub_instr| {
                 try genInstruction(self, module, inner, sub_instr, "_result.span", "_new_note");
             }
-
-            try self.print("}}\n", .{});
 
             try self.print("}}\n", .{});
         },
