@@ -92,6 +92,7 @@ const State = struct {
                 }
             },
             .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
+            .global => |token| try self.print("(global){str}\n", .{self.source.getString(token.source_range)}),
             .un_arith => |m| {
                 try self.print("{auto}\n", .{m.op});
                 try self.printExpression(m.a, indentation + 1);

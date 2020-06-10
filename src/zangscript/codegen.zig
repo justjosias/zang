@@ -7,6 +7,7 @@ const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
+const Global = @import("parse.zig").Global;
 const Curve = @import("parse.zig").Curve;
 const Track = @import("parse.zig").Track;
 const Module = @import("parse.zig").Module;
@@ -140,9 +141,12 @@ pub const CurrentTrackCall = struct {
 pub const CodegenState = struct {
     arena_allocator: *std.mem.Allocator,
     ctx: Context,
+    globals: []const Global,
     curves: []const Curve,
     tracks: []const Track,
     modules: []const Module,
+    global_results: []?ExpressionResult,
+    global_visited: []bool,
 };
 
 pub const CodegenModuleState = struct {
@@ -747,6 +751,26 @@ fn genExpression(
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
+        .global => |token| {
+            const name = cs.ctx.source.getString(token.source_range);
+            const global_index = for (cs.globals) |global, i| {
+                if (std.mem.eql(u8, name, global.name)) break i;
+            } else return fail(cs.ctx, token.source_range, "use of undeclared identifier `<`", .{});
+            if (cs.global_results[global_index] == null) {
+                // globals defined out of order - generate recursively
+                if (cs.global_visited[global_index]) {
+                    return fail(cs.ctx, token.source_range, "circular reference in global", .{});
+                }
+                cs.global_visited[global_index] = true;
+                cs.global_results[global_index] = try genExpression(cs, .global, cs.globals[global_index].value, null);
+            }
+            const result = cs.global_results[global_index].?;
+            switch (result) {
+                .temp_buffer => |temp_ref| return ExpressionResult{ .temp_buffer = TempRef.weak(temp_ref.index) },
+                .temp_float => |temp_ref| return ExpressionResult{ .temp_float = TempRef.weak(temp_ref.index) },
+                else => return result,
+            }
+        },
         .local => |local_index| {
             switch (cc) {
                 .global => unreachable,
@@ -943,6 +967,8 @@ const CodeGenVisitor = struct {
     module_results: []CodeGenModuleResult, // filled in as we go
     module_visited: []bool, // ditto
     dump_codegen_out: ?std.io.StreamSource.OutStream,
+    global_results: []?ExpressionResult,
+    global_visited: []bool,
 };
 
 // codegen entry point
@@ -955,15 +981,45 @@ pub fn codegen(
     var arena = std.heap.ArenaAllocator.init(inner_allocator);
     errdefer arena.deinit();
 
+    // globals
+    var global_results = try arena.allocator.alloc(?ExpressionResult, parse_result.globals.len);
+    var global_visited = try arena.allocator.alloc(bool, parse_result.globals.len);
+    std.mem.set(?ExpressionResult, global_results, null);
+    std.mem.set(bool, global_visited, false);
+    {
+        const cs: CodegenState = .{
+            .arena_allocator = &arena.allocator,
+            .ctx = ctx,
+            .globals = parse_result.globals,
+            .curves = parse_result.curves,
+            .tracks = parse_result.tracks,
+            .modules = parse_result.modules,
+            .global_results = global_results,
+            .global_visited = global_visited,
+        };
+        for (parse_result.globals) |global, global_index| {
+            // note: genExpression has the ability to call this recursively, if a global refers
+            // to another global that hasn't been generated yet.
+            if (global_visited[global_index]) {
+                continue;
+            }
+            global_visited[global_index] = true;
+            global_results[global_index] = try genExpression(&cs, .global, global.value, null);
+        }
+    }
+
     // tracks
     var track_results = try arena.allocator.alloc(CodeGenTrackResult, parse_result.tracks.len);
     {
         const cs: CodegenState = .{
             .arena_allocator = &arena.allocator,
             .ctx = ctx,
+            .globals = parse_result.globals,
             .curves = parse_result.curves,
             .tracks = parse_result.tracks,
             .modules = parse_result.modules,
+            .global_results = global_results,
+            .global_visited = global_visited,
         };
         for (parse_result.tracks) |track, track_index| {
             var notes = try arena.allocator.alloc([]const ExpressionResult, track.notes.len);
@@ -1006,6 +1062,8 @@ pub fn codegen(
         .module_results = module_results,
         .module_visited = module_visited,
         .dump_codegen_out = dump_codegen_out,
+        .global_results = global_results,
+        .global_visited = global_visited,
     };
 
     for (parse_result.modules) |_, i| {
@@ -1059,9 +1117,12 @@ fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: Parsed
     const cs: CodegenState = .{
         .arena_allocator = self.arena_allocator,
         .ctx = self.ctx,
+        .globals = self.parse_result.globals,
         .curves = self.parse_result.curves,
         .tracks = self.parse_result.tracks,
         .modules = self.parse_result.modules,
+        .global_results = self.global_results,
+        .global_visited = self.global_visited,
     };
     var cms: CodegenModuleState = .{
         .module_results = self.module_results,

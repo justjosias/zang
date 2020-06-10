@@ -124,6 +124,11 @@ pub const Local = struct {
     name: []const u8,
 };
 
+pub const Global = struct {
+    name: []const u8,
+    value: *const Expression,
+};
+
 pub const NumberLiteral = struct {
     value: f32,
     // copy the number literal verbatim from the script so we don't get things
@@ -150,6 +155,7 @@ pub const ExpressionInner = union(enum) {
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
     feedback, // only allowed within `delay` expressions
+    global: Token, // a name that isn't a local or param, so it must be a global, but can't be resolved until codegen
 };
 
 pub const Expression = struct {
@@ -166,6 +172,7 @@ pub const Statement = union(enum) {
 const ParseState = struct {
     arena_allocator: *std.mem.Allocator,
     tokenizer: Tokenizer,
+    globals: std.ArrayList(Global),
     enums: std.ArrayList(BuiltinEnum),
     curves: std.ArrayList(Curve),
     tracks: std.ArrayList(Track),
@@ -431,8 +438,7 @@ fn parseCallArgs(ps: *ParseState, pc: ParseContext) ![]const CallArg {
             switch (pc) {
                 .module => |pcm| {
                     // shorthand param passing: `val` expands to `val=val`
-                    const inner = try requireLocalOrParam(ps, pcm, token.source_range);
-                    const subexpr = try createExprWithSourceRange(ps, token.source_range, inner);
+                    const subexpr = try createExprWithSourceRange(ps, token.source_range, resolveName(ps, pc, token));
                     try args.append(.{
                         .param_name = param_name,
                         .param_name_token = token,
@@ -537,15 +543,20 @@ fn findParam(ps_mod: *ParseModuleState, name: []const u8) ?usize {
     return null;
 }
 
-fn requireLocalOrParam(ps: *ParseState, pcm: ParseContextModule, name_source_range: SourceRange) !ExpressionInner {
-    const name = ps.tokenizer.ctx.source.getString(name_source_range);
-    if (findLocal(pcm.ps_mod, pcm.scope, name)) |local_index| {
-        return ExpressionInner{ .local = local_index };
+fn resolveName(ps: *ParseState, pc: ParseContext, token: Token) ExpressionInner {
+    switch (pc) {
+        .global => {},
+        .module => |pcm| {
+            const name = ps.tokenizer.ctx.source.getString(token.source_range);
+            if (findLocal(pcm.ps_mod, pcm.scope, name)) |local_index| {
+                return .{ .local = local_index };
+            }
+            if (findParam(pcm.ps_mod, name)) |param_index| {
+                return .{ .self_param = param_index };
+            }
+        },
     }
-    if (findParam(pcm.ps_mod, name)) |param_index| {
-        return ExpressionInner{ .self_param = param_index };
-    }
-    return fail(ps.tokenizer.ctx, name_source_range, "no local or param called `<`", .{});
+    return .{ .global = token };
 }
 
 const BinaryOperator = struct {
@@ -675,12 +686,7 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             } else if (std.mem.eql(u8, s, "min")) {
                 return parseBinaryFunction(ps, pc, loc0, .min);
             } else if (std.mem.eql(u8, s, "pi")) {
-                return try createExpr(ps, loc0, .{
-                    .literal_number = .{
-                        .value = std.math.pi,
-                        .verbatim = "std.math.pi",
-                    },
-                });
+                return try createExpr(ps, loc0, .{ .literal_number = .{ .value = std.math.pi, .verbatim = "std.math.pi" } });
             } else if (std.mem.eql(u8, s, "pow")) {
                 return parseBinaryFunction(ps, pc, loc0, .pow);
             } else if (std.mem.eql(u8, s, "sin")) {
@@ -688,13 +694,7 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             } else if (std.mem.eql(u8, s, "sqrt")) {
                 return parseUnaryFunction(ps, pc, loc0, .sqrt);
             }
-            switch (pc) {
-                .module => |pcm| {
-                    const inner = try requireLocalOrParam(ps, pcm, token.source_range);
-                    return try createExpr(ps, loc0, inner);
-                },
-                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use name outside of module context", .{}),
-            }
+            return try createExpr(ps, loc0, resolveName(ps, pc, token));
         },
         .kw_false => {
             return try createExpr(ps, loc0, .{ .literal_boolean = false });
@@ -752,10 +752,7 @@ fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, nam
             return fail(ps.tokenizer.ctx, name_token.source_range, "`<` is a reserved name", .{});
         }
     }
-    // locals are allowed to shadow params, but not other locals
-    if (findLocal(ps_mod, scope, name) != null) {
-        return fail(ps.tokenizer.ctx, name_token.source_range, "redeclaration of local `<`", .{});
-    }
+    // note: locals are allowed to shadow globals, params, and even previous locals
     const expr = try expectExpression(ps, .{ .module = .{ .ps_mod = ps_mod, .scope = scope } });
     const local_index = ps_mod.locals.items.len;
     try ps_mod.locals.append(.{
@@ -766,6 +763,27 @@ fn parseLocalDecl(ps: *ParseState, ps_mod: *ParseModuleState, scope: *Scope, nam
             .local_index = local_index,
             .expression = expr,
         },
+    });
+}
+
+fn parseGlobalDecl(ps: *ParseState, name_token: Token) !void {
+    const name = ps.tokenizer.ctx.source.getString(name_token.source_range);
+    try ps.tokenizer.expectNext(.sym_equals);
+    for (reserved_names) |reserved_name| {
+        if (std.mem.eql(u8, name, reserved_name)) {
+            return fail(ps.tokenizer.ctx, name_token.source_range, "`<` is a reserved name", .{});
+        }
+    }
+    // globals are different from locals in that they are define-anywhere, where shadowing doesn't make sense
+    for (ps.globals.items) |global| {
+        if (std.mem.eql(u8, name, global.name)) {
+            return fail(ps.tokenizer.ctx, name_token.source_range, "redeclaration of global `<`", .{});
+        }
+    }
+    const expr = try expectExpression(ps, .global);
+    try ps.globals.append(.{
+        .name = name,
+        .value = expr,
     });
 }
 
@@ -801,6 +819,7 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
 
 pub const ParseResult = struct {
     arena: std.heap.ArenaAllocator,
+    globals: []const Global,
     curves: []const Curve,
     tracks: []const Track,
     modules: []const Module,
@@ -821,6 +840,7 @@ pub fn parse(
     var ps: ParseState = .{
         .arena_allocator = &arena.allocator,
         .tokenizer = Tokenizer.init(ctx),
+        .globals = std.ArrayList(Global).init(&arena.allocator),
         .enums = std.ArrayList(BuiltinEnum).init(&arena.allocator),
         .curves = std.ArrayList(Curve).init(&arena.allocator),
         .tracks = std.ArrayList(Track).init(&arena.allocator),
@@ -848,6 +868,7 @@ pub fn parse(
             .kw_defcurve => try defineCurve(&ps),
             .kw_deftrack => try defineTrack(&ps),
             .kw_def => try defineModule(&ps),
+            .lowercase_name => try parseGlobalDecl(&ps, token),
             else => return ps.tokenizer.failExpected("`def` or end of file", token),
         }
     }
@@ -863,6 +884,7 @@ pub fn parse(
 
     return ParseResult{
         .arena = arena,
+        .globals = ps.globals.toOwnedSlice(),
         .curves = ps.curves.toOwnedSlice(),
         .tracks = ps.tracks.toOwnedSlice(),
         .modules = modules,
