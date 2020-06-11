@@ -12,7 +12,6 @@ const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const parsePrintModule = @import("parse_print.zig").parsePrintModule;
 
 pub const Curve = struct {
-    name: []const u8,
     points: []const CurvePoint,
 };
 
@@ -146,10 +145,10 @@ pub const ExpressionInner = union(enum) {
     track_call: TrackCall,
     track_param: Token,
     delay: Delay,
-    curve_ref: Token,
     literal_boolean: bool,
     literal_number: NumberLiteral,
     literal_enum_value: EnumLiteral,
+    literal_curve: usize,
     self_param: usize,
     un_arith: UnArith,
     bin_arith: BinArith,
@@ -208,21 +207,7 @@ const reserved_names = [_][]const u8{
     "sqrt",
 };
 
-fn defineCurve(ps: *ParseState) !void {
-    try ps.tokenizer.expectNext(.sym_dollar);
-    const curve_name_token = try ps.tokenizer.next();
-    if (curve_name_token.tt == .uppercase_name) {
-        return fail(ps.tokenizer.ctx, curve_name_token.source_range, "curve name must start with a lowercase letter", .{});
-    } else if (curve_name_token.tt != .lowercase_name) {
-        return ps.tokenizer.failExpected("curve name", curve_name_token);
-    }
-    const curve_name = ps.tokenizer.ctx.source.getString(curve_name_token.source_range);
-    for (ps.curves.items) |curve| {
-        if (std.mem.eql(u8, curve.name, curve_name)) {
-            return fail(ps.tokenizer.ctx, curve_name_token.source_range, "redeclaration of curve `<`", .{});
-        }
-    }
-    try ps.tokenizer.expectNext(.kw_begin);
+fn defineCurve(ps: *ParseState) !usize {
     var points = std.ArrayList(CurvePoint).init(ps.arena_allocator);
     var maybe_last_t: ?f32 = null;
     while (true) {
@@ -249,10 +234,11 @@ fn defineCurve(ps: *ParseState) !void {
             else => return ps.tokenizer.failExpected("number or `end`", token),
         }
     }
+    const curve_index = ps.curves.items.len;
     try ps.curves.append(.{
-        .name = curve_name,
         .points = points.toOwnedSlice(),
     });
+    return curve_index;
 }
 
 fn expectParamType(ps: *ParseState, for_track: bool) !ParamType {
@@ -635,12 +621,9 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             try ps.tokenizer.expectNext(.sym_right_paren);
             return a;
         },
-        .sym_dollar => {
-            const name_token = try ps.tokenizer.next();
-            if (name_token.tt != .lowercase_name) {
-                return ps.tokenizer.failExpected("curve name", name_token);
-            }
-            return try createExpr(ps, loc0, .{ .curve_ref = name_token });
+        .kw_defcurve => {
+            const curve_index = try defineCurve(ps);
+            return try createExpr(ps, loc0, .{ .literal_curve = curve_index });
         },
         .sym_at => {
             // is it a track call ("@name") or a reference to a track note param ("@.name")?
@@ -865,7 +848,6 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .end_of_file => break,
-            .kw_defcurve => try defineCurve(&ps),
             .kw_deftrack => try defineTrack(&ps),
             .kw_def => try defineModule(&ps),
             .lowercase_name => try parseGlobalDecl(&ps, token),

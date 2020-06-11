@@ -67,7 +67,7 @@ const State = struct {
                     try self.print(".{identifier}", .{v.label});
                 }
             },
-            .curve_ref => |i| try self.print("&_curve_{str}", .{self.script.curves[i].name}),
+            .literal_curve => |curve_index| try self.print("&_curve_{usize}", .{curve_index}),
             .self_param => |i| {
                 const module = self.module orelse return error.NoModule;
                 try self.print("params.{identifier}", .{module.params[i].name});
@@ -110,9 +110,9 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         break :blk n;
     };
 
-    for (script.curves) |curve| {
+    for (script.curves) |curve, curve_index| {
         try self.print("\n", .{});
-        try self.print("const _curve_{str} = [_]zang.CurveNode{{\n", .{curve.name});
+        try self.print("const _curve_{usize} = [_]zang.CurveNode{{\n", .{curve_index});
         for (curve.points) |point| {
             try self.print(".{{ .t = {number_literal}, .value = {number_literal} }},\n", .{ point.t, point.value });
         }
@@ -439,7 +439,7 @@ fn genInstruction(
                         .literal_boolean => unreachable,
                         .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
                         .literal_enum_value => unreachable,
-                        .curve_ref => unreachable,
+                        .literal_curve => unreachable,
                         .self_param => |index| {
                             const param = module.params[index];
                             switch (param.param_type) {

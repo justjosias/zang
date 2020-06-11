@@ -82,7 +82,6 @@ const State = struct {
                 try self.print(")\n", .{});
             },
             .feedback => try self.print("feedback\n", .{}),
-            .curve_ref => |token| try self.print("${str}\n", .{self.source.getString(token.source_range)}),
             .literal_boolean => |v| try self.print("{bool}\n", .{v}),
             .literal_number => |v| try self.print("{number_literal}\n", .{v}),
             .literal_enum_value => |v| {
@@ -91,6 +90,7 @@ const State = struct {
                     try self.printExpression(payload, indentation + 1);
                 }
             },
+            .literal_curve => |curve_index| try self.print("(curve {usize})\n", .{curve_index}),
             .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
             .global => |token| try self.print("(global){str}\n", .{self.source.getString(token.source_range)}),
             .un_arith => |m| {

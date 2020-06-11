@@ -737,7 +737,7 @@ const ScriptModule = struct {
                         .constant, .buffer, .cob, .boolean, .curve => unreachable,
                     },
                     .track_param => |x| unreachable, // TODO
-                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .curve_ref => unreachable,
+                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .literal_curve => unreachable,
                 };
             },
         }
@@ -751,7 +751,7 @@ const ScriptModule = struct {
                 .constant, .cob, .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => unreachable,
+            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => unreachable,
         };
     }
 
@@ -764,7 +764,7 @@ const ScriptModule = struct {
                 .buffer, .cob, .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
+            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .literal_curve => unreachable,
         };
     }
 
@@ -780,7 +780,7 @@ const ScriptModule = struct {
                 .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .literal_boolean, .literal_enum_value, .curve_ref => unreachable,
+            .nothing, .literal_boolean, .literal_enum_value, .literal_curve => unreachable,
         };
     }
 
@@ -792,13 +792,13 @@ const ScriptModule = struct {
                 .constant, .buffer, .cob, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .curve_ref => unreachable,
+            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .literal_curve => unreachable,
         };
     }
 
     fn getResultAsCurve(self: *const ScriptModule, p: PaintArgs, result: ExpressionResult) []const zang.CurveNode {
         return switch (result) {
-            .curve_ref => |curve_index| {
+            .literal_curve => |curve_index| {
                 const curve = self.curves[curve_index];
                 return self.curve_points[curve.start..curve.end];
             },

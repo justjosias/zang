@@ -46,10 +46,10 @@ pub const ExpressionResult = union(enum) {
     nothing, // this means the result was already written into a result location
     temp_buffer: TempRef,
     temp_float: TempRef,
-    curve_ref: usize,
     literal_boolean: bool,
     literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
+    literal_curve: usize,
     self_param: usize,
     track_param: struct { track_index: usize, param_index: usize },
 };
@@ -251,7 +251,7 @@ fn isResultBoolean(cs: *const CodegenState, cc: CodegenContext, result: Expressi
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .boolean,
         },
-        .literal_number, .literal_enum_value, .temp_buffer, .temp_float, .curve_ref => false,
+        .literal_number, .literal_enum_value, .literal_curve, .temp_buffer, .temp_float => false,
     };
 }
 
@@ -267,7 +267,7 @@ fn isResultFloat(cs: *const CodegenState, cc: CodegenContext, result: Expression
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .constant,
         },
-        .literal_boolean, .literal_enum_value, .temp_buffer, .curve_ref => false,
+        .literal_boolean, .literal_enum_value, .literal_curve, .temp_buffer => false,
     };
 }
 
@@ -283,14 +283,14 @@ fn isResultBuffer(cs: *const CodegenState, cc: CodegenContext, result: Expressio
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .buffer,
         },
-        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .curve_ref => false,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => false,
     };
 }
 
 fn isResultCurve(cs: *const CodegenState, cc: CodegenContext, result: ExpressionResult) bool {
     return switch (result) {
         .nothing => unreachable,
-        .curve_ref => true,
+        .literal_curve => true,
         .self_param => |param_index| switch (cc) {
             .global => unreachable,
             .module => |cms| cs.modules[cms.module_index].params[param_index].param_type == .curve,
@@ -358,7 +358,7 @@ fn isResultEnumValue(cs: *const CodegenState, cc: CodegenContext, result: Expres
             }
             return true;
         },
-        .literal_boolean, .literal_number, .temp_buffer, .temp_float, .curve_ref => return false,
+        .literal_boolean, .literal_number, .literal_curve, .temp_buffer, .temp_float => return false,
     }
 }
 
@@ -515,14 +515,6 @@ fn commitCalleeParam(cs: *const CodegenState, cc: CodegenContext, sr: SourceRang
             return fail(cs.ctx, sr, "expected one of |", .{e.values});
         },
     }
-}
-
-fn genCurveRef(cs: *const CodegenState, token: Token) !ExpressionResult {
-    const curve_name = cs.ctx.source.getString(token.source_range);
-    const index = for (cs.curves) |curve, i| {
-        if (std.mem.eql(u8, curve.name, curve_name)) break i;
-    } else return fail(cs.ctx, token.source_range, "curve `<` does not exist", .{});
-    return ExpressionResult{ .curve_ref = index };
 }
 
 // remember to call releaseExpressionResult on the results afterward
@@ -747,10 +739,10 @@ fn genExpression(
     maybe_result_loc: ?BufferDest,
 ) GenError!ExpressionResult {
     switch (expr.inner) {
-        .curve_ref => |token| return genCurveRef(cs, token),
         .literal_boolean => |value| return ExpressionResult{ .literal_boolean = value },
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
+        .literal_curve => |curve_index| return ExpressionResult{ .literal_curve = curve_index },
         .global => |token| {
             const name = cs.ctx.source.getString(token.source_range);
             const global_index = for (cs.globals) |global, i| {
@@ -875,7 +867,7 @@ fn commitOutput(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRan
         },
         .literal_boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(cs.ctx, sr, "expected buffer value, found enum value", .{}),
-        .curve_ref => return fail(cs.ctx, sr, "expected buffer value, found curve", .{}),
+        .literal_curve => return fail(cs.ctx, sr, "expected buffer value, found curve", .{}),
         .self_param => |param_index| {
             switch (cs.modules[cms.module_index].params[param_index].param_type) {
                 .boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),

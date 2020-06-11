@@ -41,7 +41,7 @@ const State = struct {
                     try self.print("({expression_result})", .{payload.*});
                 }
             },
-            .curve_ref => |i| try self.print("${str}", .{self.cs.curves[i].name}),
+            .literal_curve => |curve_index| try self.print("(curve_{usize})", .{curve_index}),
             .self_param => |i| {
                 const module = self.cs.modules[self.cms.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
