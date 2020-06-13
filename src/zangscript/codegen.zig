@@ -50,6 +50,7 @@ pub const ExpressionResult = union(enum) {
     literal_number: NumberLiteral,
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
     literal_curve: usize,
+    literal_track: usize,
     self_param: usize,
     track_param: struct { track_index: usize, param_index: usize },
 };
@@ -251,7 +252,7 @@ fn isResultBoolean(cs: *const CodegenState, cc: CodegenContext, result: Expressi
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .boolean,
         },
-        .literal_number, .literal_enum_value, .literal_curve, .temp_buffer, .temp_float => false,
+        .literal_number, .literal_enum_value, .literal_curve, .literal_track, .temp_buffer, .temp_float => false,
     };
 }
 
@@ -267,7 +268,7 @@ fn isResultFloat(cs: *const CodegenState, cc: CodegenContext, result: Expression
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .constant,
         },
-        .literal_boolean, .literal_enum_value, .literal_curve, .temp_buffer => false,
+        .literal_boolean, .literal_enum_value, .literal_curve, .literal_track, .temp_buffer => false,
     };
 }
 
@@ -283,7 +284,7 @@ fn isResultBuffer(cs: *const CodegenState, cc: CodegenContext, result: Expressio
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .buffer,
         },
-        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => false,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_track => false,
     };
 }
 
@@ -299,7 +300,15 @@ fn isResultCurve(cs: *const CodegenState, cc: CodegenContext, result: Expression
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .curve,
         },
-        .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => false,
+        .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_track => false,
+    };
+}
+
+fn isResultTrack(cs: *const CodegenState, cc: CodegenContext, result: ExpressionResult) ?usize {
+    return switch (result) {
+        .nothing => unreachable,
+        .literal_track => |track_index| track_index,
+        .self_param, .track_param, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => null,
     };
 }
 
@@ -358,7 +367,7 @@ fn isResultEnumValue(cs: *const CodegenState, cc: CodegenContext, result: Expres
             }
             return true;
         },
-        .literal_boolean, .literal_number, .literal_curve, .temp_buffer, .temp_float => return false,
+        .literal_boolean, .literal_number, .literal_curve, .literal_track, .temp_buffer, .temp_float => return false,
     }
 }
 
@@ -607,10 +616,10 @@ fn genTrackCall(
         return fail(cs.ctx, sr, "you cannot use a track call inside a delay", .{});
     }
 
-    const track_name = cs.ctx.source.getString(track_call.track_name_token.source_range);
-    const track_index = for (cs.tracks) |track, i| {
-        if (std.mem.eql(u8, track_name, track.name)) break i;
-    } else return fail(cs.ctx, track_call.track_name_token.source_range, "no track called `<`", .{});
+    const track_result = try genExpression(cs, .{ .module = cms }, track_call.track_expr, null);
+    const track_index = isResultTrack(cs, .{ .module = cms }, track_result) orelse {
+        return fail(cs.ctx, track_call.track_expr.source_range, "not a track", .{});
+    };
 
     const speed_result = try genExpression(cs, .{ .module = cms }, track_call.speed, null);
     if (!isResultFloat(cs, .{ .module = cms }, speed_result)) {
@@ -743,6 +752,7 @@ fn genExpression(
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
         .literal_curve => |curve_index| return ExpressionResult{ .literal_curve = curve_index },
+        .literal_track => |track_index| return ExpressionResult{ .literal_track = track_index },
         .global => |token| {
             const name = cs.ctx.source.getString(token.source_range);
             const global_index = for (cs.globals) |global, i| {
@@ -868,6 +878,7 @@ fn commitOutput(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRan
         .literal_boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),
         .literal_enum_value => return fail(cs.ctx, sr, "expected buffer value, found enum value", .{}),
         .literal_curve => return fail(cs.ctx, sr, "expected buffer value, found curve", .{}),
+        .literal_track => return fail(cs.ctx, sr, "expected buffer value, found track", .{}),
         .self_param => |param_index| {
             switch (cs.modules[cms.module_index].params[param_index].param_type) {
                 .boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),
@@ -1016,7 +1027,7 @@ pub fn codegen(
         for (parse_result.tracks) |track, track_index| {
             var notes = try arena.allocator.alloc([]const ExpressionResult, track.notes.len);
             for (track.notes) |note, note_index| {
-                notes[note_index] = try genArgs(&cs, .global, note.args_source_range, "track", track.name, track.params, note.args);
+                notes[note_index] = try genArgs(&cs, .global, note.args_source_range, "track", "track", track.params, note.args);
             }
             // don't need to call releaseExpressionResult since we're at the global scope where
             // temporaries can't exist anyway

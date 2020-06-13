@@ -67,7 +67,8 @@ const State = struct {
                     try self.print(".{identifier}", .{v.label});
                 }
             },
-            .literal_curve => |curve_index| try self.print("&_curve_{usize}", .{curve_index}),
+            .literal_curve => |curve_index| try self.print("&_curve{usize}", .{curve_index}),
+            .literal_track => |track_index| try self.print("&_track{usize}", .{track_index}),
             .self_param => |i| {
                 const module = self.module orelse return error.NoModule;
                 try self.print("params.{identifier}", .{module.params[i].name});
@@ -112,7 +113,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
 
     for (script.curves) |curve, curve_index| {
         try self.print("\n", .{});
-        try self.print("const _curve_{usize} = [_]zang.CurveNode{{\n", .{curve_index});
+        try self.print("const _curve{usize} = [_]zang.CurveNode{{\n", .{curve_index});
         for (curve.points) |point| {
             try self.print(".{{ .t = {number_literal}, .value = {number_literal} }},\n", .{ point.t, point.value });
         }
@@ -121,7 +122,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
 
     for (script.tracks) |track, track_index| {
         try self.print("\n", .{});
-        try self.print("const _track_{str} = struct {{\n", .{track.name});
+        try self.print("const _track{usize} = struct {{\n", .{track_index});
         try self.print("const Params = struct {{\n", .{});
         try printParamDecls(&self, track.params, false);
         try self.print("}};\n", .{});
@@ -170,10 +171,10 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
         }
         for (inner.note_trackers) |note_tracker_decl, j| {
-            try self.print("tracker{usize}: zang.Notes(_track_{str}.Params).NoteTracker,\n", .{ j, script.tracks[note_tracker_decl.track_index].name });
+            try self.print("tracker{usize}: zang.Notes(_track{usize}.Params).NoteTracker,\n", .{ j, note_tracker_decl.track_index });
         }
         for (inner.triggers) |trigger_decl, j| {
-            try self.print("trigger{usize}: zang.Trigger(_track_{str}.Params),\n", .{ j, script.tracks[trigger_decl.track_index].name });
+            try self.print("trigger{usize}: zang.Trigger(_track{usize}.Params),\n", .{ j, trigger_decl.track_index });
         }
         try self.print("\n", .{});
         try self.print("pub fn init() {identifier} {{\n", .{module.name});
@@ -186,10 +187,10 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
         }
         for (inner.note_trackers) |note_tracker_decl, j| {
-            try self.print(".tracker{usize} = zang.Notes(_track_{str}.Params).NoteTracker.init(&_track_{str}.notes),\n", .{ j, script.tracks[note_tracker_decl.track_index].name, script.tracks[note_tracker_decl.track_index].name });
+            try self.print(".tracker{usize} = zang.Notes(_track{usize}.Params).NoteTracker.init(&_track{usize}.notes),\n", .{ j, note_tracker_decl.track_index, note_tracker_decl.track_index });
         }
         for (inner.triggers) |trigger_decl, j| {
-            try self.print(".trigger{usize} = zang.Trigger(_track_{str}.Params).init(),\n", .{ j, script.tracks[trigger_decl.track_index].name });
+            try self.print(".trigger{usize} = zang.Trigger(_track{usize}.Params).init(),\n", .{ j, trigger_decl.track_index });
         }
         try self.print("}};\n", .{});
         try self.print("}}\n", .{});
@@ -440,6 +441,7 @@ fn genInstruction(
                         .literal_number => |value| try self.print("zang.constant({number_literal})", .{value}),
                         .literal_enum_value => unreachable,
                         .literal_curve => unreachable,
+                        .literal_track => unreachable,
                         .self_param => |index| {
                             const param = module.params[index];
                             switch (param.param_type) {

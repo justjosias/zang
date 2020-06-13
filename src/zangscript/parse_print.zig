@@ -65,7 +65,10 @@ const State = struct {
             },
             .local => |local_index| try self.print("{str}\n", .{self.module.info.?.locals[local_index].name}),
             .track_call => |track_call| {
-                try self.print("track_call @{str} (\n", .{self.source.getString(track_call.track_name_token.source_range)});
+                try self.print("track_call (\n", .{});
+                try self.printExpression(track_call.track_expr, indentation + 1);
+                try self.printExpression(track_call.speed, indentation + 1);
+                try self.print(") (\n", .{});
                 for (track_call.scope.statements.items) |statement| {
                     try self.printStatement(statement, indentation + 1);
                 }
@@ -91,6 +94,7 @@ const State = struct {
                 }
             },
             .literal_curve => |curve_index| try self.print("(curve {usize})\n", .{curve_index}),
+            .literal_track => |track_index| try self.print("(track {usize})\n", .{track_index}),
             .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
             .global => |token| try self.print("(global){str}\n", .{self.source.getString(token.source_range)}),
             .un_arith => |m| {

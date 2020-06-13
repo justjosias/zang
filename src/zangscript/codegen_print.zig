@@ -42,6 +42,7 @@ const State = struct {
                 }
             },
             .literal_curve => |curve_index| try self.print("(curve_{usize})", .{curve_index}),
+            .literal_track => |track_index| try self.print("(track_{usize})", .{track_index}),
             .self_param => |i| {
                 const module = self.cs.modules[self.cms.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
@@ -140,7 +141,11 @@ fn printInstruction(self: *State, instr: Instruction, indentation: usize) std.os
             }
         },
         .track_call => |track_call| {
-            try self.print("{buffer_dest} = TRACK_CALL @{str}:\n", .{ track_call.out, self.cs.tracks[track_call.track_index].name });
+            try self.print("{buffer_dest} = TRACK_CALL track_{usize} ({expression_result}):\n", .{
+                track_call.out,
+                track_call.track_index,
+                track_call.speed,
+            });
             for (track_call.instructions) |sub_instr| {
                 try printInstruction(self, sub_instr, indentation + 1);
             }

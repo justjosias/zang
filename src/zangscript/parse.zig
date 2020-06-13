@@ -21,7 +21,6 @@ pub const CurvePoint = struct {
 };
 
 pub const Track = struct {
-    name: []const u8,
     params: []const ModuleParam,
     notes: []const TrackNote,
 };
@@ -80,7 +79,7 @@ pub const Call = struct {
 };
 
 pub const TrackCall = struct {
-    track_name_token: Token,
+    track_expr: *const Expression,
     speed: *const Expression,
     scope: *Scope,
 };
@@ -149,6 +148,7 @@ pub const ExpressionInner = union(enum) {
     literal_number: NumberLiteral,
     literal_enum_value: EnumLiteral,
     literal_curve: usize,
+    literal_track: usize,
     self_param: usize,
     un_arith: UnArith,
     bin_arith: BinArith,
@@ -296,19 +296,7 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam), 
     }
 }
 
-fn defineTrack(ps: *ParseState) !void {
-    const track_name_token = try ps.tokenizer.next();
-    if (track_name_token.tt != .name) {
-        return ps.tokenizer.failExpected("track name", track_name_token);
-    }
-    const track_name = ps.tokenizer.ctx.source.getString(track_name_token.source_range);
-    for (ps.tracks.items) |track| {
-        if (std.mem.eql(u8, track.name, track_name)) {
-            return fail(ps.tokenizer.ctx, track_name_token.source_range, "redeclaration of track `<`", .{});
-        }
-    }
-    try ps.tokenizer.expectNext(.sym_colon);
-
+fn defineTrack(ps: *ParseState) !usize {
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
     try parseParamDeclarations(ps, &params, true);
 
@@ -336,11 +324,12 @@ fn defineTrack(ps: *ParseState) !void {
             else => return ps.tokenizer.failExpected("number or `end`", token),
         }
     }
+    const track_index = ps.tracks.items.len;
     try ps.tracks.append(.{
-        .name = track_name,
         .params = params.toOwnedSlice(),
         .notes = notes.toOwnedSlice(),
     });
+    return track_index;
 }
 
 fn defineModule(ps: *ParseState) !void {
@@ -446,14 +435,13 @@ fn parseCall(ps: *ParseState, pcm: ParseContextModule, field_name_token: Token, 
     };
 }
 
-fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule, name_token: Token) ParseError!TrackCall {
-    try ps.tokenizer.expectNext(.sym_left_paren);
+fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule) ParseError!TrackCall {
+    const track_expr = try expectExpression(ps, .{ .module = pcm });
     const speed_expr = try expectExpression(ps, .{ .module = pcm });
-    try ps.tokenizer.expectNext(.sym_right_paren);
     try ps.tokenizer.expectNext(.kw_begin);
     const inner_scope = try parseStatements(ps, pcm.ps_mod, pcm.scope);
     return TrackCall{
-        .track_name_token = name_token,
+        .track_expr = track_expr,
         .speed = speed_expr,
         .scope = inner_scope,
     };
@@ -619,14 +607,14 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             const curve_index = try defineCurve(ps);
             return try createExpr(ps, loc0, .{ .literal_curve = curve_index });
         },
+        .kw_deftrack => {
+            const track_index = try defineTrack(ps);
+            return try createExpr(ps, loc0, .{ .literal_track = track_index });
+        },
         .kw_from => {
-            const name_token = try ps.tokenizer.next();
-            if (name_token.tt != .name) {
-                return ps.tokenizer.failExpected("track name or `.`", name_token);
-            }
             switch (pc) {
                 .module => |pcm| {
-                    const track_call = try parseTrackCall(ps, pcm, name_token);
+                    const track_call = try parseTrackCall(ps, pcm);
                     return try createExpr(ps, loc0, .{ .track_call = track_call });
                 },
                 else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call track outside of module context", .{}),
@@ -847,7 +835,6 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .end_of_file => break,
-            .kw_deftrack => try defineTrack(&ps),
             .kw_def => try defineModule(&ps),
             .name => try parseGlobalDecl(&ps, token),
             else => return ps.tokenizer.failExpected("`def` or end of file", token),
