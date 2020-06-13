@@ -117,7 +117,7 @@ begin
     out temp0 * (temp1 * 0.5)
 end
 
-deftrack @coin:
+deftrack coin:
     freq: constant,
     note_on: boolean,
 begin
@@ -130,7 +130,7 @@ def TrackPlayer:
     freq: cob,
     note_on: boolean, // used by generated zig code (hack)...
 begin
-    out @coin(1) begin
+    out from coin(1) begin
         out CoinInstrument(
             freq=freq * (@.freq / 1000),
             note_on=@.note_on

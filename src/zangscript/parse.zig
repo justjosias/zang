@@ -297,7 +297,6 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam), 
 }
 
 fn defineTrack(ps: *ParseState) !void {
-    try ps.tokenizer.expectNext(.sym_at);
     const track_name_token = try ps.tokenizer.next();
     if (track_name_token.tt != .name) {
         return ps.tokenizer.failExpected("track name", track_name_token);
@@ -620,26 +619,30 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             const curve_index = try defineCurve(ps);
             return try createExpr(ps, loc0, .{ .literal_curve = curve_index });
         },
-        .sym_at => {
-            // is it a track call ("@name") or a reference to a track note param ("@.name")?
+        .kw_from => {
             const name_token = try ps.tokenizer.next();
-            if (name_token.tt != .name and name_token.tt != .sym_dot) {
+            if (name_token.tt != .name) {
                 return ps.tokenizer.failExpected("track name or `.`", name_token);
             }
             switch (pc) {
                 .module => |pcm| {
-                    if (name_token.tt == .sym_dot) {
-                        const param_name_token = try ps.tokenizer.next();
-                        if (param_name_token.tt != .name) {
-                            return ps.tokenizer.failExpected("param name", param_name_token);
-                        }
-                        return try createExpr(ps, loc0, .{ .track_param = param_name_token });
-                    } else {
-                        const track_call = try parseTrackCall(ps, pcm, name_token);
-                        return try createExpr(ps, loc0, .{ .track_call = track_call });
-                    }
+                    const track_call = try parseTrackCall(ps, pcm, name_token);
+                    return try createExpr(ps, loc0, .{ .track_call = track_call });
                 },
                 else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call track outside of module context", .{}),
+            }
+        },
+        .sym_at => {
+            try ps.tokenizer.expectNext(.sym_dot);
+            switch (pc) {
+                .module => |pcm| {
+                    const param_name_token = try ps.tokenizer.next();
+                    if (param_name_token.tt != .name) {
+                        return ps.tokenizer.failExpected("param name", param_name_token);
+                    }
+                    return try createExpr(ps, loc0, .{ .track_param = param_name_token });
+                },
+                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use track param outside of module context", .{}),
             }
         },
         .name => {

@@ -29,6 +29,7 @@ pub const TokenType = union(enum) {
     kw_end,
     kw_false,
     kw_feedback,
+    kw_from,
     kw_out,
     kw_true,
 };
@@ -231,6 +232,7 @@ fn getKeywordString(tt: TokenType) []const u8 {
         .kw_end => return "end",
         .kw_false => return "false",
         .kw_feedback => return "feedback",
+        .kw_from => return "from",
         .kw_out => return "out",
         .kw_true => return "true",
         else => unreachable,
