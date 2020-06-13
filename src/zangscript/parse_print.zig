@@ -95,8 +95,7 @@ const State = struct {
             },
             .literal_curve => |curve_index| try self.print("(curve {usize})\n", .{curve_index}),
             .literal_track => |track_index| try self.print("(track {usize})\n", .{track_index}),
-            .self_param => |param_index| try self.print("params.{str}\n", .{self.module.params[param_index].name}),
-            .global => |token| try self.print("(global){str}\n", .{self.source.getString(token.source_range)}),
+            .name => |token| try self.print("(name){str}\n", .{self.source.getString(token.source_range)}),
             .un_arith => |m| {
                 try self.print("{auto}\n", .{m.op});
                 try self.printExpression(m.a, indentation + 1);

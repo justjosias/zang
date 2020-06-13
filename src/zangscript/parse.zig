@@ -149,12 +149,11 @@ pub const ExpressionInner = union(enum) {
     literal_enum_value: EnumLiteral,
     literal_curve: usize,
     literal_track: usize,
-    self_param: usize,
     un_arith: UnArith,
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
     feedback, // only allowed within `delay` expressions
-    global: Token, // a name that isn't a local or param, so it must be a global, but can't be resolved until codegen
+    name: Token, // a name that isn't a local, so it can't be resolved until codegen
 };
 
 pub const Expression = struct {
@@ -485,46 +484,29 @@ fn createExpr(ps: *ParseState, loc0: SourceLocation, inner: ExpressionInner) !*c
     return createExprWithSourceRange(ps, .{ .loc0 = loc0, .loc1 = ps.tokenizer.loc }, inner);
 }
 
-fn findLocal(ps_mod: *ParseModuleState, scope: *const Scope, name: []const u8) ?usize {
-    var maybe_s: ?*const Scope = scope;
-    while (maybe_s) |sc| : (maybe_s = sc.parent) {
-        for (sc.statements.items) |statement| {
-            switch (statement) {
-                .let_assignment => |x| {
-                    if (std.mem.eql(u8, ps_mod.locals.items[x.local_index].name, name)) {
-                        return x.local_index;
-                    }
-                },
-                else => {},
-            }
-        }
-    }
-    return null;
-}
-
-fn findParam(ps_mod: *ParseModuleState, name: []const u8) ?usize {
-    for (ps_mod.params) |param, i| {
-        if (std.mem.eql(u8, param.name, name)) {
-            return i;
-        }
-    }
-    return null;
-}
-
 fn resolveName(ps: *ParseState, pc: ParseContext, token: Token) ExpressionInner {
+    // it's either a local...
     switch (pc) {
         .global => {},
         .module => |pcm| {
             const name = ps.tokenizer.ctx.source.getString(token.source_range);
-            if (findLocal(pcm.ps_mod, pcm.scope, name)) |local_index| {
-                return .{ .local = local_index };
-            }
-            if (findParam(pcm.ps_mod, name)) |param_index| {
-                return .{ .self_param = param_index };
+            var maybe_s: ?*const Scope = pcm.scope;
+            while (maybe_s) |sc| : (maybe_s = sc.parent) {
+                for (sc.statements.items) |statement| {
+                    switch (statement) {
+                        .let_assignment => |x| {
+                            if (std.mem.eql(u8, pcm.ps_mod.locals.items[x.local_index].name, name)) {
+                                return ExpressionInner{ .local = x.local_index };
+                            }
+                        },
+                        else => {},
+                    }
+                }
             }
         },
     }
-    return .{ .global = token };
+    // ...or a name that will be resolved during codegen (param or global)
+    return .{ .name = token };
 }
 
 const BinaryOperator = struct {

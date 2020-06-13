@@ -753,8 +753,26 @@ fn genExpression(
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
         .literal_curve => |curve_index| return ExpressionResult{ .literal_curve = curve_index },
         .literal_track => |track_index| return ExpressionResult{ .literal_track = track_index },
-        .global => |token| {
+        .name => |token| {
             const name = cs.ctx.source.getString(token.source_range);
+            // is it a param of the current module?
+            switch (cc) {
+                .global => {},
+                .module => |cms| {
+                    for (cs.modules[cms.module_index].params) |param, param_index| {
+                        if (!std.mem.eql(u8, param.name, name)) continue;
+                        // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
+                        if (param.param_type == .constant_or_buffer) {
+                            const buffer_dest = try requestBufferDest(cms, maybe_result_loc);
+                            try addInstruction(cms, .{ .cob_to_buffer = .{ .out = buffer_dest, .in_self_param = param_index } });
+                            return try commitBufferDest(maybe_result_loc, buffer_dest);
+                        } else {
+                            return ExpressionResult{ .self_param = param_index };
+                        }
+                    }
+                },
+            }
+            // is it a global?
             const global_index = for (cs.globals) |global, i| {
                 if (std.mem.eql(u8, name, global.name)) break i;
             } else return fail(cs.ctx, token.source_range, "use of undeclared identifier `<`", .{});
@@ -783,21 +801,6 @@ fn genExpression(
                         .temp_buffer => |temp_ref| return ExpressionResult{ .temp_buffer = TempRef.weak(temp_ref.index) },
                         .temp_float => |temp_ref| return ExpressionResult{ .temp_float = TempRef.weak(temp_ref.index) },
                         else => return result,
-                    }
-                },
-            }
-        },
-        .self_param => |param_index| {
-            switch (cc) {
-                .global => unreachable,
-                .module => |cms| {
-                    // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
-                    if (cs.modules[cms.module_index].params[param_index].param_type == .constant_or_buffer) {
-                        const buffer_dest = try requestBufferDest(cms, maybe_result_loc);
-                        try addInstruction(cms, .{ .cob_to_buffer = .{ .out = buffer_dest, .in_self_param = param_index } });
-                        return try commitBufferDest(maybe_result_loc, buffer_dest);
-                    } else {
-                        return ExpressionResult{ .self_param = param_index };
                     }
                 },
             }
