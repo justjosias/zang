@@ -244,7 +244,7 @@ fn defineCurve(ps: *ParseState) !usize {
 fn expectParamType(ps: *ParseState, for_track: bool) !ParamType {
     const type_token = try ps.tokenizer.next();
     const type_name = ps.tokenizer.ctx.source.getString(type_token.source_range);
-    if (type_token.tt != .lowercase_name and type_token.tt != .uppercase_name) {
+    if (type_token.tt != .name) {
         return ps.tokenizer.failExpected("param type", type_token);
     }
     const param_type: ParamType = blk: {
@@ -271,8 +271,7 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam), 
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .kw_begin => break,
-            .uppercase_name => return fail(ps.tokenizer.ctx, token.source_range, "param name must start with a lowercase letter", .{}),
-            .lowercase_name => {
+            .name => {
                 const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
                 for (reserved_names) |name| {
                     if (std.mem.eql(u8, name, param_name)) {
@@ -300,9 +299,7 @@ fn parseParamDeclarations(ps: *ParseState, params: *std.ArrayList(ModuleParam), 
 fn defineTrack(ps: *ParseState) !void {
     try ps.tokenizer.expectNext(.sym_at);
     const track_name_token = try ps.tokenizer.next();
-    if (track_name_token.tt == .uppercase_name) {
-        return fail(ps.tokenizer.ctx, track_name_token.source_range, "track name must start with a lowercase letter", .{});
-    } else if (track_name_token.tt != .lowercase_name) {
+    if (track_name_token.tt != .name) {
         return ps.tokenizer.failExpected("track name", track_name_token);
     }
     const track_name = ps.tokenizer.ctx.source.getString(track_name_token.source_range);
@@ -349,9 +346,7 @@ fn defineTrack(ps: *ParseState) !void {
 
 fn defineModule(ps: *ParseState) !void {
     const module_name_token = try ps.tokenizer.next();
-    if (module_name_token.tt == .lowercase_name) {
-        return fail(ps.tokenizer.ctx, module_name_token.source_range, "module name must start with a capital letter", .{});
-    } else if (module_name_token.tt != .uppercase_name) {
+    if (module_name_token.tt != .name) {
         return ps.tokenizer.failExpected("module name", module_name_token);
     }
     const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
@@ -408,7 +403,7 @@ fn parseCallArgs(ps: *ParseState, pc: ParseContext) ![]const CallArg {
             }
             token = try ps.tokenizer.next();
         }
-        if (token.tt != .lowercase_name) {
+        if (token.tt != .name) {
             return ps.tokenizer.failExpected("callee param name", token);
         }
         const param_name = ps.tokenizer.ctx.source.getString(token.source_range);
@@ -628,14 +623,14 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
         .sym_at => {
             // is it a track call ("@name") or a reference to a track note param ("@.name")?
             const name_token = try ps.tokenizer.next();
-            if (name_token.tt != .lowercase_name and name_token.tt != .sym_dot) {
+            if (name_token.tt != .name and name_token.tt != .sym_dot) {
                 return ps.tokenizer.failExpected("track name or `.`", name_token);
             }
             switch (pc) {
                 .module => |pcm| {
                     if (name_token.tt == .sym_dot) {
                         const param_name_token = try ps.tokenizer.next();
-                        if (param_name_token.tt != .lowercase_name) {
+                        if (param_name_token.tt != .name) {
                             return ps.tokenizer.failExpected("param name", param_name_token);
                         }
                         return try createExpr(ps, loc0, .{ .track_param = param_name_token });
@@ -647,17 +642,7 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
                 else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call track outside of module context", .{}),
             }
         },
-        .uppercase_name => {
-            switch (pc) {
-                .module => |pcm| {
-                    const s = ps.tokenizer.ctx.source.getString(token.source_range);
-                    const call = try parseCall(ps, pcm, token, s);
-                    return try createExpr(ps, loc0, .{ .call = call });
-                },
-                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call outside of module context", .{}),
-            }
-        },
-        .lowercase_name => {
+        .name => {
             const s = ps.tokenizer.ctx.source.getString(token.source_range);
             // this list of builtins corresponds to the `reserved_names` list
             if (std.mem.eql(u8, s, "abs")) {
@@ -677,7 +662,18 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             } else if (std.mem.eql(u8, s, "sqrt")) {
                 return parseUnaryFunction(ps, pc, loc0, .sqrt);
             }
-            return try createExpr(ps, loc0, resolveName(ps, pc, token));
+            const next_token = try ps.tokenizer.peek();
+            if (next_token.tt == .sym_left_paren) {
+                switch (pc) {
+                    .module => |pcm| {
+                        const call = try parseCall(ps, pcm, token, s);
+                        return try createExpr(ps, loc0, .{ .call = call });
+                    },
+                    else => return fail(ps.tokenizer.ctx, token.source_range, "no function `<`", .{}),
+                }
+            } else {
+                return try createExpr(ps, loc0, resolveName(ps, pc, token));
+            }
         },
         .kw_false => {
             return try createExpr(ps, loc0, .{ .literal_boolean = false });
@@ -783,7 +779,7 @@ fn parseStatements(ps: *ParseState, ps_mod: *ParseModuleState, parent_scope: ?*c
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .kw_end => break,
-            .lowercase_name => {
+            .name => {
                 try parseLocalDecl(ps, ps_mod, scope, token);
             },
             .kw_out => {
@@ -850,7 +846,7 @@ pub fn parse(
             .end_of_file => break,
             .kw_deftrack => try defineTrack(&ps),
             .kw_def => try defineModule(&ps),
-            .lowercase_name => try parseGlobalDecl(&ps, token),
+            .name => try parseGlobalDecl(&ps, token),
             else => return ps.tokenizer.failExpected("`def` or end of file", token),
         }
     }

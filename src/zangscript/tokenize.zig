@@ -7,8 +7,7 @@ const fail = @import("fail.zig").fail;
 pub const TokenType = union(enum) {
     illegal,
     end_of_file,
-    uppercase_name,
-    lowercase_name,
+    name,
     number: f32,
     enum_value,
     sym_asterisk,
@@ -131,14 +130,7 @@ pub const Tokenizer = struct {
                 };
                 return makeToken(start, loc, .{ .number = n });
             }
-            if (isUppercase(src[loc.index])) {
-                loc.index += 1;
-                while (loc.index < src.len and isValidNameTailChar(src[loc.index])) {
-                    loc.index += 1;
-                }
-                return makeToken(start, loc, .uppercase_name);
-            }
-            if (isLowercase(src[loc.index])) {
+            if (isValidNameHeadChar(src[loc.index])) {
                 loc.index += 1;
                 while (loc.index < src.len and isValidNameTailChar(src[loc.index])) {
                     loc.index += 1;
@@ -152,7 +144,7 @@ pub const Tokenizer = struct {
                         }
                     }
                 }
-                return makeToken(start, loc, .lowercase_name);
+                return makeToken(start, loc, .name);
             }
             loc.index += 1;
             return makeToken(start, loc, .illegal);
@@ -192,12 +184,9 @@ inline fn isWhitespace(ch: u8) bool {
     return ch == ' ' or ch == '\t' or ch == '\r' or ch == '\n';
 }
 
-inline fn isLowercase(ch: u8) bool {
-    return ch >= 'a' and ch <= 'z';
-}
-
-inline fn isUppercase(ch: u8) bool {
-    return ch >= 'A' and ch <= 'Z';
+// leading underscore is not allowed
+inline fn isValidNameHeadChar(ch: u8) bool {
+    return (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z');
 }
 
 inline fn isValidNameTailChar(ch: u8) bool {
