@@ -4,9 +4,9 @@ CurvePlayerInner = defmodule
     freq_mul: constant,
 begin
     out SineOsc(
-        freq = freq_mul * Curve(curve=carrier_curve, function='linear'),
+        freq = freq_mul * Curve(curve=carrier_curve, function=.linear),
         phase = SineOsc(
-            freq = freq_mul * Curve(curve=modulator_curve, function='smoothstep'),
+            freq = freq_mul * Curve(curve=modulator_curve, function=.smoothstep),
             phase = 0
         )
     )
@@ -40,9 +40,9 @@ Square = defmodule
 begin
     s = max(0, SineOsc(freq, phase=0) * 0.2)
     f = Envelope(
-        attack='cubed'(0.01),
-        decay='cubed'(0.1),
-        release='cubed'(1.0),
+        attack=.cubed(0.01),
+        decay=.cubed(0.1),
+        release=.cubed(1.0),
         sustain_volume=1,
         note_on
     )
@@ -64,17 +64,17 @@ begin
     mfreq = freq * (1 + 0.02 * SineOsc(freq=4, phase=0))
 
     f = Envelope(
-        attack='cubed'(0.05),
-        decay='cubed'(0.1),
-        release='cubed'(1.0),
+        attack=.cubed(0.05),
+        decay=.cubed(0.1),
+        release=.cubed(1.0),
         sustain_volume=1,
         note_on
     )
 
     f2 = Envelope(
-        attack='cubed'(0.4),
-        decay='cubed'(6),
-        release='cubed'(6),
+        attack=.cubed(0.4),
+        decay=.cubed(6),
+        release=.cubed(6),
         sustain_volume=0.5,
         note_on
     )
@@ -86,7 +86,7 @@ begin
         phase=0)
 
     out s
-    //out Filter(input=s, type='high_pass', cutoff=0.1, res=0)
+    //out Filter(input=s, type=.high_pass, cutoff=0.1, res=0)
 end
 
 Echoes = defmodule
@@ -108,9 +108,9 @@ CoinInstrument = defmodule
 begin
     temp0 = PulseOsc(freq, color=0.5)
     temp1 = Envelope(
-        attack='instantaneous',
-        decay='instantaneous',
-        release='linear'(0.1),
+        attack=.instantaneous,
+        decay=.instantaneous,
+        release=.linear(0.1),
         sustain_volume=1,
         note_on
     )
@@ -147,7 +147,7 @@ begin
     //+ TrackPlayer(freq, note_on)
 
     out input
-    //out Echoes(input, echo_volume=0.6, filter_type='low_pass')
+    //out Echoes(input, echo_volume=0.6, filter_type=.low_pass)
 
     //out Square(freq, note_on)
 end

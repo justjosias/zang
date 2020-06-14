@@ -95,31 +95,18 @@ pub const Tokenizer = struct {
                     }
                 }
             }
-            if (src[loc.index] == '\'') {
+            if (src[loc.index] == '.') {
                 loc.index += 1;
                 const start2 = loc;
-                while (true) {
-                    if (loc.index == src.len or src[loc.index] == '\r' or src[loc.index] == '\n') {
-                        const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                        return fail(self.ctx, sr, "expected closing `'`, found end of line", .{});
-                    }
-                    if (src[loc.index] == '\'') {
-                        break;
-                    }
-                    loc.index += 1;
+                if (loc.index == src.len or !isValidNameHeadChar(src[loc.index])) {
+                    const sr: SourceRange = .{ .loc0 = start, .loc1 = start2 };
+                    return fail(self.ctx, sr, "dot must be followed by an identifier", .{});
                 }
-                if (loc.index == start2.index) {
-                    // the reason i catch this here is that the quotes are not included in the
-                    // enum literal token. and if i let an empty value through, there will be
-                    // no characters to underline in further compile errors. whereas here we
-                    // know about the quote characters and can include them in the underlining
-                    loc.index += 1;
-                    const sr: SourceRange = .{ .loc0 = start, .loc1 = loc };
-                    return fail(self.ctx, sr, "enum literal cannot be empty", .{});
-                }
-                const token = makeToken(start2, loc, .enum_value);
                 loc.index += 1;
-                return token;
+                while (loc.index < src.len and isValidNameTailChar(src[loc.index])) {
+                    loc.index += 1;
+                }
+                return makeToken(start2, loc, .enum_value);
             }
             if (getNumber(src[loc.index..])) |len| {
                 loc.index += len;
