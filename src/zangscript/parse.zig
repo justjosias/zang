@@ -142,7 +142,6 @@ pub const EnumLiteral = struct {
 pub const ExpressionInner = union(enum) {
     call: Call,
     track_call: TrackCall,
-    track_param: Token,
     delay: Delay,
     literal_boolean: bool,
     literal_number: NumberLiteral,
@@ -600,19 +599,6 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
                     return try createExpr(ps, loc0, .{ .track_call = track_call });
                 },
                 else => return fail(ps.tokenizer.ctx, token.source_range, "cannot call track outside of module context", .{}),
-            }
-        },
-        .sym_at => {
-            try ps.tokenizer.expectNext(.sym_dot);
-            switch (pc) {
-                .module => |pcm| {
-                    const param_name_token = try ps.tokenizer.next();
-                    if (param_name_token.tt != .name) {
-                        return ps.tokenizer.failExpected("param name", param_name_token);
-                    }
-                    return try createExpr(ps, loc0, .{ .track_param = param_name_token });
-                },
-                else => return fail(ps.tokenizer.ctx, token.source_range, "cannot use track param outside of module context", .{}),
             }
         },
         .name => {

@@ -121,6 +121,8 @@ def TrackPlayer:
     freq: cob,
     note_on: boolean, // used by generated zig code (hack)...
 begin
+    base_freq = freq
+
     out from deftrack
         freq: constant,
         note_on: boolean,
@@ -130,8 +132,8 @@ begin
         0.090 (freq=1000, note_on=false)
     end 1 begin
         out CoinInstrument(
-            freq=freq * (@.freq / 1000),
-            note_on=@.note_on
+            freq=base_freq * (freq / 1000),
+            note_on
         )
     end
 end

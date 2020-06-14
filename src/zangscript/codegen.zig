@@ -2,8 +2,6 @@ const std = @import("std");
 const Context = @import("context.zig").Context;
 const SourceRange = @import("context.zig").SourceRange;
 const fail = @import("fail.zig").fail;
-const Token = @import("tokenize.zig").Token;
-const BuiltinPackage = @import("builtins.zig").BuiltinPackage;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
@@ -18,13 +16,10 @@ const UnArithOp = @import("parse.zig").UnArithOp;
 const BinArithOp = @import("parse.zig").BinArithOp;
 const TrackCall = @import("parse.zig").TrackCall;
 const Delay = @import("parse.zig").Delay;
-const Field = @import("parse.zig").Field;
 const Local = @import("parse.zig").Local;
 const Expression = @import("parse.zig").Expression;
 const Statement = @import("parse.zig").Statement;
-const Scope = @import("parse.zig").Scope;
 const BuiltinEnumValue = @import("builtins.zig").BuiltinEnumValue;
-const builtins = @import("builtins.zig").builtins;
 const printBytecode = @import("codegen_print.zig").printBytecode;
 
 pub const TempRef = struct {
@@ -755,10 +750,19 @@ fn genExpression(
         .literal_track => |track_index| return ExpressionResult{ .literal_track = track_index },
         .name => |token| {
             const name = cs.ctx.source.getString(token.source_range);
-            // is it a param of the current module?
             switch (cc) {
                 .global => {},
                 .module => |cms| {
+                    // is it a param from a track call?
+                    if (cms.current_track_call) |ctc| {
+                        for (cs.tracks[ctc.track_index].params) |param, param_index| {
+                            if (!std.mem.eql(u8, param.name, name)) continue;
+                            // note: tracks aren't allowed to use buffer or cob types. so we don't need the cob-to-buffer
+                            // instruction that self_param uses
+                            return ExpressionResult{ .track_param = .{ .track_index = ctc.track_index, .param_index = param_index } };
+                        }
+                    }
+                    // is it a param of the current module?
                     for (cs.modules[cms.module_index].params) |param, param_index| {
                         if (!std.mem.eql(u8, param.name, name)) continue;
                         // immediately turn constant_or_buffer into buffer (the rest of codegen isn't able to work with constant_or_buffer)
@@ -802,22 +806,6 @@ fn genExpression(
                         .temp_float => |temp_ref| return ExpressionResult{ .temp_float = TempRef.weak(temp_ref.index) },
                         else => return result,
                     }
-                },
-            }
-        },
-        .track_param => |name_token| {
-            switch (cc) {
-                .global => unreachable,
-                .module => |cms| {
-                    const ctc = cms.current_track_call orelse
-                        return fail(cs.ctx, expr.source_range, "track param used outside of track context", .{});
-                    const name = cs.ctx.source.getString(name_token.source_range);
-                    const param_index = for (cs.tracks[ctc.track_index].params) |param, i| {
-                        if (std.mem.eql(u8, param.name, name)) break i;
-                    } else return fail(cs.ctx, expr.source_range, "no track param called `<`", .{});
-                    // note: tracks aren't allowed to use buffer or cob types. so we don't need the cob-to-buffer
-                    // instruction that self_param uses
-                    return ExpressionResult{ .track_param = .{ .track_index = ctc.track_index, .param_index = param_index } };
                 },
             }
         },

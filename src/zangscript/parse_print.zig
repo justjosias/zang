@@ -75,7 +75,6 @@ const State = struct {
                 try self.indent(indentation);
                 try self.print(")\n", .{});
             },
-            .track_param => |token| try self.print("@.{str}\n", .{self.source.getString(token.source_range)}),
             .delay => |delay| {
                 try self.print("delay {usize} (\n", .{delay.num_samples});
                 for (delay.scope.statements.items) |statement| {
