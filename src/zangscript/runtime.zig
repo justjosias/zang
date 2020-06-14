@@ -201,7 +201,8 @@ pub fn initModule(
                     @import("../../" ++ pkg.zig_import_path);
 
                 inline for (pkg.builtins) |builtin| {
-                    if (std.mem.eql(u8, builtin.name, script.modules[module_index].name)) {
+                    const builtin_name = script.modules[module_index].builtin_name.?;
+                    if (std.mem.eql(u8, builtin.name, builtin_name)) {
                         const T = @field(package, builtin.name);
                         return BuiltinModule(T).init(script, module_index, allocator);
                     }
@@ -737,7 +738,7 @@ const ScriptModule = struct {
                         .constant, .buffer, .cob, .boolean, .curve => unreachable,
                     },
                     .track_param => |x| unreachable, // TODO
-                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .literal_curve => unreachable,
+                    .nothing, .temp_float, .temp_buffer, .literal_boolean, .literal_number, .literal_curve, .literal_track, .literal_module => unreachable,
                 };
             },
         }
@@ -751,7 +752,7 @@ const ScriptModule = struct {
                 .constant, .cob, .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => unreachable,
+            .nothing, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_track, .literal_module => unreachable,
         };
     }
 
@@ -764,7 +765,7 @@ const ScriptModule = struct {
                 .buffer, .cob, .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .literal_curve => unreachable,
+            .nothing, .temp_buffer, .literal_boolean, .literal_enum_value, .literal_curve, .literal_track, .literal_module => unreachable,
         };
     }
 
@@ -780,7 +781,7 @@ const ScriptModule = struct {
                 .boolean, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .literal_boolean, .literal_enum_value, .literal_curve => unreachable,
+            .nothing, .literal_boolean, .literal_enum_value, .literal_curve, .literal_track, .literal_module => unreachable,
         };
     }
 
@@ -792,7 +793,7 @@ const ScriptModule = struct {
                 .constant, .buffer, .cob, .curve, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .literal_curve => unreachable,
+            .nothing, .temp_buffer, .temp_float, .literal_number, .literal_enum_value, .literal_curve, .literal_track, .literal_module => unreachable,
         };
     }
 
@@ -807,7 +808,7 @@ const ScriptModule = struct {
                 .boolean, .constant, .buffer, .cob, .one_of => unreachable,
             },
             .track_param => |x| unreachable, // TODO
-            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value => unreachable,
+            .nothing, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_track, .literal_module => unreachable,
         };
     }
 };

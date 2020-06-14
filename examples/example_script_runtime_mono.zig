@@ -96,8 +96,8 @@ pub const MainModule = struct {
         errdefer allocator.destroy(script_ptr);
         script_ptr.* = script;
 
-        const module_index = for (script.modules) |module, i| {
-            if (std.mem.eql(u8, module.name, module_name)) break i;
+        const module_index = for (script.exported_modules) |em| {
+            if (std.mem.eql(u8, em.name, module_name)) break em.module_index;
         } else {
             out_script_error.* = "module \"" ++ module_name ++ "\" not found";
             return error.ModuleNotFound;
