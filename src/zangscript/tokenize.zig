@@ -21,8 +21,8 @@ pub const TokenType = union(enum) {
     sym_right_paren,
     sym_slash,
     kw_begin,
-    kw_def,
     kw_defcurve,
+    kw_defmodule,
     kw_deftrack,
     kw_delay,
     kw_end,
@@ -223,8 +223,8 @@ fn getSymbolString(tt: TokenType) []const u8 {
 fn getKeywordString(tt: TokenType) []const u8 {
     switch (tt) {
         .kw_begin => return "begin",
-        .kw_def => return "def",
         .kw_defcurve => return "defcurve",
+        .kw_defmodule => return "defmodule",
         .kw_deftrack => return "deftrack",
         .kw_delay => return "delay",
         .kw_end => return "end",

@@ -8,6 +8,7 @@ const Module = @import("parse.zig").Module;
 const parse = @import("parse.zig").parse;
 const CodeGenModuleResult = @import("codegen.zig").CodeGenModuleResult;
 const CodeGenTrackResult = @import("codegen.zig").CodeGenTrackResult;
+const ExportedModule = @import("codegen.zig").ExportedModule;
 const codegen = @import("codegen.zig").codegen;
 
 pub const CompiledScript = struct {
@@ -18,6 +19,7 @@ pub const CompiledScript = struct {
     modules: []const Module,
     track_results: []const CodeGenTrackResult,
     module_results: []const CodeGenModuleResult,
+    exported_modules: []const ExportedModule,
 
     pub fn deinit(self: *CompiledScript) void {
         self.codegen_arena.deinit();
@@ -56,5 +58,6 @@ pub fn compile(allocator: *std.mem.Allocator, options: CompileOptions) !Compiled
         .modules = parse_result.modules,
         .track_results = codegen_result.track_results,
         .module_results = codegen_result.module_results,
+        .exported_modules = codegen_result.exported_modules,
     };
 }

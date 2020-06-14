@@ -56,8 +56,8 @@ pub const ParsedModuleInfo = struct {
 };
 
 pub const Module = struct {
-    name: []const u8,
     params: []const ModuleParam,
+    builtin_name: ?[]const u8,
     zig_package_name: ?[]const u8, // only set for builtin modules
     info: ?ParsedModuleInfo, // null for builtin modules
 };
@@ -148,6 +148,7 @@ pub const ExpressionInner = union(enum) {
     literal_enum_value: EnumLiteral,
     literal_curve: usize,
     literal_track: usize,
+    literal_module: usize,
     un_arith: UnArith,
     bin_arith: BinArith,
     local: usize, // index into flat `locals` array
@@ -330,19 +331,7 @@ fn defineTrack(ps: *ParseState) !usize {
     return track_index;
 }
 
-fn defineModule(ps: *ParseState) !void {
-    const module_name_token = try ps.tokenizer.next();
-    if (module_name_token.tt != .name) {
-        return ps.tokenizer.failExpected("module name", module_name_token);
-    }
-    const module_name = ps.tokenizer.ctx.source.getString(module_name_token.source_range);
-    for (ps.modules.items) |module| {
-        if (std.mem.eql(u8, module.name, module_name)) {
-            return fail(ps.tokenizer.ctx, module_name_token.source_range, "redeclaration of module `<`", .{});
-        }
-    }
-    try ps.tokenizer.expectNext(.sym_colon);
-
+fn defineModule(ps: *ParseState) !usize {
     var params = std.ArrayList(ModuleParam).init(ps.arena_allocator);
     // all modules have an implicitly declared param called "sample_rate"
     try params.append(.{ .name = "sample_rate", .param_type = .constant });
@@ -357,10 +346,11 @@ fn defineModule(ps: *ParseState) !void {
 
     const top_scope = try parseStatements(ps, &ps_mod, null);
 
+    const module_index = ps.modules.items.len;
     // FIXME a zig compiler bug prevents me from doing this all in one literal
     // (it compiles but then segfaults at runtime)
     var module: Module = .{
-        .name = module_name,
+        .builtin_name = null,
         .zig_package_name = null,
         .params = ps_mod.params,
         .info = null,
@@ -371,6 +361,7 @@ fn defineModule(ps: *ParseState) !void {
         .locals = ps_mod.locals.toOwnedSlice(),
     };
     try ps.modules.append(module);
+    return module_index;
 }
 
 const ParseError = error{
@@ -584,6 +575,10 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             try ps.tokenizer.expectNext(.sym_right_paren);
             return a;
         },
+        .kw_defmodule => {
+            const module_index = try defineModule(ps);
+            return try createExpr(ps, loc0, .{ .literal_module = module_index });
+        },
         .kw_defcurve => {
             const curve_index = try defineCurve(ps);
             return try createExpr(ps, loc0, .{ .literal_curve = curve_index });
@@ -789,11 +784,22 @@ pub fn parse(
     for (ctx.builtin_packages) |pkg| {
         try ps.enums.appendSlice(pkg.enums);
         for (pkg.builtins) |builtin| {
+            const module_index = ps.modules.items.len;
             try ps.modules.append(.{
-                .name = builtin.name,
+                .builtin_name = builtin.name,
                 .zig_package_name = pkg.zig_package_name,
                 .params = builtin.params,
                 .info = null,
+            });
+            // add a global declaration for this builtin. hopefully this never comes up in a
+            // compile error, because this source range is bogus
+            const sr: SourceRange = .{
+                .loc0 = .{ .line = 0, .index = 0 },
+                .loc1 = .{ .line = 0, .index = 0 },
+            };
+            try ps.globals.append(.{
+                .name = builtin.name,
+                .value = try createExprWithSourceRange(&ps, sr, .{ .literal_module = module_index }),
             });
         }
     }
@@ -803,9 +809,8 @@ pub fn parse(
         const token = try ps.tokenizer.next();
         switch (token.tt) {
             .end_of_file => break,
-            .kw_def => try defineModule(&ps),
             .name => try parseGlobalDecl(&ps, token),
-            else => return ps.tokenizer.failExpected("`def` or end of file", token),
+            else => return ps.tokenizer.failExpected("declaration or end of file", token),
         }
     }
 
@@ -813,8 +818,8 @@ pub fn parse(
 
     // diagnostic print
     if (dump_parse_out) |out| {
-        for (modules) |module| {
-            parsePrintModule(out, ctx.source, modules, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
+        for (modules) |module, module_index| {
+            parsePrintModule(out, ctx.source, modules, module_index, module) catch |err| std.debug.warn("parsePrintModule failed: {}\n", .{err});
         }
     }
 

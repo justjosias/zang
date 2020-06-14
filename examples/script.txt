@@ -1,4 +1,4 @@
-def CurvePlayerInner:
+CurvePlayerInner = defmodule
     carrier_curve: curve,
     modulator_curve: curve,
     freq_mul: constant,
@@ -13,7 +13,7 @@ begin
 end
 
 // replicates example_curve.zig
-def CurvePlayer:
+CurvePlayer = defmodule
     freq_mul: constant,
 begin
     out CurvePlayerInner(
@@ -34,7 +34,7 @@ begin
     )
 end
 
-def Square:
+Square = defmodule
     freq: cob,
     note_on: boolean,
 begin
@@ -49,14 +49,14 @@ begin
     out s * f * pi
 end
 
-def MySineOsc:
+MySineOsc = defmodule
     freq: cob,
     phase: cob,
 begin
     out sin((Cycle(speed=freq) + phase) * 2 * pi)
 end
 
-def InnerInstrument:
+InnerInstrument = defmodule
     freq: cob,
     note_on: boolean,
 begin
@@ -89,7 +89,7 @@ begin
     //out Filter(input=s, type='high_pass', cutoff=0.1, res=0)
 end
 
-def Echoes:
+Echoes = defmodule
     input: waveform,
     echo_volume: constant,
     filter_type: FilterType,
@@ -102,7 +102,7 @@ begin
     end
 end
 
-def CoinInstrument:
+CoinInstrument = defmodule
     freq: cob,
     note_on: boolean,
 begin
@@ -117,7 +117,7 @@ begin
     out temp0 * (temp1 * 0.5)
 end
 
-def TrackPlayer:
+TrackPlayer = defmodule
     freq: cob,
     note_on: boolean, // used by generated zig code (hack)...
 begin
@@ -138,7 +138,7 @@ begin
     end
 end
 
-def Instrument:
+Instrument = defmodule
     freq: cob,
     note_on: boolean,
 begin

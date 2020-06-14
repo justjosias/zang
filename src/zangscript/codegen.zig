@@ -46,6 +46,7 @@ pub const ExpressionResult = union(enum) {
     literal_enum_value: struct { label: []const u8, payload: ?*const ExpressionResult },
     literal_curve: usize,
     literal_track: usize,
+    literal_module: usize,
     self_param: usize,
     track_param: struct { track_index: usize, param_index: usize },
 };
@@ -247,7 +248,7 @@ fn isResultBoolean(cs: *const CodegenState, cc: CodegenContext, result: Expressi
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .boolean,
         },
-        .literal_number, .literal_enum_value, .literal_curve, .literal_track, .temp_buffer, .temp_float => false,
+        .literal_number, .literal_enum_value, .literal_curve, .literal_track, .literal_module, .temp_buffer, .temp_float => false,
     };
 }
 
@@ -263,7 +264,7 @@ fn isResultFloat(cs: *const CodegenState, cc: CodegenContext, result: Expression
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .constant,
         },
-        .literal_boolean, .literal_enum_value, .literal_curve, .literal_track, .temp_buffer => false,
+        .literal_boolean, .literal_enum_value, .literal_curve, .literal_track, .literal_module, .temp_buffer => false,
     };
 }
 
@@ -279,7 +280,7 @@ fn isResultBuffer(cs: *const CodegenState, cc: CodegenContext, result: Expressio
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .buffer,
         },
-        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_track => false,
+        .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_track, .literal_module => false,
     };
 }
 
@@ -295,7 +296,7 @@ fn isResultCurve(cs: *const CodegenState, cc: CodegenContext, result: Expression
             .global => unreachable,
             .module => |cms| cs.tracks[x.track_index].params[x.param_index].param_type == .curve,
         },
-        .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_track => false,
+        .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_track, .literal_module => false,
     };
 }
 
@@ -303,7 +304,7 @@ fn isResultTrack(cs: *const CodegenState, cc: CodegenContext, result: Expression
     return switch (result) {
         .nothing => unreachable,
         .literal_track => |track_index| track_index,
-        .self_param, .track_param, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve => null,
+        .self_param, .track_param, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_module => null,
     };
 }
 
@@ -362,7 +363,7 @@ fn isResultEnumValue(cs: *const CodegenState, cc: CodegenContext, result: Expres
             }
             return true;
         },
-        .literal_boolean, .literal_number, .literal_curve, .literal_track, .temp_buffer, .temp_float => return false,
+        .literal_boolean, .literal_number, .literal_curve, .literal_track, .literal_module, .temp_buffer, .temp_float => return false,
     }
 }
 
@@ -526,15 +527,13 @@ fn genArgs(
     cs: *const CodegenState,
     cc: CodegenContext,
     sr: SourceRange,
-    desc: []const u8,
-    name: []const u8,
     params: []const ModuleParam,
     args: []const CallArg,
 ) ![]const ExpressionResult {
     for (args) |a| {
         for (params) |param| {
             if (std.mem.eql(u8, a.param_name, param.name)) break;
-        } else return fail(cs.ctx, a.param_name_token.source_range, "# `#` has no param called `<`", .{ desc, name });
+        } else return fail(cs.ctx, a.param_name_token.source_range, "call target has no param called `<`", .{});
     }
     var arg_results = try cs.arena_allocator.alloc(ExpressionResult, params.len);
     for (params) |param, i| {
@@ -577,7 +576,7 @@ fn genCall(
     const callee_module = cs.modules[field_module_index];
 
     // typecheck and codegen the args
-    const arg_results = try genArgs(cs, .{ .module = cms }, sr, "module", callee_module.name, callee_module.params, args);
+    const arg_results = try genArgs(cs, .{ .module = cms }, sr, callee_module.params, args);
     defer for (callee_module.params) |param, i| releaseExpressionResult(cms, arg_results[i]);
 
     // the callee needs temps for its own internal use
@@ -748,6 +747,7 @@ fn genExpression(
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
         .literal_curve => |curve_index| return ExpressionResult{ .literal_curve = curve_index },
         .literal_track => |track_index| return ExpressionResult{ .literal_track = track_index },
+        .literal_module => |module_index| return ExpressionResult{ .literal_module = module_index },
         .name => |token| {
             const name = cs.ctx.source.getString(token.source_range);
             switch (cc) {
@@ -870,6 +870,7 @@ fn commitOutput(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRan
         .literal_enum_value => return fail(cs.ctx, sr, "expected buffer value, found enum value", .{}),
         .literal_curve => return fail(cs.ctx, sr, "expected buffer value, found curve", .{}),
         .literal_track => return fail(cs.ctx, sr, "expected buffer value, found track", .{}),
+        .literal_module => return fail(cs.ctx, sr, "expected buffer value, found module", .{}),
         .self_param => |param_index| {
             switch (cs.modules[cms.module_index].params[param_index].param_type) {
                 .boolean => return fail(cs.ctx, sr, "expected buffer value, found boolean", .{}),
@@ -941,10 +942,16 @@ pub const CodeGenModuleResult = struct {
     },
 };
 
+pub const ExportedModule = struct {
+    name: []const u8,
+    module_index: usize,
+};
+
 pub const CodeGenResult = struct {
     arena: std.heap.ArenaAllocator,
     track_results: []const CodeGenTrackResult,
     module_results: []const CodeGenModuleResult,
+    exported_modules: []const ExportedModule,
 
     pub fn deinit(self: *CodeGenResult) void {
         self.arena.deinit();
@@ -1018,7 +1025,7 @@ pub fn codegen(
         for (parse_result.tracks) |track, track_index| {
             var notes = try arena.allocator.alloc([]const ExpressionResult, track.notes.len);
             for (track.notes) |note, note_index| {
-                notes[note_index] = try genArgs(&cs, .global, note.args_source_range, "track", "track", track.params, note.args);
+                notes[note_index] = try genArgs(&cs, .global, note.args_source_range, track.params, note.args);
             }
             // don't need to call releaseExpressionResult since we're at the global scope where
             // temporaries can't exist anyway
@@ -1064,10 +1071,25 @@ pub fn codegen(
         try visitModule(&self, i, i);
     }
 
+    var exported_modules = std.ArrayList(ExportedModule).init(&arena.allocator);
+    for (parse_result.globals) |global, i| {
+        switch (global_results[i].?) {
+            .literal_module => |module_index| {
+                if (parse_result.modules[module_index].info == null) continue;
+                try exported_modules.append(.{
+                    .name = global.name,
+                    .module_index = module_index,
+                });
+            },
+            else => {},
+        }
+    }
+
     return CodeGenResult{
         .arena = arena,
         .track_results = track_results,
         .module_results = module_results,
+        .exported_modules = exported_modules.toOwnedSlice(),
     };
 }
 
@@ -1085,9 +1107,11 @@ fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: us
     for (module_info.fields) |field, field_index| {
         // find the module index for this field name
         const field_name = self.ctx.source.getString(field.type_token.source_range);
-        const resolved_module_index = for (self.parse_result.modules) |m, i| {
-            if (std.mem.eql(u8, field_name, m.name)) {
-                break i;
+        const resolved_module_index = for (self.parse_result.globals) |global, global_index| {
+            if (!std.mem.eql(u8, global.name, field_name)) continue;
+            switch (self.global_results[global_index].?) {
+                .literal_module => |i| break i,
+                else => {},
             }
         } else {
             return fail(self.ctx, field.type_token.source_range, "no module called `<`", .{});

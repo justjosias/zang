@@ -43,6 +43,7 @@ const State = struct {
             },
             .literal_curve => |curve_index| try self.print("(curve_{usize})", .{curve_index}),
             .literal_track => |track_index| try self.print("(track_{usize})", .{track_index}),
+            .literal_module => |module_index| try self.print("(module_{usize})", .{module_index}),
             .self_param => |i| {
                 const module = self.cs.modules[self.cms.module_index];
                 try self.print("params.{str}", .{module.params[i].name});
@@ -81,7 +82,7 @@ pub fn printBytecode(out: std.io.StreamSource.OutStream, cs: *const CodegenState
 
     const self_module = cs.modules[cms.module_index];
 
-    try self.print("module '{str}'\n", .{self_module.name});
+    try self.print("module {usize}\n", .{cms.module_index});
     try self.print("    num_temp_buffers: {usize}\n", .{cms.temp_buffers.finalCount()});
     try self.print("    num_temp_floats: {usize}\n", .{cms.temp_floats.finalCount()});
     try self.print("bytecode:\n", .{});
@@ -127,7 +128,7 @@ fn printInstruction(self: *State, instr: Instruction, indentation: usize) std.os
         .call => |call| {
             const field_module_index = self.cms.resolved_fields[call.field_index];
             const callee_module = self.cs.modules[field_module_index];
-            try self.print("{buffer_dest} = CALL #{usize}({str})\n", .{ call.out, call.field_index, callee_module.name });
+            try self.print("{buffer_dest} = CALL #{usize}(module{usize})\n", .{ call.out, call.field_index, field_module_index });
             try self.indent(indentation + 1);
             try self.print("temps: [", .{});
             for (call.temps) |temp, i| {

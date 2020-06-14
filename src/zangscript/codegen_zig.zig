@@ -48,9 +48,10 @@ const State = struct {
     fn printModuleName(self: *State, module_index: usize) !void {
         const module = self.script.modules[module_index];
         if (module.zig_package_name) |pkg_name| {
-            try self.print("{identifier}.", .{pkg_name});
+            try self.print("{identifier}.{identifier}", .{ pkg_name, module.builtin_name.? });
+        } else {
+            try self.print("_module{usize}", .{module_index});
         }
-        try self.print("{identifier}", .{module.name});
     }
 
     fn printExpressionResult(self: *State, result: ExpressionResult) (error{NoModule} || std.os.WriteError)!void {
@@ -68,7 +69,8 @@ const State = struct {
                 }
             },
             .literal_curve => |curve_index| try self.print("&_curve{usize}", .{curve_index}),
-            .literal_track => |track_index| try self.print("&_track{usize}", .{track_index}),
+            .literal_track => |track_index| try self.print("_track{usize}", .{track_index}),
+            .literal_module => |module_index| try self.print("{module_name}", .{module_index}),
             .self_param => |i| {
                 const module = self.module orelse return error.NoModule;
                 try self.print("params.{identifier}", .{module.params[i].name});
@@ -101,6 +103,11 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         if (!std.mem.eql(u8, pkg.zig_package_name, "zang")) {
             try self.print("const {str} = @import(\"{str}\");\n", .{ pkg.zig_package_name, pkg.zig_import_path });
         }
+    }
+
+    if (script.exported_modules.len > 0) try self.print("\n", .{});
+    for (script.exported_modules) |em| {
+        try self.print("pub const {identifier} = {module_name};\n", .{ em.name, em.module_index });
     }
 
     const num_builtins = blk: {
@@ -151,7 +158,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         self.module = module;
 
         try self.print("\n", .{});
-        try self.print("pub const {identifier} = struct {{\n", .{module.name});
+        try self.print("const _module{usize} = struct {{\n", .{i});
         try self.print("pub const num_outputs = {usize};\n", .{module_result.num_outputs});
         try self.print("pub const num_temps = {usize};\n", .{module_result.num_temps});
         try self.print("pub const Params = struct {{\n", .{});
@@ -165,7 +172,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
 
         for (inner.resolved_fields) |field_module_index, j| {
             const field_module = script.modules[field_module_index];
-            try self.print("field{usize}_{identifier}: {module_name},\n", .{ j, field_module.name, field_module_index });
+            try self.print("field{usize}: {module_name},\n", .{ j, field_module_index });
         }
         for (inner.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
@@ -177,11 +184,11 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
             try self.print("trigger{usize}: zang.Trigger(_track{usize}.Params),\n", .{ j, trigger_decl.track_index });
         }
         try self.print("\n", .{});
-        try self.print("pub fn init() {identifier} {{\n", .{module.name});
+        try self.print("pub fn init() _module{usize} {{\n", .{i});
         try self.print("return .{{\n", .{});
         for (inner.resolved_fields) |field_module_index, j| {
             const field_module = script.modules[field_module_index];
-            try self.print(".field{usize}_{identifier} = {module_name}.init(),\n", .{ j, field_module.name, field_module_index });
+            try self.print(".field{usize} = {module_name}.init(),\n", .{ j, field_module_index });
         }
         for (inner.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
@@ -195,7 +202,7 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("}};\n", .{});
         try self.print("}}\n", .{});
         try self.print("\n", .{});
-        try self.print("pub fn paint(self: *{identifier}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{module.name});
+        try self.print("pub fn paint(self: *_module{usize}, span: zang.Span, outputs: [num_outputs][]f32, temps: [num_temps][]f32, note_id_changed: bool, params: Params) void {{\n", .{i});
         for (inner.instructions) |instr| {
             try genInstruction(&self, module, inner, instr, "span", "note_id_changed");
         }
@@ -417,7 +424,7 @@ fn genInstruction(
                 .output_index => {},
                 else => try self.print("zang.zero({str}, {buffer_dest});\n", .{ span, call.out }),
             }
-            try self.print("self.field{usize}_{identifier}.paint({str}, .{{", .{ call.field_index, callee_module.name, span });
+            try self.print("self.field{usize}.paint({str}, .{{", .{ call.field_index, span });
             try self.print("{buffer_dest}}}, .{{", .{call.out});
             // callee temps
             for (call.temps) |n, j| {
@@ -442,6 +449,7 @@ fn genInstruction(
                         .literal_enum_value => unreachable,
                         .literal_curve => unreachable,
                         .literal_track => unreachable,
+                        .literal_module => unreachable,
                         .self_param => |index| {
                             const param = module.params[index];
                             switch (param.param_type) {

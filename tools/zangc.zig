@@ -258,6 +258,7 @@ fn mainInner(stderr: *std.fs.File.OutStream) !void {
         .modules = parse_result.modules,
         .track_results = codegen_result.track_results,
         .module_results = codegen_result.module_results,
+        .exported_modules = codegen_result.exported_modules,
     };
     // (don't use script.deinit() - we are already deiniting parse and codegen results individually)
 

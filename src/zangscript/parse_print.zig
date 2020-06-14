@@ -94,6 +94,7 @@ const State = struct {
             },
             .literal_curve => |curve_index| try self.print("(curve {usize})\n", .{curve_index}),
             .literal_track => |track_index| try self.print("(track {usize})\n", .{track_index}),
+            .literal_module => |module_index| try self.print("(module {usize})\n", .{module_index}),
             .name => |token| try self.print("(name){str}\n", .{self.source.getString(token.source_range)}),
             .un_arith => |m| {
                 try self.print("{auto}\n", .{m.op});
@@ -108,7 +109,7 @@ const State = struct {
     }
 };
 
-pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modules: []const Module, module: Module) !void {
+pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modules: []const Module, module_index: usize, module: Module) !void {
     var self: State = .{
         .source = source,
         .modules = modules,
@@ -117,7 +118,7 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
     };
 
     if (module.info) |info| {
-        try self.print("module '{str}'\n", .{module.name});
+        try self.print("module {usize}\n", .{module_index});
         for (info.fields) |field, i| {
             const name = source.getString(field.type_token.source_range);
             try self.print("    field #{usize}({str})\n", .{ i, name });
@@ -127,7 +128,7 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
             try self.printStatement(statement, 1);
         }
     } else {
-        try self.print("builtin module '{str}'\n", .{module.name});
+        try self.print("module {usize} (builtin {str}.{str})\n", .{ module_index, module.zig_package_name.?, module.builtin_name.? });
     }
     try self.print("\n", .{});
 
