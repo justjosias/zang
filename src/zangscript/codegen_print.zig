@@ -126,7 +126,7 @@ fn printInstruction(self: *State, instr: Instruction, indentation: usize) std.os
             try self.print("{buffer_dest} = ARITH_BUFFER_BUFFER({auto}) {expression_result} {expression_result}\n", .{ x.out, x.op, x.a, x.b });
         },
         .call => |call| {
-            const field_module_index = self.cms.resolved_fields[call.field_index];
+            const field_module_index = self.cms.fields.items[call.field_index].module_index;
             const callee_module = self.cs.modules[field_module_index];
             try self.print("{buffer_dest} = CALL #{usize}(module{usize})\n", .{ call.out, call.field_index, field_module_index });
             try self.indent(indentation + 1);

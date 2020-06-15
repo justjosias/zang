@@ -45,13 +45,8 @@ pub const ModuleParam = struct {
     param_type: ParamType,
 };
 
-pub const Field = struct {
-    type_token: Token,
-};
-
 pub const ParsedModuleInfo = struct {
     scope: *Scope,
-    fields: []const Field,
     locals: []const Local,
 };
 
@@ -74,7 +69,7 @@ pub const CallArg = struct {
 };
 
 pub const Call = struct {
-    field_index: usize, // index of the field in the "self" module
+    field_expr: *const Expression, // should be a literal_module
     args: []const CallArg,
 };
 
@@ -179,7 +174,6 @@ const ParseState = struct {
 
 const ParseModuleState = struct {
     params: []const ModuleParam,
-    fields: std.ArrayList(Field),
     locals: std.ArrayList(Local),
 };
 
@@ -340,7 +334,6 @@ fn defineModule(ps: *ParseState) !usize {
     // parse paint block
     var ps_mod: ParseModuleState = .{
         .params = params.toOwnedSlice(),
-        .fields = std.ArrayList(Field).init(ps.arena_allocator),
         .locals = std.ArrayList(Local).init(ps.arena_allocator),
     };
 
@@ -357,7 +350,6 @@ fn defineModule(ps: *ParseState) !usize {
     };
     module.info = .{
         .scope = top_scope,
-        .fields = ps_mod.fields.toOwnedSlice(),
         .locals = ps_mod.locals.toOwnedSlice(),
     };
     try ps.modules.append(module);
@@ -409,19 +401,6 @@ fn parseCallArgs(ps: *ParseState, pc: ParseContext) ![]const CallArg {
         }
     }
     return args.toOwnedSlice();
-}
-
-fn parseCall(ps: *ParseState, pcm: ParseContextModule, field_name_token: Token, field_name: []const u8) !Call {
-    // each call implicitly adds a "field" (child module), since modules have state
-    const field_index = pcm.ps_mod.fields.items.len;
-    try pcm.ps_mod.fields.append(.{
-        .type_token = field_name_token,
-    });
-    const args = try parseCallArgs(ps, .{ .module = pcm });
-    return Call{
-        .field_index = field_index,
-        .args = args,
-    };
 }
 
 fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule) ParseError!TrackCall {
@@ -518,14 +497,23 @@ fn expectExpression(ps: *ParseState, pc: ParseContext) ParseError!*const Express
 
 fn expectExpression2(ps: *ParseState, pc: ParseContext, priority: usize) ParseError!*const Expression {
     var negate = false;
-    const peeked_token = try ps.tokenizer.peek();
-    if (peeked_token.tt == .sym_minus) {
+    if ((try ps.tokenizer.peek()).tt == .sym_minus) {
         _ = try ps.tokenizer.next(); // skip the peeked token
         negate = true;
     }
 
     var a = try expectTerm(ps, pc);
     const loc0 = a.source_range.loc0;
+
+    if ((try ps.tokenizer.peek()).tt == .sym_left_paren) {
+        switch (pc) {
+            .module => |pcm| {
+                const args = try parseCallArgs(ps, .{ .module = pcm });
+                a = try createExpr(ps, loc0, .{ .call = .{ .field_expr = a, .args = args } });
+            },
+            else => return fail(ps.tokenizer.ctx, a.source_range, "not a function", .{}),
+        }
+    }
 
     if (negate) {
         a = try createExpr(ps, loc0, .{ .un_arith = .{ .op = .neg, .a = a } });
@@ -616,18 +604,7 @@ fn expectTerm(ps: *ParseState, pc: ParseContext) ParseError!*const Expression {
             } else if (std.mem.eql(u8, s, "sqrt")) {
                 return parseUnaryFunction(ps, pc, loc0, .sqrt);
             }
-            const next_token = try ps.tokenizer.peek();
-            if (next_token.tt == .sym_left_paren) {
-                switch (pc) {
-                    .module => |pcm| {
-                        const call = try parseCall(ps, pcm, token, s);
-                        return try createExpr(ps, loc0, .{ .call = call });
-                    },
-                    else => return fail(ps.tokenizer.ctx, token.source_range, "no function `<`", .{}),
-                }
-            } else {
-                return try createExpr(ps, loc0, resolveName(ps, pc, token));
-            }
+            return try createExpr(ps, loc0, resolveName(ps, pc, token));
         },
         .kw_false => {
             return try createExpr(ps, loc0, .{ .literal_boolean = false });

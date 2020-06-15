@@ -2,6 +2,7 @@ const std = @import("std");
 const Context = @import("context.zig").Context;
 const SourceRange = @import("context.zig").SourceRange;
 const fail = @import("fail.zig").fail;
+const Token = @import("tokenize.zig").Token;
 const NumberLiteral = @import("parse.zig").NumberLiteral;
 const ParsedModuleInfo = @import("parse.zig").ParsedModuleInfo;
 const ParseResult = @import("parse.zig").ParseResult;
@@ -11,6 +12,7 @@ const Track = @import("parse.zig").Track;
 const Module = @import("parse.zig").Module;
 const ModuleParam = @import("parse.zig").ModuleParam;
 const ParamType = @import("parse.zig").ParamType;
+const Call = @import("parse.zig").Call;
 const CallArg = @import("parse.zig").CallArg;
 const UnArithOp = @import("parse.zig").UnArithOp;
 const BinArithOp = @import("parse.zig").BinArithOp;
@@ -113,6 +115,10 @@ pub const Instruction = union(enum) {
     delay: InstrDelay,
 };
 
+pub const Field = struct {
+    module_index: usize,
+};
+
 pub const DelayDecl = struct {
     num_samples: usize,
 };
@@ -137,6 +143,7 @@ pub const CurrentTrackCall = struct {
 
 pub const CodegenState = struct {
     arena_allocator: *std.mem.Allocator,
+    inner_allocator: *std.mem.Allocator,
     ctx: Context,
     globals: []const Global,
     curves: []const Curve,
@@ -144,17 +151,19 @@ pub const CodegenState = struct {
     modules: []const Module,
     global_results: []?ExpressionResult,
     global_visited: []bool,
+    track_results: []?CodeGenTrackResult,
+    module_results: []?CodeGenModuleResult,
+    dump_codegen_out: ?std.io.StreamSource.OutStream,
 };
 
 pub const CodegenModuleState = struct {
-    module_results: []const CodeGenModuleResult,
     module_index: usize,
-    resolved_fields: []const usize,
     locals: []const Local,
     instructions: std.ArrayList(Instruction),
     temp_buffers: TempManager,
     temp_floats: TempManager,
     local_results: []?ExpressionResult,
+    fields: std.ArrayList(Field),
     delays: std.ArrayList(DelayDecl),
     triggers: std.ArrayList(TriggerDecl),
     note_trackers: std.ArrayList(NoteTrackerDecl),
@@ -308,6 +317,14 @@ fn isResultTrack(cs: *const CodegenState, cc: CodegenContext, result: Expression
     };
 }
 
+fn isResultModule(cs: *const CodegenState, cc: CodegenContext, result: ExpressionResult) ?usize {
+    return switch (result) {
+        .nothing => unreachable,
+        .literal_module => |module_index| module_index,
+        .self_param, .track_param, .temp_buffer, .temp_float, .literal_boolean, .literal_number, .literal_enum_value, .literal_curve, .literal_track => null,
+    };
+}
+
 fn enumAllowsValue(allowed_values: []const BuiltinEnumValue, label: []const u8, has_float_payload: bool) bool {
     const allowed_value = for (allowed_values) |value| {
         if (std.mem.eql(u8, label, value.label)) break value;
@@ -409,7 +426,7 @@ fn addInstruction(cms: *CodegenModuleState, instruction: Instruction) !void {
     }
 }
 
-fn genLiteralEnum(cs: *const CodegenState, cc: CodegenContext, label: []const u8, payload: ?*const Expression) !ExpressionResult {
+fn genLiteralEnum(cs: *CodegenState, cc: CodegenContext, label: []const u8, payload: ?*const Expression) !ExpressionResult {
     if (payload) |payload_expr| {
         const payload_result = try genExpression(cs, cc, payload_expr, null);
         // the payload_result is now owned by the enum result, and will be released with it by releaseExpressionResult
@@ -421,7 +438,7 @@ fn genLiteralEnum(cs: *const CodegenState, cc: CodegenContext, label: []const u8
     }
 }
 
-fn genUnArith(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: UnArithOp, ea: *const Expression) !ExpressionResult {
+fn genUnArith(cs: *CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: UnArithOp, ea: *const Expression) !ExpressionResult {
     const cc: CodegenContext = .{ .module = cms };
 
     const ra = try genExpression(cs, cc, ea, null);
@@ -442,7 +459,7 @@ fn genUnArith(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange
     return fail(cs.ctx, sr, "arithmetic can only be performed on numeric types", .{});
 }
 
-fn genBinArith(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression) !ExpressionResult {
+fn genBinArith(cs: *CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, op: BinArithOp, ea: *const Expression, eb: *const Expression) !ExpressionResult {
     const cc: CodegenContext = .{ .module = cms };
 
     const ra = try genExpression(cs, cc, ea, null);
@@ -524,7 +541,7 @@ fn commitCalleeParam(cs: *const CodegenState, cc: CodegenContext, sr: SourceRang
 
 // remember to call releaseExpressionResult on the results afterward
 fn genArgs(
-    cs: *const CodegenState,
+    cs: *CodegenState,
     cc: CodegenContext,
     sr: SourceRange,
     params: []const ModuleParam,
@@ -565,22 +582,31 @@ fn genArgs(
 }
 
 fn genCall(
-    cs: *const CodegenState,
+    cs: *CodegenState,
     cms: *CodegenModuleState,
     sr: SourceRange,
     maybe_result_loc: ?BufferDest,
-    field_index: usize,
-    args: []const CallArg,
+    call: Call,
 ) !ExpressionResult {
-    const field_module_index = cms.resolved_fields[field_index];
-    const callee_module = cs.modules[field_module_index];
+    // generate the expression that resolves to the module to be called
+    const field_result = try genExpression(cs, .{ .module = cms }, call.field_expr, null);
+    const callee_module_index = isResultModule(cs, .{ .module = cms }, field_result) orelse {
+        return fail(cs.ctx, call.field_expr.source_range, "not a module", .{});
+    };
+
+    // add a "field" to the self module
+    const field_index = cms.fields.items.len;
+    try cms.fields.append(.{
+        .module_index = callee_module_index,
+    });
 
     // typecheck and codegen the args
-    const arg_results = try genArgs(cs, .{ .module = cms }, sr, callee_module.params, args);
+    const callee_module = cs.modules[callee_module_index];
+    const arg_results = try genArgs(cs, .{ .module = cms }, sr, callee_module.params, call.args);
     defer for (callee_module.params) |param, i| releaseExpressionResult(cms, arg_results[i]);
 
     // the callee needs temps for its own internal use
-    var temps = try cs.arena_allocator.alloc(usize, cms.module_results[field_module_index].num_temps);
+    var temps = try cs.arena_allocator.alloc(usize, cs.module_results[callee_module_index].?.num_temps);
     for (temps) |*ptr| ptr.* = try cms.temp_buffers.claim();
     defer for (temps) |temp_buffer_index| cms.temp_buffers.release(temp_buffer_index);
 
@@ -597,7 +623,7 @@ fn genCall(
 }
 
 fn genTrackCall(
-    cs: *const CodegenState,
+    cs: *CodegenState,
     cms: *CodegenModuleState,
     sr: SourceRange,
     maybe_result_loc: ?BufferDest,
@@ -669,7 +695,7 @@ fn genTrackCall(
     return commitBufferDest(maybe_result_loc, buffer_dest);
 }
 
-fn genDelay(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay) !ExpressionResult {
+fn genDelay(cs: *CodegenState, cms: *CodegenModuleState, sr: SourceRange, maybe_result_loc: ?BufferDest, delay: Delay) !ExpressionResult {
     if (cms.current_delay != null) {
         return fail(cs.ctx, sr, "you cannot nest delay operations", .{}); // i might be able to support this, but why?
     }
@@ -729,6 +755,80 @@ fn genDelay(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRange, 
     return commitBufferDest(maybe_result_loc, buffer_dest);
 }
 
+fn genTrack(cs: *CodegenState, track_index: usize) !void {
+    if (cs.track_results[track_index] != null) {
+        return; // already generated
+    }
+    const track = cs.tracks[track_index];
+    var notes = try cs.arena_allocator.alloc([]const ExpressionResult, track.notes.len);
+    for (track.notes) |note, note_index| {
+        notes[note_index] = try genArgs(cs, .global, note.args_source_range, track.params, note.args);
+    }
+    // don't need to call releaseExpressionResult since we're at the global scope where
+    // temporaries can't exist anyway
+    cs.track_results[track_index] = .{ .note_values = notes };
+}
+
+fn genModule(cs: *CodegenState, module_index: usize) !void {
+    if (cs.module_results[module_index] != null) {
+        return; // already generated
+    }
+
+    const module_info = cs.modules[module_index].info.?;
+
+    var cms: CodegenModuleState = .{
+        .module_index = module_index,
+        .locals = module_info.locals,
+        .instructions = std.ArrayList(Instruction).init(cs.arena_allocator),
+        .temp_buffers = TempManager.init(cs.inner_allocator, true),
+        // pass false: don't reuse temp floats slots (they become `const` in zig)
+        // TODO we could reuse them if we're targeting runtime, not codegen_zig
+        .temp_floats = TempManager.init(cs.inner_allocator, false),
+        .local_results = try cs.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
+        .fields = std.ArrayList(Field).init(cs.arena_allocator),
+        .delays = std.ArrayList(DelayDecl).init(cs.arena_allocator),
+        .triggers = std.ArrayList(TriggerDecl).init(cs.arena_allocator),
+        .note_trackers = std.ArrayList(NoteTrackerDecl).init(cs.arena_allocator),
+        .current_delay = null,
+        .current_track_call = null,
+    };
+    defer cms.temp_buffers.deinit();
+    defer cms.temp_floats.deinit();
+
+    std.mem.set(?ExpressionResult, cms.local_results, null);
+
+    for (module_info.scope.statements.items) |statement| {
+        try genTopLevelStatement(cs, &cms, statement);
+    }
+
+    for (cms.local_results) |maybe_result| {
+        const result = maybe_result orelse continue;
+        releaseExpressionResult(&cms, result);
+    }
+
+    cms.temp_buffers.reportLeaks();
+    cms.temp_floats.reportLeaks();
+
+    if (cs.dump_codegen_out) |out| {
+        printBytecode(out, cs, &cms) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
+    }
+
+    cs.module_results[module_index] = .{
+        .num_outputs = 1,
+        .num_temps = cms.temp_buffers.finalCount(),
+        .num_temp_floats = cms.temp_floats.finalCount(),
+        .inner = .{
+            .custom = .{
+                .fields = cms.fields.toOwnedSlice(),
+                .delays = cms.delays.toOwnedSlice(),
+                .note_trackers = cms.note_trackers.toOwnedSlice(),
+                .triggers = cms.triggers.toOwnedSlice(),
+                .instructions = cms.instructions.toOwnedSlice(),
+            },
+        },
+    };
+}
+
 pub const GenError = error{
     Failed,
     OutOfMemory,
@@ -736,7 +836,7 @@ pub const GenError = error{
 
 // generate bytecode instructions for an expression
 fn genExpression(
-    cs: *const CodegenState,
+    cs: *CodegenState,
     cc: CodegenContext,
     expr: *const Expression,
     maybe_result_loc: ?BufferDest,
@@ -746,8 +846,14 @@ fn genExpression(
         .literal_number => |value| return ExpressionResult{ .literal_number = value },
         .literal_enum_value => |v| return genLiteralEnum(cs, cc, v.label, v.payload),
         .literal_curve => |curve_index| return ExpressionResult{ .literal_curve = curve_index },
-        .literal_track => |track_index| return ExpressionResult{ .literal_track = track_index },
-        .literal_module => |module_index| return ExpressionResult{ .literal_module = module_index },
+        .literal_track => |track_index| {
+            try genTrack(cs, track_index);
+            return ExpressionResult{ .literal_track = track_index };
+        },
+        .literal_module => |module_index| {
+            try genModule(cs, module_index);
+            return ExpressionResult{ .literal_module = module_index };
+        },
         .name => |token| {
             const name = cs.ctx.source.getString(token.source_range);
             switch (cc) {
@@ -824,7 +930,7 @@ fn genExpression(
         .call => |call| {
             switch (cc) {
                 .global => unreachable,
-                .module => |cms| return try genCall(cs, cms, expr.source_range, maybe_result_loc, call.field_index, call.args),
+                .module => |cms| return try genCall(cs, cms, expr.source_range, maybe_result_loc, call),
             }
         },
         .track_call => |track_call| {
@@ -900,7 +1006,7 @@ fn commitOutput(cs: *const CodegenState, cms: *CodegenModuleState, sr: SourceRan
     }
 }
 
-fn genTopLevelStatement(cs: *const CodegenState, cms: *CodegenModuleState, statement: Statement) !void {
+fn genTopLevelStatement(cs: *CodegenState, cms: *CodegenModuleState, statement: Statement) !void {
     std.debug.assert(cms.current_delay == null);
     std.debug.assert(cms.current_track_call == null);
 
@@ -925,7 +1031,7 @@ pub const CodeGenTrackResult = struct {
 };
 
 pub const CodeGenCustomModuleInner = struct {
-    resolved_fields: []const usize, // owned slice
+    fields: []const Field, // owned slice
     delays: []const DelayDecl, // owned slice
     note_trackers: []const NoteTrackerDecl, // owned slice
     triggers: []const TriggerDecl, // owned slice
@@ -958,20 +1064,6 @@ pub const CodeGenResult = struct {
     }
 };
 
-// visit codegen modules in dependency order (modules need to know the
-// `num_temps` of their fields, which is resolved during codegen)
-const CodeGenVisitor = struct {
-    arena_allocator: *std.mem.Allocator, // for persistent allocations (used in result)
-    inner_allocator: *std.mem.Allocator, // for temporary allocations
-    ctx: Context,
-    parse_result: ParseResult,
-    module_results: []CodeGenModuleResult, // filled in as we go
-    module_visited: []bool, // ditto
-    dump_codegen_out: ?std.io.StreamSource.OutStream,
-    global_results: []?ExpressionResult,
-    global_visited: []bool,
-};
-
 // codegen entry point
 pub fn codegen(
     ctx: Context,
@@ -987,60 +1079,27 @@ pub fn codegen(
     var global_visited = try arena.allocator.alloc(bool, parse_result.globals.len);
     std.mem.set(?ExpressionResult, global_results, null);
     std.mem.set(bool, global_visited, false);
-    {
-        const cs: CodegenState = .{
-            .arena_allocator = &arena.allocator,
-            .ctx = ctx,
-            .globals = parse_result.globals,
-            .curves = parse_result.curves,
-            .tracks = parse_result.tracks,
-            .modules = parse_result.modules,
-            .global_results = global_results,
-            .global_visited = global_visited,
-        };
-        for (parse_result.globals) |global, global_index| {
-            // note: genExpression has the ability to call this recursively, if a global refers
-            // to another global that hasn't been generated yet.
-            if (global_visited[global_index]) {
-                continue;
-            }
-            global_visited[global_index] = true;
-            global_results[global_index] = try genExpression(&cs, .global, global.value, null);
-        }
-    }
+    var track_results = try arena.allocator.alloc(?CodeGenTrackResult, parse_result.tracks.len);
+    std.mem.set(?CodeGenTrackResult, track_results, null);
+    var module_results = try arena.allocator.alloc(?CodeGenModuleResult, parse_result.modules.len);
+    std.mem.set(?CodeGenModuleResult, module_results, null);
 
-    // tracks
-    var track_results = try arena.allocator.alloc(CodeGenTrackResult, parse_result.tracks.len);
-    {
-        const cs: CodegenState = .{
-            .arena_allocator = &arena.allocator,
-            .ctx = ctx,
-            .globals = parse_result.globals,
-            .curves = parse_result.curves,
-            .tracks = parse_result.tracks,
-            .modules = parse_result.modules,
-            .global_results = global_results,
-            .global_visited = global_visited,
-        };
-        for (parse_result.tracks) |track, track_index| {
-            var notes = try arena.allocator.alloc([]const ExpressionResult, track.notes.len);
-            for (track.notes) |note, note_index| {
-                notes[note_index] = try genArgs(&cs, .global, note.args_source_range, track.params, note.args);
-            }
-            // don't need to call releaseExpressionResult since we're at the global scope where
-            // temporaries can't exist anyway
-            track_results[track_index] = .{ .note_values = notes };
-        }
-    }
+    var cs: CodegenState = .{
+        .arena_allocator = &arena.allocator,
+        .inner_allocator = inner_allocator,
+        .ctx = ctx,
+        .globals = parse_result.globals,
+        .curves = parse_result.curves,
+        .tracks = parse_result.tracks,
+        .modules = parse_result.modules,
+        .global_results = global_results,
+        .global_visited = global_visited,
+        .track_results = track_results,
+        .module_results = module_results,
+        .dump_codegen_out = dump_codegen_out,
+    };
 
-    // modules
-    var module_visited = try inner_allocator.alloc(bool, parse_result.modules.len);
-    defer inner_allocator.free(module_visited);
-
-    std.mem.set(bool, module_visited, false);
-
-    var module_results = try arena.allocator.alloc(CodeGenModuleResult, parse_result.modules.len);
-
+    // generate builtin modules
     var builtin_index: usize = 0;
     for (ctx.builtin_packages) |pkg| {
         for (pkg.builtins) |builtin| {
@@ -1050,25 +1109,18 @@ pub fn codegen(
                 .num_temp_floats = 0,
                 .inner = .builtin,
             };
-            module_visited[builtin_index] = true;
             builtin_index += 1;
         }
     }
 
-    var self: CodeGenVisitor = .{
-        .arena_allocator = &arena.allocator,
-        .inner_allocator = inner_allocator,
-        .ctx = ctx,
-        .parse_result = parse_result,
-        .module_results = module_results,
-        .module_visited = module_visited,
-        .dump_codegen_out = dump_codegen_out,
-        .global_results = global_results,
-        .global_visited = global_visited,
-    };
-
-    for (parse_result.modules) |_, i| {
-        try visitModule(&self, i, i);
+    for (parse_result.globals) |global, global_index| {
+        // note: genExpression has the ability to call this recursively, if a global refers
+        // to another global that hasn't been generated yet.
+        if (global_visited[global_index]) {
+            continue;
+        }
+        global_visited[global_index] = true;
+        global_results[global_index] = try genExpression(&cs, .global, global.value, null);
     }
 
     var exported_modules = std.ArrayList(ExportedModule).init(&arena.allocator);
@@ -1085,113 +1137,20 @@ pub fn codegen(
         }
     }
 
+    // convert []?T to []T
+    var track_results2 = try arena.allocator.alloc(CodeGenTrackResult, track_results.len);
+    for (track_results) |maybe_result, i| {
+        track_results2[i] = maybe_result.?;
+    }
+    var module_results2 = try arena.allocator.alloc(CodeGenModuleResult, module_results.len);
+    for (module_results) |maybe_result, i| {
+        module_results2[i] = maybe_result.?;
+    }
+
     return CodeGenResult{
         .arena = arena,
-        .track_results = track_results,
-        .module_results = module_results,
+        .track_results = track_results2,
+        .module_results = module_results2,
         .exported_modules = exported_modules.toOwnedSlice(),
-    };
-}
-
-fn visitModule(self: *CodeGenVisitor, self_module_index: usize, module_index: usize) GenError!void {
-    if (self.module_visited[module_index]) {
-        return;
-    }
-    self.module_visited[module_index] = true;
-
-    const module_info = self.parse_result.modules[module_index].info.?;
-
-    // first, recursively resolve all modules that this one uses as its fields
-    var resolved_fields = try self.arena_allocator.alloc(usize, module_info.fields.len);
-
-    for (module_info.fields) |field, field_index| {
-        // find the module index for this field name
-        const field_name = self.ctx.source.getString(field.type_token.source_range);
-        const resolved_module_index = for (self.parse_result.globals) |global, global_index| {
-            if (!std.mem.eql(u8, global.name, field_name)) continue;
-            switch (self.global_results[global_index].?) {
-                .literal_module => |i| break i,
-                else => {},
-            }
-        } else {
-            return fail(self.ctx, field.type_token.source_range, "no module called `<`", .{});
-        };
-
-        // check for dependency loops and then recurse
-        if (resolved_module_index == self_module_index) {
-            return fail(self.ctx, field.type_token.source_range, "circular dependency in module fields", .{});
-        }
-        try visitModule(self, self_module_index, resolved_module_index);
-
-        // ok
-        resolved_fields[field_index] = resolved_module_index;
-    }
-
-    // now resolve this one
-    self.module_results[module_index] = try codegenModule(self, module_index, module_info, resolved_fields);
-}
-
-fn codegenModule(self: *CodeGenVisitor, module_index: usize, module_info: ParsedModuleInfo, resolved_fields: []const usize) !CodeGenModuleResult {
-    const cs: CodegenState = .{
-        .arena_allocator = self.arena_allocator,
-        .ctx = self.ctx,
-        .globals = self.parse_result.globals,
-        .curves = self.parse_result.curves,
-        .tracks = self.parse_result.tracks,
-        .modules = self.parse_result.modules,
-        .global_results = self.global_results,
-        .global_visited = self.global_visited,
-    };
-    var cms: CodegenModuleState = .{
-        .module_results = self.module_results,
-        .module_index = module_index,
-        .resolved_fields = resolved_fields,
-        .locals = module_info.locals,
-        .instructions = std.ArrayList(Instruction).init(self.arena_allocator),
-        .temp_buffers = TempManager.init(self.inner_allocator, true),
-        // pass false: don't reuse temp floats slots (they become `const` in zig)
-        // TODO we could reuse them if we're targeting runtime, not codegen_zig
-        .temp_floats = TempManager.init(self.inner_allocator, false),
-        .local_results = try self.arena_allocator.alloc(?ExpressionResult, module_info.locals.len),
-        .delays = std.ArrayList(DelayDecl).init(self.arena_allocator),
-        .triggers = std.ArrayList(TriggerDecl).init(self.arena_allocator),
-        .note_trackers = std.ArrayList(NoteTrackerDecl).init(self.arena_allocator),
-        .current_delay = null,
-        .current_track_call = null,
-    };
-    defer cms.temp_buffers.deinit();
-    defer cms.temp_floats.deinit();
-
-    std.mem.set(?ExpressionResult, cms.local_results, null);
-
-    for (module_info.scope.statements.items) |statement| {
-        try genTopLevelStatement(&cs, &cms, statement);
-    }
-
-    for (cms.local_results) |maybe_result| {
-        const result = maybe_result orelse continue;
-        releaseExpressionResult(&cms, result);
-    }
-
-    cms.temp_buffers.reportLeaks();
-    cms.temp_floats.reportLeaks();
-
-    if (self.dump_codegen_out) |out| {
-        printBytecode(out, &cs, &cms) catch |err| std.debug.warn("printBytecode failed: {}\n", .{err});
-    }
-
-    return CodeGenModuleResult{
-        .num_outputs = 1,
-        .num_temps = cms.temp_buffers.finalCount(),
-        .num_temp_floats = cms.temp_floats.finalCount(),
-        .inner = .{
-            .custom = .{
-                .resolved_fields = resolved_fields,
-                .delays = cms.delays.toOwnedSlice(),
-                .note_trackers = cms.note_trackers.toOwnedSlice(),
-                .triggers = cms.triggers.toOwnedSlice(),
-                .instructions = cms.instructions.toOwnedSlice(),
-            },
-        },
     };
 }

@@ -2,10 +2,8 @@ const std = @import("std");
 const Source = @import("context.zig").Source;
 const PrintHelper = @import("print_helper.zig").PrintHelper;
 const Module = @import("parse.zig").Module;
-const ModuleField = @import("parse1zig").ModuleField;
 const Expression = @import("parse.zig").Expression;
 const Statement = @import("parse.zig").Statement;
-const Field = @import("parse.zig").Field;
 const Local = @import("parse.zig").Local;
 const Scope = @import("parse.zig").Scope;
 
@@ -52,9 +50,10 @@ const State = struct {
         try self.indent(indentation);
         switch (expression.inner) {
             .call => |call| {
-                const field = self.module.info.?.fields[call.field_index];
-                const field_name = self.source.getString(field.type_token.source_range);
-                try self.print("call self.#{usize}({str}) (\n", .{ call.field_index, field_name });
+                try self.print("call (\n", .{});
+                try self.printExpression(call.field_expr, indentation + 1);
+                try self.indent(indentation);
+                try self.print(") (\n", .{});
                 for (call.args) |arg| {
                     try self.indent(indentation + 1);
                     try self.print("{str}:\n", .{arg.param_name});
@@ -119,11 +118,6 @@ pub fn parsePrintModule(out: std.io.StreamSource.OutStream, source: Source, modu
 
     if (module.info) |info| {
         try self.print("module {usize}\n", .{module_index});
-        for (info.fields) |field, i| {
-            const name = source.getString(field.type_token.source_range);
-            try self.print("    field #{usize}({str})\n", .{ i, name });
-        }
-        try self.print("statements:\n", .{});
         for (info.scope.statements.items) |statement| {
             try self.printStatement(statement, 1);
         }

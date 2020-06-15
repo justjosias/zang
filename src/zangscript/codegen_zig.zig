@@ -170,9 +170,9 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("}};\n", .{});
         try self.print("\n", .{});
 
-        for (inner.resolved_fields) |field_module_index, j| {
-            const field_module = script.modules[field_module_index];
-            try self.print("field{usize}: {module_name},\n", .{ j, field_module_index });
+        for (inner.fields) |field, j| {
+            const field_module = script.modules[field.module_index];
+            try self.print("field{usize}: {module_name},\n", .{ j, field.module_index });
         }
         for (inner.delays) |delay_decl, j| {
             try self.print("delay{usize}: zang.Delay({usize}),\n", .{ j, delay_decl.num_samples });
@@ -186,9 +186,9 @@ pub fn generateZig(out: std.io.StreamSource.OutStream, builtin_packages: []const
         try self.print("\n", .{});
         try self.print("pub fn init() _module{usize} {{\n", .{i});
         try self.print("return .{{\n", .{});
-        for (inner.resolved_fields) |field_module_index, j| {
-            const field_module = script.modules[field_module_index];
-            try self.print(".field{usize} = {module_name}.init(),\n", .{ j, field_module_index });
+        for (inner.fields) |field, j| {
+            const field_module = script.modules[field.module_index];
+            try self.print(".field{usize} = {module_name}.init(),\n", .{ j, field.module_index });
         }
         for (inner.delays) |delay_decl, j| {
             try self.print(".delay{usize} = zang.Delay({usize}).init(),\n", .{ j, delay_decl.num_samples });
@@ -418,7 +418,7 @@ fn genInstruction(
             }
         },
         .call => |call| {
-            const field_module_index = inner.resolved_fields[call.field_index];
+            const field_module_index = inner.fields[call.field_index].module_index;
             const callee_module = self.script.modules[field_module_index];
             switch (call.out) {
                 .output_index => {},
