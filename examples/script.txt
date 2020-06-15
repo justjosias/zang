@@ -130,7 +130,7 @@ begin
         0.000 (freq=750, note_on=true)
         0.045 (freq=1000, note_on=true)
         0.090 (freq=1000, note_on=false)
-    end 1 begin
+    end, 1 begin
         out CoinInstrument(
             freq=base_freq * (freq / 1000),
             note_on

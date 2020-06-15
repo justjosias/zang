@@ -405,6 +405,7 @@ fn parseCallArgs(ps: *ParseState, pc: ParseContext) ![]const CallArg {
 
 fn parseTrackCall(ps: *ParseState, pcm: ParseContextModule) ParseError!TrackCall {
     const track_expr = try expectExpression(ps, .{ .module = pcm });
+    try ps.tokenizer.expectNext(.sym_comma);
     const speed_expr = try expectExpression(ps, .{ .module = pcm });
     try ps.tokenizer.expectNext(.kw_begin);
     const inner_scope = try parseStatements(ps, pcm.ps_mod, pcm.scope);
