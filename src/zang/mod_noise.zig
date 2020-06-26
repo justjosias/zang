@@ -4,7 +4,8 @@
 const std = @import("std");
 const Span = @import("basics.zig").Span;
 
-var next_seed: u64 = 0;
+// use u32 instead of u64 because wasm doesn't support u64 in @atomicRmw.
+var next_seed: u32 = 0;
 
 pub const NoiseColor = enum {
     white,
@@ -22,7 +23,7 @@ pub const Noise = struct {
     b: [7]f32,
 
     pub fn init() Noise {
-        const seed = @atomicRmw(u64, &next_seed, .Add, 1, .SeqCst);
+        const seed: u64 = @atomicRmw(u32, &next_seed, .Add, 1, .SeqCst);
 
         return .{
             .r = std.rand.Xoroshiro128.init(seed),
