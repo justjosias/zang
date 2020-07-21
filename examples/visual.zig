@@ -858,7 +858,7 @@ pub const Visuals = struct {
         }
     }
 
-    fn addWidget(self: *Visuals, inew: var) !void {
+    fn addWidget(self: *Visuals, inew: anytype) !void {
         var instance = try inew;
         self.widgets.append(&instance.vtable) catch |err| {
             instance.del(self.allocator);
